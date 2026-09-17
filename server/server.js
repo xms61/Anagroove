@@ -1,12 +1,17 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { db } from './db.js';
 import { getRandomSongPool } from './services/musicService.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
 
 app.use(cors());
 app.use(express.json());
@@ -46,7 +51,10 @@ app.get('/api/music/random', async (req, res) => {
 });
 
 // Anonymous User ID Middleware for stateful endpoints
-app.use((req, res, next) => {
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || req.path === '/music/random') {
+    return next();
+  }
   const userId = req.headers['x-user-id'] || req.query.userId;
   if (!userId) {
     return res.status(400).json({ error: 'Missing X-User-Id header' });
@@ -370,6 +378,17 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`🎵 SpotySpice Backend API & WebSocket running at http://127.0.0.1:${PORT}`);
+// Serve static frontend assets in production
+const distPath = path.join(__dirname, '../dist');
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(distPath, 'index.html'));
+    }
+  });
+}
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT})`);
 });

@@ -1,0 +1,15 @@
+services:
+  spotyspice:
+    build: .
+    container_name: spotyspice
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - spotyspice_data:/app/server/data
+
+volumes:
+  spotyspice_data:

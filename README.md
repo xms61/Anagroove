@@ -186,6 +186,41 @@ npx tsx scripts/test_randomizer.js
 
 ---
 
+## 🐳 Docker Deployment
+
+SpotySpice includes a production-ready, multi-stage Alpine Docker configuration. The image builds the React client and runs the Express backend + WebSockets server seamlessly on a single port (`3000` by default).
+
+### Quickstart with Docker Compose
+
+```bash
+docker compose up -d
+```
+The game will be live at `http://localhost:3000`. User progress and cache data will be persisted in a Docker volume (`spotyspice_data`).
+
+### Manual Build & Run
+
+1. **Build the image**:
+   ```bash
+   docker build -t spotyspice .
+   ```
+
+2. **Run the container**:
+   ```bash
+   docker run -d \
+     -p 3000:3000 \
+     --name spotyspice \
+     -v spotyspice_data:/app/server/data \
+     spotyspice
+   ```
+
+3. **Deploy to any Cloud / VPS** (Render, Railway, Fly.io, Google Cloud Run, AWS ECS, DigitalOcean):
+   - Simply connect your GitHub repository.
+   - Set the port to `3000` (or leave as default, the server respects `$PORT`).
+   - The container automatically serves the frontend, REST APIs, and WebSockets through the single exposed port.
+
+---
+
 ## 📄 License
 
 MIT License. Free for personal and educational use.
+

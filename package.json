@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "dev:server": "node server/server.js",
     "build": "tsc && vite build",
+    "start": "node server/server.js",
     "preview": "vite preview",
     "generate": "node scripts/generate_puzzles.js",
     "generate:themes": "node scripts/generate_all_themes.js"

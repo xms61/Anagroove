@@ -1,0 +1,16 @@
+node_modules
+dist
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.git
+.gitignore
+.dockerignore
+.env
+.env.*
+.vscode
+*.zip
+scratch
+.system_generated
+.DS_Store
+Thumbs.db
