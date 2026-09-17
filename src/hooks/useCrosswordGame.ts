@@ -55,7 +55,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
   const [showEndScreen, setShowEndScreen] = useState(false);
 
   // Debounced server auto-save ref
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset state when puzzle changes
   useEffect(() => {

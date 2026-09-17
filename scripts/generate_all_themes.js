@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { shuffleArray } from '../shared/shuffle.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,7 +82,7 @@ class CrosswordGenerator {
   }
 
   generate(candidatePool, targetWords = 10) {
-    const pool = [...candidatePool].sort(() => Math.random() - 0.5);
+    const pool = shuffleArray(candidatePool);
     pool.sort((a, b) => b.answer.length - a.answer.length);
 
     const first = pool[0];

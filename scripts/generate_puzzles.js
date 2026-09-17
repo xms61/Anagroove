@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { shuffleArray } from '../shared/shuffle.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,7 +98,7 @@ class CrosswordGenerator {
 
   generate(candidatePool, targetWordCount = 12) {
     // Shuffle pool with bias toward longer words first for rich interconnectivity
-    const pool = [...candidatePool].sort(() => Math.random() - 0.5);
+    const pool = shuffleArray(candidatePool);
     pool.sort((a, b) => b.answer.length - a.answer.length);
 
     // Place the first anchor word near the middle

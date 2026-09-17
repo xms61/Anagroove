@@ -1,4 +1,5 @@
 import { Puzzle, Clue, CellData } from '../types/crossword';
+import { shuffleArray } from '../../shared/shuffle';
 
 export interface SongItem {
   id: string;
@@ -94,7 +95,7 @@ export class LiveCrosswordGenerator {
   public generate(candidatePool: SongItem[], targetWords = 10): boolean {
     if (candidatePool.length < 5) return false;
 
-    const pool = [...candidatePool].sort(() => Math.random() - 0.5);
+    const pool = shuffleArray(candidatePool);
     pool.sort((a, b) => b.answer.length - a.answer.length);
 
     const first = pool[0];

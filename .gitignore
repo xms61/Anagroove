@@ -82,4 +82,6 @@ Thumbs.db
 *.zip
 
 # Server runtime session database
-server/data/store.json
+server/data/store.json*
+*.bak
+*.tmp

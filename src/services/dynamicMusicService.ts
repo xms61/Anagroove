@@ -1,5 +1,7 @@
 import { SongItem } from '../utils/liveGenerator';
 import { BlacklistItem, getAnonymousUserId } from './apiClient';
+import { extractAnswerKeyword } from '../../shared/musicKeywords';
+import { shuffleArray } from '../../shared/shuffle';
 
 // Track recently seen song IDs in sessionStorage to avoid repeating songs
 function getRecentlyPlayedIds(): Set<string> {
@@ -38,54 +40,6 @@ const ICONIC_ARTIST_SEEDS: Record<string, string[]> = {
   latin: ['Bad Bunny', 'Daddy Yankee', 'J Balvin', 'Shakira', 'Maluma', 'Rosalia', 'Luis Fonsi'],
   kpop: ['BTS', 'BLACKPINK', 'TWICE', 'NewJeans', 'Stray Kids'],
 };
-
-/**
- * Extracts a clean uppercase A-Z answer word (length 3 to 10) from a title or artist
- */
-function extractAnswerKeyword(title: string, artist: string): { answer: string; clueType: string; clueText: string } | null {
-  const cleanTitle = title
-    .replace(/\(feat\..*?\)/gi, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/\(.*?\)/g, '')
-    .replace(/[^a-zA-Z\s]/g, '')
-    .trim();
-
-  const titleWords = cleanTitle.split(/\s+/).filter(w => w.length >= 3 && w.length <= 10);
-  const cleanArtist = artist.replace(/[^a-zA-Z\s]/g, '').trim();
-  const artistWords = cleanArtist.split(/\s+/).filter(w => w.length >= 3 && w.length <= 10);
-
-  // Strategy 1: Single-word song title
-  if (titleWords.length === 1 && /^[a-zA-Z]{3,10}$/.test(titleWords[0])) {
-    return {
-      answer: titleWords[0].toUpperCase(),
-      clueType: 'Song title',
-      clueText: `Iconic hit single (${titleWords[0].length} letters)`
-    };
-  }
-
-  // Strategy 2: Multi-word title prominent word
-  if (titleWords.length > 1) {
-    const sorted = [...titleWords].sort((a, b) => b.length - a.length);
-    const candidate = sorted[0].toUpperCase();
-    return {
-      answer: candidate,
-      clueType: 'Song title keyword',
-      clueText: `Key word in this legendary hit (${candidate.length} letters)`
-    };
-  }
-
-  // Strategy 3: Artist name keyword
-  if (artistWords.length > 0) {
-    const candidate = artistWords[0].toUpperCase();
-    return {
-      answer: candidate,
-      clueType: 'Artist name',
-      clueText: `Celebrated performer of this track (${candidate.length} letters)`
-    };
-  }
-
-  return null;
-}
 
 export const dynamicMusicService = {
   /**
@@ -139,13 +93,17 @@ export const dynamicMusicService = {
     };
 
     const seeds = ICONIC_ARTIST_SEEDS[genre] || ICONIC_ARTIST_SEEDS.all;
-    const chosenSeeds = [...seeds].sort(() => 0.5 - Math.random()).slice(0, 5);
+    const chosenSeeds = shuffleArray(seeds).slice(0, 5);
 
     for (const artistName of chosenSeeds) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const searchRes = await fetch(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=song&limit=10`
+          `https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=song&limit=10`,
+          { signal: controller.signal }
         );
+        clearTimeout(timeoutId);
         if (searchRes.ok) {
           const data = await searchRes.json();
           const results = data.results || [];

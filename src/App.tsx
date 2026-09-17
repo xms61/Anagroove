@@ -17,6 +17,7 @@ import { apiClient, getMultiplayerPlayerId } from './services/apiClient';
 import { socketService, MultiplayerRoom } from './services/socketService';
 import { useBlacklist } from './hooks/useBlacklist';
 import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords } from 'lucide-react';
+import { shuffleArray } from '../shared/shuffle';
 
 const catalog: ThemesCatalog = catalogData as unknown as ThemesCatalog;
 
@@ -238,7 +239,7 @@ export default function App() {
   // Helper to generate a brand-new, fresh crossword specifically for multiplayer lobbies
   const createFreshCrosswordForLobby = useCallback((themeId: string = 'mixed'): Puzzle => {
     const theme = catalog.themes.find(t => t.id === themeId) || catalog.themes[0];
-    let candidates: SongItem[] = [];
+    let candidates: SongItem[];
 
     if (themeId === 'mixed') {
       candidates = allCatalogSongs.filter(s =>
@@ -264,7 +265,7 @@ export default function App() {
       candidates = Array.from(map.values());
     }
 
-    const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+    const shuffled = shuffleArray(candidates);
     const uniquePuzzleId = `mp-${themeId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const generated = generateLiveCrossword(shuffled, `👥 Match: ${theme.name}`, 10);
 

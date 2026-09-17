@@ -169,18 +169,26 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 
 ---
 
-## 🧪 Testing & Verification
+## 🧪 Testing & Code Quality
 
-Run automated test suites to verify system integrity:
+Run automated CI-friendly test suites and linters:
 
 ```bash
-# Test multiplayer real-time two-way synchronization & session persistence
+# Run the complete automated test suite (30 unit & integration tests)
+npm test
+
+# Run ESLint across TypeScript, server, scripts, and shared modules
+npm run lint
+
+# Run full CI pipeline validation (Lint + Tests)
+npm run test:ci
+
+# Format codebase with Prettier
+npm run format
+
+# Standalone deep-dive test scripts
 node scripts/test_multiplayer_live_sync.js
-
-# Test API health, anonymous progress saving, and server blacklist
 node scripts/test_features.js
-
-# Test recognizable music pool entropy & on-the-fly generator
 npx tsx scripts/test_randomizer.js
 ```
 

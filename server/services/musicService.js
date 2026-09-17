@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { extractAnswerKeyword } from '../../shared/musicKeywords.js';
+import { shuffleArray } from '../../shared/shuffle.js';
+import { fetchWithTimeout } from './fetchWithTimeout.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,55 +43,8 @@ if (fs.existsSync(ARTISTS_FILE)) {
   }
 }
 
-/**
- * Extracts a clean uppercase A-Z answer word (length 3 to 10) from a title
- */
-export function extractAnswerKeyword(title, artist) {
-  const cleanTitle = title
-    .replace(/\(feat\..*?\)/gi, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/\(.*?\)/g, '')
-    .replace(/[^a-zA-Z\s]/g, '')
-    .trim();
-
-  const titleWords = cleanTitle.split(/\s+/).filter(w => w.length >= 3 && w.length <= 10);
-  const cleanArtist = artist.replace(/[^a-zA-Z\s]/g, '').trim();
-  const artistWords = cleanArtist.split(/\s+/).filter(w => w.length >= 3 && w.length <= 10);
-
-  // Strategy 1: Single-word song title
-  if (titleWords.length === 1 && /^[a-zA-Z]{3,10}$/.test(titleWords[0])) {
-    const candidate = titleWords[0].toUpperCase();
-    return {
-      answer: candidate,
-      clueType: 'Song title',
-      clueText: `Iconic hit single (${candidate.length} letters)`
-    };
-  }
-
-  // Strategy 2: Prominent word in multi-word title
-  if (titleWords.length > 1) {
-    // Pick the longest word with distinct vowels
-    const sorted = [...titleWords].sort((a, b) => b.length - a.length);
-    const candidate = sorted[0].toUpperCase();
-    return {
-      answer: candidate,
-      clueType: 'Song title keyword',
-      clueText: `Key word in this legendary track (${candidate.length} letters)`
-    };
-  }
-
-  // Strategy 3: Artist name keyword
-  if (artistWords.length > 0) {
-    const candidate = artistWords[0].toUpperCase();
-    return {
-      answer: candidate,
-      clueType: 'Artist name',
-      clueText: `Celebrated performer of this hit (${candidate.length} letters)`
-    };
-  }
-
-  return null;
-}
+// Re-export canonical keyword extraction logic
+export { extractAnswerKeyword };
 
 /**
  * Fetches top hit tracks for a specific artist with caching
@@ -100,7 +56,7 @@ export async function getArtistTopTracks(artist) {
   }
 
   try {
-    const res = await fetch(`https://api.deezer.com/artist/${artist.id}/top?limit=15`);
+    const res = await fetchWithTimeout(`https://api.deezer.com/artist/${artist.id}/top?limit=15`, {}, 6000, 2);
     if (res.ok) {
       const data = await res.json();
       const rawTracks = data.data || [];
@@ -176,11 +132,7 @@ export async function getRandomSongPool({
   }
 
   // 2. Truly randomize / shuffle artists using Fisher-Yates
-  const shuffledArtists = [...candidateArtists];
-  for (let i = shuffledArtists.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffledArtists[i], shuffledArtists[j]] = [shuffledArtists[j], shuffledArtists[i]];
-  }
+  const shuffledArtists = shuffleArray(candidateArtists);
 
   // 3. Select top 15-20 distinct artists and gather hit tracks
   const selectedArtists = shuffledArtists.slice(0, 20);
@@ -190,7 +142,7 @@ export async function getRandomSongPool({
   for (const artist of selectedArtists) {
     const tracks = await getArtistTopTracks(artist);
     // Shuffle the artist's hit songs so we don't always pick the #1 hit
-    const shuffledTracks = [...tracks].sort(() => 0.5 - Math.random());
+    const shuffledTracks = shuffleArray(tracks);
 
     for (const track of shuffledTracks) {
       if (

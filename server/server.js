@@ -6,6 +6,15 @@ import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { db } from './db.js';
 import { getRandomSongPool } from './services/musicService.js';
+import {
+  validateUserId,
+  validateProgressPayload,
+  validateHistoryPayload,
+  validateBlacklistPayload,
+  validateMusicQuery,
+  validateWsMessage
+} from './validators.js';
+import { createRateLimiter, wsRateLimiter } from './middleware/rateLimiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,34 +22,68 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
 
-app.use(cors());
-app.use(express.json());
+// Configurable CORS Policy
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : null;
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins) {
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Origin blocked by CORS policy'));
+    }
+    // Default development & local allowance
+    if (
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin.startsWith('https://localhost:')
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
+
+// Body parser with size limits
+app.use(express.json({ limit: '256kb' }));
+
+// Apply Sliding-Window Rate Limiters to APIs
+const generalApiLimiter = createRateLimiter({ windowMs: 60000, max: 120 });
+const musicApiLimiter = createRateLimiter({
+  windowMs: 60000,
+  max: 30,
+  message: 'Music pool generation rate limit exceeded. Please wait a moment.'
+});
+
+app.use('/api', generalApiLimiter);
+app.use('/api/music/random', musicApiLimiter);
 
 // Public health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 
-// Truly randomized recognizable music pool
+// Truly randomized recognizable music pool with input validation
 app.get('/api/music/random', async (req, res) => {
   try {
-    const genre = String(req.query.genre || 'all');
-    const minFans = parseInt(req.query.minFans) || 250000;
-    const count = parseInt(req.query.count) || 25;
-    const recentIds = req.query.recent ? String(req.query.recent).split(',') : [];
-    const userId = req.headers['x-user-id'] || req.query.userId;
-    
+    const validatedQuery = validateMusicQuery(req.query);
+    const rawUserId = req.headers['x-user-id'] || req.query.userId;
+    const userId = rawUserId ? validateUserId(rawUserId) : null;
+
     let userBlacklist = [];
     if (userId) {
-      userBlacklist = db.getBlacklist(String(userId));
+      userBlacklist = db.getBlacklist(userId);
     }
 
     const songs = await getRandomSongPool({
-      genre,
-      minFans,
-      count,
+      genre: validatedQuery.genre,
+      minFans: validatedQuery.minFans,
+      count: validatedQuery.count,
       blacklist: userBlacklist,
-      recentIds
+      recentIds: validatedQuery.recentIds
     });
 
     res.json({ success: true, count: songs.length, songs });
@@ -50,16 +93,19 @@ app.get('/api/music/random', async (req, res) => {
   }
 });
 
-// Anonymous User ID Middleware for stateful endpoints
+// Anonymous User ID Middleware for stateful endpoints with strict validation
 app.use('/api', (req, res, next) => {
   if (req.path === '/health' || req.path === '/music/random') {
     return next();
   }
-  const userId = req.headers['x-user-id'] || req.query.userId;
-  if (!userId) {
-    return res.status(400).json({ error: 'Missing X-User-Id header' });
+  const rawUserId = req.headers['x-user-id'] || req.query.userId;
+  const validatedId = validateUserId(rawUserId);
+  if (!validatedId) {
+    return res.status(400).json({
+      error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)'
+    });
   }
-  req.userId = String(userId);
+  req.userId = validatedId;
   next();
 });
 
@@ -70,16 +116,11 @@ app.get('/api/progress', (req, res) => {
 });
 
 app.post('/api/progress', (req, res) => {
-  const { puzzleId, themeId, userLetters, validity } = req.body;
-  if (!puzzleId || !userLetters) {
-    return res.status(400).json({ error: 'Missing progress payload' });
+  const validation = validateProgressPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
   }
-  const saved = db.saveProgress(req.userId, {
-    puzzleId,
-    themeId: themeId || 'mixed',
-    userLetters,
-    validity: validity || []
-  });
+  const saved = db.saveProgress(req.userId, validation.data);
   res.json({ success: true, progress: saved });
 });
 
@@ -90,16 +131,11 @@ app.get('/api/history', (req, res) => {
 });
 
 app.post('/api/history/solved', (req, res) => {
-  const { puzzleId, title, cluesCount, timeSeconds } = req.body;
-  if (!puzzleId) {
-    return res.status(400).json({ error: 'Missing puzzleId' });
+  const validation = validateHistoryPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
   }
-  const history = db.recordSolvedPuzzle(req.userId, {
-    puzzleId,
-    title: title || 'Untitled Puzzle',
-    cluesCount: cluesCount || 0,
-    timeSeconds: timeSeconds || 0
-  });
+  const history = db.recordSolvedPuzzle(req.userId, validation.data);
   res.json({ success: true, history });
 });
 
@@ -110,16 +146,17 @@ app.get('/api/blacklist', (req, res) => {
 });
 
 app.post('/api/blacklist', (req, res) => {
-  const { name, type } = req.body;
-  if (!name || !type) {
-    return res.status(400).json({ error: 'Missing name or type' });
+  const validation = validateBlacklistPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
   }
-  const list = db.addBlacklistItem(req.userId, { name, type });
+  const list = db.addBlacklistItem(req.userId, validation.data);
   res.json({ success: true, blacklist: list });
 });
 
 app.delete('/api/blacklist/:id', (req, res) => {
-  const list = db.removeBlacklistItem(req.userId, req.params.id);
+  const itemId = String(req.params.id).slice(0, 100);
+  const list = db.removeBlacklistItem(req.userId, itemId);
   res.json({ success: true, blacklist: list });
 });
 
@@ -146,7 +183,6 @@ const PLAYER_COLORS = [
   '#3b82f6', // Blue
   '#f59e0b', // Amber
   '#8b5cf6', // Purple
-  '#06b6d4', // Cyan
 ];
 
 function broadcastToRoom(roomCode, message) {
@@ -161,13 +197,37 @@ function broadcastToRoom(roomCode, message) {
   });
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  if (!wsRateLimiter.checkConnection(ip, 20)) {
+    ws.close(1008, 'Too many concurrent connections from this IP');
+    return;
+  }
+
+  const allowMessage = wsRateLimiter.createMessageTracker(35);
   let currentPlayer = null;
   let currentRoomCode = null;
 
   ws.on('message', (raw) => {
     try {
-      const data = JSON.parse(raw.toString());
+      if (raw.length > 65536) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Message payload too large (max 64KB)' }));
+        return;
+      }
+
+      if (!allowMessage()) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Message rate limit exceeded' }));
+        return;
+      }
+
+      const parsed = JSON.parse(raw.toString());
+      const validation = validateWsMessage(parsed);
+      if (!validation.valid) {
+        ws.send(JSON.stringify({ type: 'error', message: validation.error }));
+        return;
+      }
+
+      const data = validation.data;
 
       switch (data.action) {
         case 'create_room': {
@@ -184,10 +244,10 @@ wss.on('connection', (ws) => {
           const room = {
             code: roomCode,
             hostId: data.playerId,
-            mode: data.mode || 'coop', // 'coop' | 'race'
+            mode: data.mode === 'race' ? 'race' : 'coop',
             puzzle: data.puzzle || null,
-            sharedGrid: data.puzzle
-              ? Array.from({ length: data.puzzle.rows }, () => Array(data.puzzle.cols).fill(''))
+            sharedGrid: data.puzzle && data.puzzle.rows && data.puzzle.cols
+              ? Array.from({ length: Math.min(30, data.puzzle.rows) }, () => Array(Math.min(30, data.puzzle.cols)).fill(''))
               : null,
             isStarted: false,
             players: [currentPlayer]
@@ -262,9 +322,12 @@ wss.on('connection', (ws) => {
         case 'start_game': {
           const room = rooms.get(data.roomCode);
           if (room && (!data.playerId || room.hostId === data.playerId)) {
-            if (data.puzzle) {
+            if (data.puzzle && data.puzzle.rows && data.puzzle.cols) {
               room.puzzle = data.puzzle;
-              room.sharedGrid = Array.from({ length: data.puzzle.rows }, () => Array(data.puzzle.cols).fill(''));
+              room.sharedGrid = Array.from(
+                { length: Math.min(30, data.puzzle.rows) },
+                () => Array(Math.min(30, data.puzzle.cols)).fill('')
+              );
             }
             room.isStarted = true;
             broadcastToRoom(data.roomCode, {
@@ -290,13 +353,13 @@ wss.on('connection', (ws) => {
         case 'coop_cell_update': {
           const room = rooms.get(data.roomCode);
           if (room) {
-            const char = data.char !== undefined ? data.char : (data.value !== undefined ? data.value : '');
-            const playerId = data.playerId || data.senderId;
+            const char = data.char !== undefined ? data.char : '';
+            const playerId = data.playerId || 'anonymous';
             const playerName = data.playerName || 'Player';
             const playerColor = data.playerColor || '#f59e0b';
             const { row, col } = data;
 
-            if (!room.sharedGrid && room.puzzle) {
+            if (!room.sharedGrid && room.puzzle && room.puzzle.rows && room.puzzle.cols) {
               room.sharedGrid = Array.from({ length: room.puzzle.rows }, () => Array(room.puzzle.cols).fill(''));
             }
             if (room.sharedGrid && row < room.sharedGrid.length && col < room.sharedGrid[0].length) {
@@ -343,7 +406,7 @@ wss.on('connection', (ws) => {
             broadcastToRoom(data.roomCode, {
               type: 'puzzle_solved',
               winnerId: data.playerId,
-              winnerName: data.playerName
+              winnerName: data.playerName || 'Player'
             });
           }
           break;
@@ -355,6 +418,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    wsRateLimiter.releaseConnection(ip);
+
     if (currentRoomCode) {
       const room = rooms.get(currentRoomCode);
       if (room) {
@@ -389,6 +454,12 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT})`);
-});
+// Export for test runner
+export { app, server };
+
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename);
+if (isMainModule) {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT})`);
+  });
+}

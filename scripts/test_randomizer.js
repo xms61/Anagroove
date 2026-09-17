@@ -37,9 +37,6 @@ async function runTests() {
   const pool3 = await getRandomSongPool({ genre: 'all', minFans: 250000, count: 15 });
 
   const ids1 = new Set(pool1.map(s => s.id));
-  const ids2 = new Set(pool2.map(s => s.id));
-  const ids3 = new Set(pool3.map(s => s.id));
-
   const overlap12 = pool2.filter(s => ids1.has(s.id)).length;
   const overlap13 = pool3.filter(s => ids1.has(s.id)).length;
 
