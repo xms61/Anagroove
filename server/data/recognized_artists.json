@@ -1,0 +1,842 @@
+[
+  {
+    "name": "The Beatles",
+    "id": 1,
+    "fans": 8125466,
+    "genre": "rock",
+    "era": "60s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/16925ed8f96eb621ecd56c2c8ba3da6e/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Michael Jackson",
+    "id": 259,
+    "fans": 13125385,
+    "genre": "pop",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/97fae13b2b30e4aec2e8c9e0c7839d92/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Madonna",
+    "id": 290,
+    "fans": 4906592,
+    "genre": "pop",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/7400e473dd4298ffbe418217452f2d43/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Queen",
+    "id": 412,
+    "fans": 12805009,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/71eeb9e2eeb375df35a3c0654a5a01ab/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Elton John",
+    "id": 413,
+    "fans": 2996337,
+    "genre": "pop",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/38ac9f6685f8d07d9528d41503bf450f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Prince",
+    "id": 1878,
+    "fans": 1364784,
+    "genre": "pop",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/85eec086152fb01d873ccdb0810e2660/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Whitney Houston",
+    "id": 174,
+    "fans": 3924916,
+    "genre": "pop",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/7d7916383f536969db91430a2707d3c0/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "George Michael",
+    "id": 3098,
+    "fans": 1498619,
+    "genre": "pop",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4dda8cb6478e01df479cc4b01ce534d4/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Britney Spears",
+    "id": 483,
+    "fans": 5451529,
+    "genre": "pop",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/caea45732bb52679494602c60430435a/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Justin Timberlake",
+    "id": 1147,
+    "fans": 6709490,
+    "genre": "pop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/c2b04e4f1d4036e896b67ad306008d66/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Taylor Swift",
+    "id": 12246,
+    "fans": 12722860,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/e528e270424103b527f8a27ac625563b/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "The Weeknd",
+    "id": 4050205,
+    "fans": 14684060,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Bruno Mars",
+    "id": 429675,
+    "fans": 12783247,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/90f0b5b11df4f87ee878f38569b5995b/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Dua Lipa",
+    "id": 8706544,
+    "fans": 8778672,
+    "genre": "pop",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/877872aaf75694f11d53c318700ab2b5/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Billie Eilish",
+    "id": 9635624,
+    "fans": 9251733,
+    "genre": "pop",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Ed Sheeran",
+    "id": 384236,
+    "fans": 20911308,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/d6bb84390641d8ae9118228d9544e53d/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Adele",
+    "id": 75798,
+    "fans": 15470723,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/e5fc443d2abc03b487234ba4de65a001/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Ariana Grande",
+    "id": 1562681,
+    "fans": 13424521,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Katy Perry",
+    "id": 144227,
+    "fans": 9784037,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/9c144bd1ed91b2a59c826cf1d1cde633/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Lady Gaga",
+    "id": 75491,
+    "fans": 9276395,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/7565262f7661b0d762621a8d69ba6f49/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Rihanna",
+    "id": 564,
+    "fans": 18050262,
+    "genre": "pop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/b78cdc205fae2641b89208e78b30e1b3/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Beyoncé",
+    "id": 145,
+    "fans": 12834041,
+    "genre": "pop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/0aa9d669be4e7310b8647afae37ffaab/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Harry Styles",
+    "id": 5313805,
+    "fans": 2194802,
+    "genre": "pop",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/1151dba9b3edc0633adf35b64c21713f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Olivia Rodrigo",
+    "id": 11152580,
+    "fans": 1822927,
+    "genre": "pop",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/2c9e480317183c037eaebcd7ba96daf4/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Miley Cyrus",
+    "id": 12436,
+    "fans": 7237818,
+    "genre": "pop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/fbf2cc06f54eb5d925983be756289836/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Shakira",
+    "id": 160,
+    "fans": 11712792,
+    "genre": "latin",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/69c569506a8ff6ab0edfecbd1adf94b0/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Nirvana",
+    "id": 415,
+    "fans": 10071001,
+    "genre": "rock",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/3ec5542ff520ee74e2befdaba32ef2ef/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Pink Floyd",
+    "id": 860,
+    "fans": 6816018,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/d62a818a5de6455f17b6a992cf22b32f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "AC/DC",
+    "id": 115,
+    "fans": 9934920,
+    "genre": "rock",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/7dbc950be70f997ba0cd2b39de7f2aa7/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Guns N' Roses",
+    "id": 663,
+    "fans": 8596012,
+    "genre": "rock",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/c62989722e38d7a2ab18afde3c19bc5c/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Led Zeppelin",
+    "id": 848,
+    "fans": 5539083,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/2cf138b96a63da677ac6fb79846607c8/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "The Rolling Stones",
+    "id": 11,
+    "fans": 7096906,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/cac467bef484959b4ad503c4cb7ef83d/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Red Hot Chili Peppers",
+    "id": 182,
+    "fans": 7695570,
+    "genre": "rock",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/238f5524a401dfdd5cac685f0f7989bd/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Coldplay",
+    "id": 892,
+    "fans": 18387241,
+    "genre": "rock",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/3087954bca22f306324912e5ac8375c3/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Radiohead",
+    "id": 399,
+    "fans": 4091319,
+    "genre": "rock",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/0d58cfbc90f2e776608bcdc0c45a4711/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Linkin Park",
+    "id": 92,
+    "fans": 12225773,
+    "genre": "rock",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4886905210739af3438990897bad3a98/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Green Day",
+    "id": 52,
+    "fans": 5235585,
+    "genre": "rock",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/690381cc69a21802b5d95b0460afb6a3/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Foo Fighters",
+    "id": 566,
+    "fans": 4588826,
+    "genre": "rock",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/c2a443972cacf77896f91a66b30bfd9e/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Arctic Monkeys",
+    "id": 1182,
+    "fans": 4958547,
+    "genre": "rock",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/6c03e4c7c36800897fd468633286db24/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "The Killers",
+    "id": 897,
+    "fans": 2237292,
+    "genre": "rock",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/979d671d4b391bc07747bd1569e51997/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Metallica",
+    "id": 119,
+    "fans": 8153831,
+    "genre": "rock",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/056578a9c2007f69ce198c81875eca41/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Bon Jovi",
+    "id": 637,
+    "fans": 5273637,
+    "genre": "rock",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/3ebdb0ff80286da236109a0fc79d0cb5/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Fleetwood Mac",
+    "id": 169,
+    "fans": 1667764,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/ef23278cf3a67a3ca8404ddaa38699d4/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "David Bowie",
+    "id": 997,
+    "fans": 2457142,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8301a6a09a24f4bb35950c59717defa0/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Oasis",
+    "id": 927,
+    "fans": 4697149,
+    "genre": "rock",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4bf3bc8291361eb562d188c2b92b7b86/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "U2",
+    "id": 163,
+    "fans": 7330798,
+    "genre": "rock",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/a0c5a1ade4409513eb1d69dc6622e5a5/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Gorillaz",
+    "id": 14,
+    "fans": 3016741,
+    "genre": "rock",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/ebbb1c133ed0220c714b9ed5d254561f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Aerosmith",
+    "id": 1005,
+    "fans": 5331105,
+    "genre": "rock",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/ccf17d65bed9b9809b556debb10fc3a3/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Eminem",
+    "id": 13,
+    "fans": 19109478,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/0f30bbd33a680030054af004d698d6ac/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Drake",
+    "id": 246791,
+    "fans": 24083189,
+    "genre": "hiphop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/eb0ed5b21d1ea5af021fc074ded0e91f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Kendrick Lamar",
+    "id": 525046,
+    "fans": 6170399,
+    "genre": "hiphop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/be0a7c550567f4af0ed202d7235b74d6/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Kanye West",
+    "id": 230,
+    "fans": 4544904,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/bb76c2ee3b068726ab4c37b0aabdb57a/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "50 Cent",
+    "id": 66,
+    "fans": 7864250,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/58da3cca2d598e43c7a7823cf75277e5/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Snoop Dogg",
+    "id": 3,
+    "fans": 7961382,
+    "genre": "hiphop",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/ecee555cd9f4af2617272852ff8562d2/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Travis Scott",
+    "id": 4495513,
+    "fans": 3138975,
+    "genre": "hiphop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8d8316146026d7e6ce377e314536df62/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Post Malone",
+    "id": 7543848,
+    "fans": 4201156,
+    "genre": "hiphop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/a5a8cca44e7eab2db7d44e039bed2574/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "JAY Z",
+    "id": 1309,
+    "fans": 3575992,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/a59aabd18e84d732ce3b9f6f5c4e5f50/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Outkast",
+    "id": 9,
+    "fans": 917174,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/32b909447841adfe4fd4770b1c1530ed/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Black Eyed Peas",
+    "id": 1020109,
+    "fans": 6104432,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4230c9807b45b78df8ce1255ca5ca594/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Usher",
+    "id": 17,
+    "fans": 7217903,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/7c25d479052a51ecc4674eae6e4c1c27/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Alicia Keys",
+    "id": 228,
+    "fans": 5806589,
+    "genre": "hiphop",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/a93317808f3d049e5abe7cf72ffe786f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "SZA",
+    "id": 5531258,
+    "fans": 1329781,
+    "genre": "hiphop",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8ced041da2bed70d5715f0860956169b/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Daft Punk",
+    "id": 27,
+    "fans": 5206879,
+    "genre": "electronic",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/638e69b9caaf9f9f3f8826febea7b543/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Avicii",
+    "id": 293585,
+    "fans": 8361686,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/82e214b0cb39316f4a12a082fded54f6/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Calvin Harris",
+    "id": 12178,
+    "fans": 12321946,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/a53031d02dc2f8a8eb15d117c015d5eb/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "David Guetta",
+    "id": 542,
+    "fans": 20108334,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/2d527fa03e106ed82a28f161694278d3/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Martin Garrix",
+    "id": 3968561,
+    "fans": 7593010,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4cab1c0cbe0edc1b3d2234873abc485e/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "The Chainsmokers",
+    "id": 4104927,
+    "fans": 5845308,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/461231bf0a032d7b8b315e05d1b4bbd7/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Skrillex",
+    "id": 525643,
+    "fans": 3849513,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/0075f053766d7d0e12e4a7be22b85e6a/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Tiësto",
+    "id": 434,
+    "fans": 4093268,
+    "genre": "electronic",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/b6ff15612b6ef51e5a552e4bd6abefd6/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Marshmello",
+    "id": 7890702,
+    "fans": 3108880,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/7990773a89df9f06fc2b871ad1de00bf/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Kygo",
+    "id": 4768753,
+    "fans": 2393269,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/c3e15399350755674d0462ddf51e0008/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Swedish House Mafia",
+    "id": 407188,
+    "fans": 2168710,
+    "genre": "electronic",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/bae3a6abb59c25a18a2a84d1700527bf/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "ABBA",
+    "id": 180,
+    "fans": 3185328,
+    "genre": "retro",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/1cd9c41f13f3114367692383758be3c1/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Wham!",
+    "id": 216,
+    "fans": 372035,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8568f258d044cbe28b2dc7e0299ba099/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "a-ha",
+    "id": 3106,
+    "fans": 1172899,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/5b66e3647ecffe097744e2479c689c41/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Cyndi Lauper",
+    "id": 2025,
+    "fans": 1048312,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/05b343dd206c2ac4cca081948ddb3e7f/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Toto",
+    "id": 215,
+    "fans": 979939,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/613cf61a7a89b492cd2ebfa471f6d9eb/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Tears for Fears",
+    "id": 1192,
+    "fans": 1187458,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4c802732227999ca78fdb5c8d76eae50/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Phil Collins",
+    "id": 186,
+    "fans": 2839757,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/206b79a942ee278de023a9d3cd732f87/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Earth, Wind & Fire",
+    "id": 248,
+    "fans": 1265854,
+    "genre": "retro",
+    "era": "70s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/0be4c99a97b1073be467961c5d02acc6/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Depeche Mode",
+    "id": 545,
+    "fans": 3275262,
+    "genre": "retro",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/b18856da7850c8b8cb10476fefc15657/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Backstreet Boys",
+    "id": 330,
+    "fans": 1145156,
+    "genre": "retro",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/6560429ca706ad5114e1167b49bafe9a/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Spice Girls",
+    "id": 785,
+    "fans": 408818,
+    "genre": "retro",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/6ad8f92b1053a682a03ad70f4c9f366c/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "The Cranberries",
+    "id": 196,
+    "fans": 1932288,
+    "genre": "retro",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8e57c9fe64a7d1c3ed241e16f4c0f154/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "No Doubt",
+    "id": 79,
+    "fans": 858631,
+    "genre": "retro",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/48ec84474b37a0677d7375f7bf10d78a/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "blink-182",
+    "id": 409,
+    "fans": 2332881,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/3c60337b3a7cf8d3740bcea4c277f4e1/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Paramore",
+    "id": 10977,
+    "fans": 3147482,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/60dc1956a36a5e552384b4a32b0cbf9b/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "My Chemical Romance",
+    "id": 599,
+    "fans": 1837623,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/8c78e78c01bbdc0c80fb4556c762d3bb/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Fall Out Boy",
+    "id": 404,
+    "fans": 2613287,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/f53434390dd76ef724cdc26df7a0b64d/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Avril Lavigne",
+    "id": 35,
+    "fans": 5711960,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4b6910349178701af19d401213e8c279/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Sum 41",
+    "id": 459,
+    "fans": 1361137,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/4e050809d936853e333deb5331dbc476/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Evanescence",
+    "id": 98,
+    "fans": 3782042,
+    "genre": "poppunk",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/0c993f8104879b99b1a952005a8c2426/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "The Offspring",
+    "id": 882,
+    "fans": 2032175,
+    "genre": "poppunk",
+    "era": "90s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/cb39bd249507f7f66782834195be99de/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Bad Bunny",
+    "id": 10583405,
+    "fans": 7996810,
+    "genre": "latin",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/044a3f315b041864887a8dd8709e6926/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Daddy Yankee",
+    "id": 3839,
+    "fans": 7160751,
+    "genre": "latin",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/a4f77d40d68cf544e74883b2bd904fce/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "J Balvin",
+    "id": 4860761,
+    "fans": 10339653,
+    "genre": "latin",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/325eaa46bc25052d0e3d549d60cc8225/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Maluma",
+    "id": 1424602,
+    "fans": 8073853,
+    "genre": "latin",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/69defce1be19bb2abf80cb7b1d936cdc/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "ROSALÍA",
+    "id": 554792,
+    "fans": 1058453,
+    "genre": "latin",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/96636156440182f1e7db3f77d39e6545/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Luis Fonsi",
+    "id": 6707,
+    "fans": 3148842,
+    "genre": "latin",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/db13837cc4442f835ceaeeeb67e9dc98/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "KAROL G",
+    "id": 5297021,
+    "fans": 3410745,
+    "genre": "latin",
+    "era": "2020s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/5b0aab23f8d2856951a92f3a9faf70e3/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "BTS",
+    "id": 6982223,
+    "fans": 3859001,
+    "genre": "kpop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/b5c64fa8216ca158e52b4d88bd9388ff/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "BLACKPINK",
+    "id": 10803980,
+    "fans": 2647907,
+    "genre": "kpop",
+    "era": "2010s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/89675729453893a91be35bde691050ff/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "Hans Zimmer",
+    "id": 1935,
+    "fans": 2138285,
+    "genre": "soundtrack",
+    "era": "2000s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/1bd0b9f7a3cf12e01bdcc26fa69673f7/250x250-000000-80-0-0.jpg"
+  },
+  {
+    "name": "John Williams",
+    "id": 805,
+    "fans": 891282,
+    "genre": "soundtrack",
+    "era": "80s",
+    "picture": "https://cdn-images.dzcdn.net/images/artist/97b49e5d676823f4eb400e1f8b44b736/250x250-000000-80-0-0.jpg"
+  }
+]

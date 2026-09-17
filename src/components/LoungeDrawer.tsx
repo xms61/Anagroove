@@ -1,0 +1,333 @@
+import React, { useEffect } from 'react';
+import { ThemeCategory } from '../types/crossword';
+import { 
+  X, 
+  Disc3, 
+  Zap, 
+  Users, 
+  Ban, 
+  ListMusic, 
+  Layers, 
+  Sparkles,
+  Keyboard,
+  Radio,
+  ChevronRight
+} from 'lucide-react';
+
+interface LoungeDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  themes: ThemeCategory[];
+  activeThemeId: string;
+  onSelectTheme: (themeId: string) => void;
+  onOpenPuzzlePicker: () => void;
+  onOpenLiveGenerator: () => void;
+  onOpenMultiplayer: () => void;
+  onOpenBlacklist: () => void;
+  onOpenSolvedHistory: () => void;
+  blacklistCount: number;
+  multiplayerCode?: string | null;
+  activePuzzleTitle: string;
+}
+
+export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
+  isOpen,
+  onClose,
+  themes,
+  activeThemeId,
+  onSelectTheme,
+  onOpenPuzzlePicker,
+  onOpenLiveGenerator,
+  onOpenMultiplayer,
+  onOpenBlacklist,
+  onOpenSolvedHistory,
+  blacklistCount,
+  multiplayerCode,
+  activePuzzleTitle,
+}) => {
+  // Close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const activeTheme = themes.find(t => t.id === activeThemeId) || themes[0];
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Dimmed backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Slide-over Drawer Panel */}
+      <div className="relative w-full max-w-md bg-[#10131c] border-l border-white/10 text-slate-200 shadow-2xl flex flex-col h-full z-10 overflow-hidden animate-in slide-in-from-right duration-300">
+        
+        {/* Drawer Header */}
+        <div className="px-6 py-5 border-b border-white/10 bg-[#141824] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.35)]">
+              <Disc3 className="w-5 h-5 animate-spin-slow" />
+            </div>
+            <div>
+              <div className="text-[10px] tracking-widest font-mono text-amber-400 uppercase font-bold">
+                JAZZ KISSA & AUDIO SALON
+              </div>
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Lounge Menu
+              </h2>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition border border-white/5 cursor-pointer"
+            title="Close menu (Esc)"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {/* Current Session Card */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#181d2c] to-[#121622] border border-amber-500/20 shadow-lg relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="flex items-center justify-between text-xs text-amber-300 font-mono mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>ACTIVE TURNTABLE</span>
+              </span>
+              <span className="text-slate-400 font-bold">{activeTheme.icon} {activeTheme.name}</span>
+            </div>
+
+            <div className="text-lg font-black text-white tracking-tight mb-3">
+              {activePuzzleTitle}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenPuzzlePicker();
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 font-bold text-xs transition cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Browse All 20 Puzzles In This Theme</span>
+              <ChevronRight className="w-3.5 h-3.5 ml-auto" />
+            </button>
+          </div>
+
+          {/* Quick Modes & Social Group */}
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-widest text-slate-400 mb-2.5 flex items-center gap-1.5 font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Listening Stations & Modes</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5">
+              {/* Live Generator Studio */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenLiveGenerator();
+                }}
+                className="flex items-center justify-between p-3.5 rounded-xl bg-[#151926] hover:bg-[#1c2233] border border-white/10 hover:border-amber-500/40 transition group cursor-pointer text-left shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center justify-center group-hover:scale-105 transition">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-100 group-hover:text-amber-200 transition">
+                      Live Studio (On-The-Fly)
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Instantly generate a crossword from 100+ recognized artists
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition" />
+              </button>
+
+              {/* Multiplayer Booth */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenMultiplayer();
+                }}
+                className="flex items-center justify-between p-3.5 rounded-xl bg-[#151926] hover:bg-[#1c2233] border border-white/10 hover:border-cyan-500/40 transition group cursor-pointer text-left shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg border flex items-center justify-center group-hover:scale-105 transition ${
+                    multiplayerCode 
+                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.4)]' 
+                      : 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                  }`}>
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-100 group-hover:text-cyan-200 transition flex items-center gap-2">
+                      <span>Multiplayer Lounge</span>
+                      {multiplayerCode && (
+                        <span className="text-[10px] px-1.5 py-0.2 bg-cyan-400/20 text-cyan-300 rounded font-mono font-bold">
+                          ROOM: {multiplayerCode}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Real-time Co-op & Versus race with friends
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition" />
+              </button>
+            </div>
+          </div>
+
+          {/* Record Crate: 11 Themes Catalog */}
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="text-[11px] font-mono uppercase tracking-widest text-slate-400 font-bold flex items-center gap-1.5">
+                <Disc3 className="w-3.5 h-3.5 text-amber-400" />
+                <span>The Vinyl Crate (11 Themes)</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-500 font-bold">220+ PUZZLES</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {themes.map(t => {
+                const isSelected = t.id === activeThemeId;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectTheme(t.id);
+                      onClose();
+                    }}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.2)] font-bold'
+                        : 'bg-[#141824] hover:bg-[#1a2030] border-white/5 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-lg shrink-0">{t.icon}</span>
+                    <div className="truncate">
+                      <div className="text-xs font-semibold truncate leading-snug">
+                        {t.name}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-500">
+                        20 Puzzles
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Library Tools & Filters */}
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-widest text-slate-400 mb-2.5 font-bold">
+              Salon Preferences
+            </div>
+
+            <div className="space-y-2">
+              {/* Solved Record Tracklist */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenSolvedHistory();
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-[#141824] hover:bg-[#1a2030] border border-white/5 transition text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center justify-center">
+                    <ListMusic className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200">
+                      Listening Log & Showcase
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      View full tracklist and replay solved songs
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+              </button>
+
+              {/* Blacklist Filter */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenBlacklist();
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-[#141824] hover:bg-[#1a2030] border border-white/5 transition text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center justify-center">
+                    <Ban className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <span>Crate Blacklist Filter</span>
+                      {blacklistCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.2 bg-rose-500/20 text-rose-300 rounded font-mono font-bold">
+                          {blacklistCount} Muted
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Hide specific artists or songs from puzzles
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+              </button>
+            </div>
+          </div>
+
+          {/* Keyboard Shortcuts Guide */}
+          <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 text-slate-400 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-300 mb-2">
+              <Keyboard className="w-3.5 h-3.5 text-amber-400" />
+              <span>Turntable Keyboard Controls</span>
+            </div>
+            <div className="grid grid-cols-2 gap-y-1.5 gap-x-2 text-[11px] font-mono">
+              <div><span className="text-slate-200">A - Z</span> : Type letter</div>
+              <div><span className="text-slate-200">Backspace</span> : Clear cell</div>
+              <div><span className="text-slate-200">Arrow Keys</span> : Move cell</div>
+              <div><span className="text-slate-200">Esc</span> : Close modals</div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Drawer Footer */}
+        <div className="p-4 border-t border-white/10 bg-[#121622] flex items-center justify-between text-[11px] text-slate-500 font-mono">
+          <span>SpotySpice • Hi-Fi Audio Crossword</span>
+          <span className="text-emerald-400 font-sans">☁️ Session Saved</span>
+        </div>
+
+      </div>
+    </div>
+  );
+};
