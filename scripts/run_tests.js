@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
+import { generateLiveCrossword } from '../shared/liveCrossword.js';
 import { extractAnswerKeyword } from '../shared/musicKeywords.js';
 import {
   blacklistIdentityKey,
@@ -70,6 +71,24 @@ async function runUnitTests() {
     }
   }
   assert(differences > 0, 'Produces randomized permutations across runs');
+
+  console.log('\n--- 1b. Testing Live Crossword Placement Engine ---');
+  const sampleTracks = [
+    { id: 'track_1', title: 'Get Lucky', artist: 'Daft Punk', audioUrl: 'http://example.com/1.mp3', answer: 'GETLUCKY', clueType: 'Song title' },
+    { id: 'track_2', title: 'Starboy', artist: 'The Weeknd', audioUrl: 'http://example.com/2.mp3', answer: 'STARBOY', clueType: 'Song title' },
+    { id: 'track_3', title: 'One More Time', artist: 'Daft Punk', audioUrl: 'http://example.com/3.mp3', answer: 'ONEMORETIME', clueType: 'Song title' },
+    { id: 'track_4', title: 'Harder', artist: 'Daft Punk', audioUrl: 'http://example.com/4.mp3', answer: 'HARDER', clueType: 'Song title' },
+    { id: 'track_5', title: 'Around The World', artist: 'Daft Punk', audioUrl: 'http://example.com/5.mp3', answer: 'AROUNDTHEWORLD', clueType: 'Song title' },
+    { id: 'track_6', title: 'Instant Crush', artist: 'Daft Punk', audioUrl: 'http://example.com/6.mp3', answer: 'INSTANTCRUSH', clueType: 'Song title' },
+    { id: 'track_7', title: 'Technologic', artist: 'Daft Punk', audioUrl: 'http://example.com/7.mp3', answer: 'TECHNOLOGIC', clueType: 'Song title' },
+    { id: 'track_8', title: 'Aerodynamic', artist: 'Daft Punk', audioUrl: 'http://example.com/8.mp3', answer: 'AERODYNAMIC', clueType: 'Song title' },
+  ];
+  const testPuzzle = generateLiveCrossword(sampleTracks, 'Test Puzzle', 6);
+  assert(testPuzzle && testPuzzle.clues.length >= 5, 'Generates valid intersecting crossword layout');
+  assert(testPuzzle && testPuzzle.rows > 0 && testPuzzle.cols > 0, 'Computes bounding box rows and cols');
+  assert(testPuzzle && testPuzzle.grid.length === testPuzzle.rows, 'Grid rows match computed bounds');
+  assert(testPuzzle && testPuzzle.grid[0].length === testPuzzle.cols, 'Grid cols match computed bounds');
+  assert(testPuzzle && testPuzzle.clues.every(c => c.row >= 0 && c.col >= 0), 'All clue coordinates are non-negative');
 
   console.log('\n--- 2. Testing Canonical Keyword Extraction ---');
   const singleWord = extractAnswerKeyword('Hello', 'Adele');
@@ -715,39 +734,131 @@ async function runIntegrationTests() {
 
     // WebSocket Room Creation & Messaging
     await new Promise((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
-      const timeout = setTimeout(() => {
-        ws.close();
-        reject(new Error('WebSocket connection timed out'));
-      }, 5000);
+      const hostWs = new WebSocket(wsUrl);
+      let guestWs = null;
+      let roomCode = null;
+      let hostGotStart = false;
+      let guestGotStart = false;
+      let guestGotCellUpdate = false;
+      let hostGotRaceProgress = false;
 
-      ws.on('open', () => {
-        ws.send(JSON.stringify({
+      const timeout = setTimeout(() => {
+        hostWs.close();
+        if (guestWs) guestWs.close();
+        reject(new Error('WebSocket connection timed out'));
+      }, 7000);
+
+      hostWs.on('open', () => {
+        hostWs.send(JSON.stringify({
           action: 'create_room',
           playerId: testUserId,
-          playerName: 'Tester',
+          playerName: 'HostTester',
           mode: 'coop',
           livePuzzleToken: livePuzzleData.livePuzzleToken
         }));
       });
 
-      ws.on('message', (raw) => {
+      hostWs.on('message', (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === 'room_created') {
             assert(msg.room && msg.room.code, 'WebSocket creates room with code');
-            clearTimeout(timeout);
-            ws.close();
-            resolve();
+            roomCode = msg.room.code;
+
+            // Connect second player (Guest)
+            guestWs = new WebSocket(wsUrl);
+            guestWs.on('open', () => {
+              guestWs.send(JSON.stringify({
+                action: 'join_room',
+                roomCode,
+                playerId: `${testUserId}_guest`,
+                playerName: 'GuestTester'
+              }));
+            });
+
+            guestWs.on('message', (rawGuest) => {
+              const guestMsg = JSON.parse(rawGuest.toString());
+              if (guestMsg.type === 'room_joined') {
+                assert(guestMsg.room && guestMsg.room.players?.length === 2, 'Player 2 successfully joins room');
+                // Host starts the game
+                hostWs.send(JSON.stringify({
+                  action: 'start_game',
+                  roomCode
+                }));
+              }
+
+              if (guestMsg.type === 'game_started') {
+                guestGotStart = true;
+                if (hostGotStart) checkSyncAfterStart();
+              }
+
+              if (guestMsg.type === 'coop_cell_update') {
+                if (guestMsg.row === 1 && guestMsg.col === 2 && (guestMsg.char === 'Z' || guestMsg.value === 'Z')) {
+                  guestGotCellUpdate = true;
+                  assert(true, 'Player 2 receives real-time coop cell update from Player 1');
+                  // Guest sends race progress update back to Host
+                  guestWs.send(JSON.stringify({
+                    action: 'race_progress_update',
+                    roomCode,
+                    progress: 80,
+                    playerId: `${testUserId}_guest`
+                  }));
+                }
+              }
+            });
+
+            guestWs.on('error', (err) => {
+              clearTimeout(timeout);
+              reject(err);
+            });
+          }
+
+          if (msg.type === 'game_started') {
+            hostGotStart = true;
+            assert(true, 'Host receives game_started event');
+            if (guestGotStart) checkSyncAfterStart();
+          }
+
+          if (msg.type === 'race_progress_update') {
+            if (msg.progress === 80) {
+              hostGotRaceProgress = true;
+              assert(true, 'Host receives real-time race progress update from Player 2');
+              finishWsTest();
+            }
           }
         } catch (e) {
           clearTimeout(timeout);
-          ws.close();
+          hostWs.close();
+          if (guestWs) guestWs.close();
           reject(e);
         }
       });
 
-      ws.on('error', (err) => {
+      function checkSyncAfterStart() {
+        assert(true, 'Both players receive synchronized game_started event');
+        // Host sends cell update
+        hostWs.send(JSON.stringify({
+          action: 'coop_cell_update',
+          roomCode,
+          row: 1,
+          col: 2,
+          char: 'Z',
+          value: 'Z',
+          playerId: testUserId,
+          senderId: testUserId
+        }));
+      }
+
+      function finishWsTest() {
+        if (guestGotCellUpdate && hostGotRaceProgress) {
+          clearTimeout(timeout);
+          hostWs.close();
+          if (guestWs) guestWs.close();
+          resolve();
+        }
+      }
+
+      hostWs.on('error', (err) => {
         clearTimeout(timeout);
         reject(err);
       });

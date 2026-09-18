@@ -195,17 +195,20 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 Run automated CI-friendly test suites and linters:
 
 ```bash
-# Run the complete automated test suite (145 unit & integration tests)
+# Run the complete automated test suite (155 unit & integration tests)
 npm test
+
+# Run the live multi-prompt crossword verification suite (14 diverse genres, eras, temporal windows & single-artist puzzles)
+npm run test:prompts
+
+# Run all test suites combined (unit/integration + multi-prompt verification)
+npm run test:all
 
 # Run ESLint across TypeScript, server, scripts, and shared modules
 npm run lint
 
-# Run full CI pipeline validation (Lint + Tests)
+# Run full CI pipeline validation (Lint + All Test Suites)
 npm run test:ci
-
-# Run the live multi-prompt crossword verification suite (14 diverse genres, eras, temporal windows & single-artist puzzles)
-npm run test:prompts
 
 # Format codebase with Prettier
 npm run format

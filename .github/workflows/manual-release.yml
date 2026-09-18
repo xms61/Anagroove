@@ -14,9 +14,9 @@ on:
         default: false
         type: boolean
       run_prompt_suite:
-        description: 'Run the live multi-prompt crossword verification suite (10 genres)'
+        description: 'Run the live multi-prompt crossword verification suite (14 genres & constraints)'
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -45,11 +45,11 @@ jobs:
       - name: Run linter
         run: npm run lint
 
-      - name: Run automated test suite
+      - name: Run automated test suite (155 tests)
         run: npm test
 
-      - name: Run multi-prompt crossword test suite
-        if: ${{ inputs.run_prompt_suite }}
+      - name: Run multi-prompt crossword test suite (14 prompts)
+        if: ${{ inputs.run_prompt_suite != false }}
         run: npm run test:prompts
 
       - name: Determine release version tag

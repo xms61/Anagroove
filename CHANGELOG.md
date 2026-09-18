@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.2] - 2026-09-18
+
+### Added
+- **Complete Test Suite Automation in Workflows & CI Pipeline**:
+  - **CI Workflow (`.github/workflows/ci.yml`)**: Added automated CI workflow triggering on every `push` and `pull_request` to `main`, running ESLint, the 155-case automated test suite (`npm test`), and the 14-case live multi-prompt crossword verification suite (`npm run test:prompts`).
+  - **Release Workflow Enhancement (`.github/workflows/manual-release.yml`)**: Configured `run_prompt_suite` to run by default (`default: true`), guaranteeing all tests execute before any Docker image build or GitHub Release creation.
+  - **NPM Script Unification (`package.json`)**: Added `npm run test:all` and updated `npm run test:ci` to execute both linting, unit/integration tests, and prompt verification end-to-end.
+- **Crossword Placement Engine & Full Multiplayer Sync Tests (`scripts/run_tests.js`)**:
+  - **Live Crossword Placement Tests**: Validated bounding box computations, coordinate constraints, and non-empty placement grids directly in the automated test suite.
+  - **Complete 2-Player Live Synchronization**: Validated the entire multiplayer lifecycle (host room creation, guest room join, synchronized game start, real-time co-op cell update broadcast, and versus race progress update).
+  - Test suite expanded from 145 to **155 passing tests**.
+
+---
+
 ## [1.4.1] - 2026-09-18
 
 ### Added
