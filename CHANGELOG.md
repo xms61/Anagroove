@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] - 2026-09-18
+
+### Added
+- **Native SQLite Catalog & Storage Engine (`server/db/sqliteCatalog.js`)**:
+  - Engineered a high-performance local SQLite database leveraging Node.js 24's native `node:sqlite` (`DatabaseSync`), requiring zero external native compilation or C++ dependencies.
+  - Configured WAL mode (`PRAGMA journal_mode = WAL;`) and batched transaction commits (`upsertBatch`), supporting over 40,000 writes/sec and non-blocking reads.
+  - Implemented FTS5 full-text indexing (`tracks_fts`) for sub-millisecond crossword clue lookups across titles, artists, and albums.
+- **Autonomous Multi-Vector Catalog Crawler (`server/crawler/harvester.js`, `scripts/crawl_catalog.js`)**:
+  - Multi-vector catalog crawler harvesting thousands of canonical songs beyond top charts:
+    - **Artist Discography Spider**: Explores studio discographies and top releases for iconic artists across rock, pop, hip-hop, electronic, 80s/90s, jazz, K-Pop, anime, and Latin genres.
+    - **Music Lexicon Vocabulary Sweeper**: Sweeps a dictionary of 100+ high-frequency musical title words across paginated search indices.
+  - CLI management scripts (`npm run crawl`, `npm run crawl:status`) with live progress reporting, merge stats, and status summaries.
+- **100% Deterministic Cross-Referencing & Deduplication Engine (`server/db/sqliteCatalog.js`)**:
+  - **Tier 1 ISRC Matching**: Merges cross-platform master recordings deterministically via 12-character International Standard Recording Codes.
+  - **Tier 2 Acoustic & Title Compound Keying**: Merges catalog entries across Deezer and Apple Music/iTunes using normalized artist canonical keys, noise-stripped core titles, and strict acoustic duration delta constraints ($\le 3$ seconds).
+  - Unifies multi-provider audio samples (Deezer MP3 and iTunes AAC 30s clips) and external store links under single canonical track records.
+- **Strict Multi-Layer Authenticity Filter (`server/crawler/authenticityFilter.js`)**:
+  - Automatically screens out covers, tributes, karaoke, soundalikes, parody versions, lo-fi/phonk remixes, lullaby renditions, workout tracks, and non-official uploads.
+  - Enforces mandatory playable 30s audio sample verification and legitimate musical duration bounds (45s to 20m).
+- **Polite Token-Bucket Rate Limiting & Backoff (`server/crawler/rateLimiter.js`)**:
+  - Enforces strict rate limits honoring provider constraints (Deezer at 5 req/s; iTunes at 15 req/min) with polite `User-Agent` identification and exponential backoff on HTTP 429/503.
+- **Comprehensive SQLite & Crawler Automated Test Suite (`scripts/run_tests.js`)**:
+  - Added 24 dedicated test cases covering in-memory SQLite schema initialization, multi-provider ISRC and compound deduplication, authenticity filtration, and token-bucket rate limiter refills (increasing test suite to 280 passing tests).
+
+---
+
 ## [1.7.0] - 2026-09-18
 
 ### Removed

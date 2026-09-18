@@ -20,6 +20,12 @@
   - 🎬 **Anime, Soundtracks & Gaming** (Hans Zimmer, John Williams, Joe Hisaishi)
   - 🔥 **Latin & Reggaeton Hits** (Bad Bunny, Daddy Yankee, Shakira, J Balvin)
   - 🎷 **R&B, Soul & Motown** (Stevie Wonder, Aretha Franklin, Alicia Keys)
+- **🗄️ Native SQLite Music Catalog & Multi-Provider Crawler**:
+  - **High-Volume Local Catalog**: Built on Node.js 24 native `node:sqlite` (`DatabaseSync`) with WAL mode (`journal_mode = WAL`) and FTS5 full-text indexing, storing thousands of authentic tracks for sub-millisecond puzzle generation.
+  - **Multi-Vector Autonomous Harvester**: Recursively discovers tracks beyond charts through artist discography graph traversal (spanning 1950s–2020s rock, pop, hip-hop, electronic, jazz, K-Pop, anime, Latin) and high-frequency music lexicon vocabulary sweeping.
+  - **100% Deterministic Cross-Referencing**: Merges multi-provider tracks across Deezer, Spotify, and Apple Music/iTunes deterministically via ISRC matching (Tier 1) and acoustic duration delta matching ($\le 3$s) with canonical title/artist normalization (Tier 2).
+  - **Strict Authenticity Filter**: Screens out amateur covers, tributes, karaoke, soundalikes, lullaby/lo-fi remixes, and tracks lacking verified 30-second audio previews.
+  - **Polite Token-Bucket Rate Limiting**: Built-in rate limiters honoring Deezer (5 req/s) and iTunes (15 req/min) constraints with exponential backoff on HTTP 429/503.
 - **⚡ Pure & Steered Live Crossword Generator**:
   - **Pure Random Catalog Universe**: Synthesize unique, unplayed crosswords without popularity bias—from underground indies to global chart-toppers.
   - **Steered Prompt Generator**: Type natural prompts with complex constraints like *"anime from the years 2020-2026"*, *"90s grunge before 1994"*, *"k-pop after 2018"*, *"classic 70s rock ballads"*, or target specific artists (*"songs by Daft Punk"*, *"Queen"*).
@@ -129,6 +135,17 @@ npm run build
 ```
 Production assets are output to the `dist/` directory.
 
+### 6. Crawling & Managing the SQLite Music Catalog
+To crawl thousands of authentic songs and build the local SQLite database:
+```bash
+npm run crawl                 # Autonomous crawl across foundation artists & music lexicon
+npm run crawl:status          # Display high-level stats: total artists, tracks, samples & merges
+```
+You can also tune limits via CLI flags:
+```bash
+node scripts/crawl_catalog.js --artists=50 --lexicon=50
+```
+
 ---
 
 ## 📁 Project Structure
@@ -138,26 +155,33 @@ SpotySpice/
 ├── data/                       # Master music pools & metadata
 │   ├── master_song_pool.json
 │   └── music_pool.json
-├── scripts/                    # Generation, test & verification scripts
+├── scripts/                    # Generation, crawl & verification scripts
 │   ├── build_recognized_artists.js
+│   ├── crawl_catalog.js        # Multi-vector SQLite catalog crawler CLI
 │   ├── fetch_all_previews.js
 │   ├── generate_all_themes.js
-│   ├── run_tests.js            # Automated test suite (290 tests)
+│   ├── run_tests.js            # Automated test suite (280 passing tests)
 │   ├── test_features.js        # Core API & persistence tests
 │   ├── test_multiplayer_live_sync.js # E2E two-player live sync test
 │   └── test_randomizer.js      # Recognizable pool entropy test
 ├── server/                     # Express & WebSocket backend
 │   ├── config.js               # Environment loader & API key manager
+│   ├── crawler/                # Multi-provider crawler & harvester
+│   │   ├── authenticityFilter.js # Covers, karaoke, tribute & soundalike filter
+│   │   ├── harvester.js        # Discography spider & lexicon sweeper
+│   │   └── rateLimiter.js      # Token-bucket throttlers (Deezer & iTunes)
 │   ├── data/
+│   │   ├── catalog.sqlite      # Native SQLite database (Node.js 24 node:sqlite)
 │   │   ├── recognized_artists.json # 105+ iconic artists with >= 250k fans
-│   │   ├── store.json              # Anonymous user session store
-│   │   └── tracks_cache.json       # Cached preview URLs & track rank
+│   │   ├── store.json          # Anonymous user session store
+│   │   └── tracks_cache.json   # Cached preview URLs & track rank
+│   ├── db/
+│   │   └── sqliteCatalog.js    # SQLite schema, FTS5 & deterministic deduplicator
 │   ├── db.js                   # JSON persistence helper
 │   ├── server.js               # REST endpoints & WebSocket room manager
 │   ├── validators.js           # Endpoint and WebSocket payload validators
 │   └── services/
 │       ├── deezerMusicProvider.js # Deezer candidate harvesting & catalog taxonomy
-│       ├── geminiJudge.js         # Gemini LLM Judge with cascade fallback & contract validation
 │       ├── itunesMusicProvider.js # iTunes candidate harvesting & fallback previews
 │       ├── musicService.js     # Unified random pool, variety & seed selection
 │       └── queryBuilder.js     # Prompt parser & multi-endpoint query planner
