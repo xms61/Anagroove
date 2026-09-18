@@ -557,6 +557,56 @@ async function runUnitTests() {
     'Permits authentic K-Pop group Stray Kids'
   );
 
+  // Anime Precision, Authenticity & Homonym Guardrails
+  assert(
+    DEEZER_GENRE_TAXONOMY.anime.minFans >= 25000,
+    'Anime taxonomy enforces minFans >= 25000 to eliminate amateur uploads'
+  );
+  assert(
+    isAuthenticTrack({ title: 'Gurenge (Metal Cover)', artist: 'Little V.' }) === false,
+    'Rejects YouTube metal cover artist Little V.'
+  );
+  assert(
+    isAuthenticTrack({ title: 'Unravel', artist: 'Pellek' }) === false,
+    'Rejects YouTube rock/metal cover artist Pellek'
+  );
+  assert(
+    isAuthenticTrack({ title: 'IDOL', artist: 'ShiroNeko' }) === false,
+    'Rejects fan cover artist ShiroNeko'
+  );
+  assert(
+    isAuthenticTrack({ title: 'Music Box Lullaby', artist: 'Music Box Anime OST' }) === false,
+    'Rejects music box BGM cover'
+  );
+  assert(
+    isAuthenticTrack({ title: 'Oshi no Ko (Phonk Remix)', artist: 'Mupp' }) === false,
+    'Rejects phonk remix tracks'
+  );
+  assert(
+    isAuthenticTrack({ title: 'IDOL', artist: 'YOASOBI' }) === true,
+    'Permits authentic YOASOBI IDOL'
+  );
+  assert(
+    isThematicallyPermitted({ title: "How Far I'll Go", artist: 'Auliʻi Cravalho', album: 'Moana Soundtrack' }, 'anime') === false,
+    "Rejects Disney's Moana Western soundtrack for anime"
+  );
+  assert(
+    isThematicallyPermitted({ title: 'Anime Theme', artist: 'Bedroom Artist' }, 'anime') === false,
+    "Rejects novelty title matching 'Anime Theme'"
+  );
+  assert(
+    isThematicallyPermitted({ title: "You're So Beautiful", artist: 'Empire Cast' }, 'anime') === false,
+    'Rejects Empire Cast American drama for anime'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'IDOL', artist: 'Dizzy DROS' }, 'anime') === false,
+    'Rejects Moroccan hip-hop Dizzy DROS for anime'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'Yo sabia', artist: 'Sandoval' }, 'anime') === false,
+    'Rejects Latin pop Sandoval for anime'
+  );
+
   console.log('\n--- 3d. Testing Gemini LLM Judge, Negotiated Contract & Fallback Ladder ---');
 
   // 1. Standby Mode & Key Protection
@@ -620,6 +670,7 @@ async function runUnitTests() {
   assert(themePrompt.includes('MODE: Preset Theme'), 'Prompt formats Preset Theme mode');
   assert(themePrompt.includes('THEME: "K-Pop & Asian Pop"'), 'Prompt includes theme title');
   assert(themePrompt.includes('POPULARITY PROFILE: mainstream'), 'Prompt includes popularity tier');
+  assert(themePrompt.includes('specify BOTH "artist" AND "trackTitle"'), 'Prompt includes compound query guidance');
 
   const customPromptText = buildJudgePrompt({
     mode: 'custom_prompt',

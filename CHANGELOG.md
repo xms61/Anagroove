@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.2] - 2026-09-18
+
+### Added
+- **Query Precision & Grounded Candidate Replenishment (`server/services/musicService.js`, `server/services/queryBuilder.js`, `server/services/deezerMusicProvider.js`, `server/services/geminiJudge.js`)**:
+  - **Elevated Catalog Taxonomy Thresholds**: Raised Deezer minimum fans from 1,000 to 25,000 and minimum rank from 100,000 to 200,000 for anime catalog harvesting, pruning bedroom uploads, karaoke demos, and amateur meme audio while admitting verified anisong chart-toppers.
+  - **Curated Official Japanese Anisong Artist Seeds**: Injected authentic anisong performers (*YOASOBI*, *LiSA*, *Ado*, *Kenshi Yonezu*, *FLOW*, *RADWIMPS*, *Asian Kung-Fu Generation*, *Eve*, *Official HIGE DANdism*, *TK from Ling tosite sigure*, *SawanoHiroyuki[nZk]*, *ClariS*, *Creepy Nuts*, *SPYAIR*, *UVERworld*) into the query planner to anchor candidate pools with legitimate anime soundtrack releases.
+  - **Audio Mod, Fan Cover Channel & Music Box Filtering**: Hardened `isAuthenticTrack` to filter unofficial YouTube cover artists (*Pellek*, *Little V.*, *ShiroNeko*, *Jonathan Young*, *NateWantsToBattle*, *Tsuko G.*, *RichaadEB*, *Rainych*, *AmaLee*), generic music box/lullaby ensembles, and title modifications (*music box*, *lullaby*, *bgm cover*, *fan cover*, *metal cover*, *rock cover*, *guitar cover*, *violin cover*, *piano cover*, *synth cover*, *lo-fi remix*, *phonk remix*).
+  - **Western Animation & Cross-Genre Leakage Guardrails**: Expanded `isThematicallyPermitted` in anime mode to reject Western animation soundtracks (*Disney*, *Pixar*, *DreamWorks*, *Illumination*, *Moana*, *Frozen*, *Encanto*, *Lion King*, *Aladdin*, *Toy Story*, *Shrek*), literal novelty titles matching `/^anime\s+(theme|song|ost|music)$/i`, American television drama releases (*Empire Cast*), and unrelated Latin pop (*Sandoval*) or Moroccan hip-hop (*Dizzy DROS*) lacking Japanese context.
+  - **Generic Soundtrack Cue Abbreviation Filter**: Filtered out generic 2-letter soundtrack abbreviations as crossword answers (`TV`, `OP`, `ED`, `OST`, `BGM`) in `trySelectTracks`, falling back to artist names or alternative keywords.
+  - **Compound Refinement Queries & Storefront Inheritance**: Re-engineered the replenishment loop to construct compound provider queries (`artist:"${artist}" track:"${title}"` for Deezer, `"${artist} ${title}"` for iTunes) whenever both artist and title are available, anchored single titles with theme context (`"${title} anime"`), and inherited the puzzle theme's regional storefront (e.g. `jp` for anime) to prevent cross-genre hit collisions during LLM Judge backfills.
+- **Automated Test Suite Expansion (`scripts/run_tests.js`)**:
+  - Added 13 automated test cases verifying anime taxonomy thresholds, cover channel and audio mod filtering, Western animation exclusions, and compound prompt guidance (290 total automated tests).
+
+---
+
 ## [1.6.0] - 2026-09-18
 
 ### Added

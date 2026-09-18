@@ -222,6 +222,26 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
     if (candidateGenre && /\b(k-?pop|korean\s+hip-?hop|country|latin)\b/i.test(candidateGenre)) {
       return false;
     }
+
+    // 5. Western animation studio and soundtrack leakage (Disney, Pixar, DreamWorks, etc.)
+    if (/\b(disney|pixar|dreamworks|illumination|moana|frozen|encanto|lion\s*king|aladdin|beauty\s+and\s+the\s+beast|little\s+mermaid|tangled|coco|zootopia|shrek|toy\s*story)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`)) {
+      return false;
+    }
+
+    // 6. Generic novelty titles matching literally "Anime Theme" or "Anime Song"
+    if (/^anime\s+(theme|song|ost|music)$/i.test(lowerTitle)) {
+      return false;
+    }
+
+    // 7. Non-Japanese television cast, hip-hop, or Latin pop leakage without anime affiliation
+    if (!hasJapaneseAnimeAffiliation) {
+      if (/\b(empire\s+cast|glee\s+cast|nashville\s+cast|dizzy\s+dros|sandoval)\b/i.test(lowerArtist)) {
+        return false;
+      }
+      if (/\b(sabía|sabia)\b/i.test(lowerTitle)) {
+        return false;
+      }
+    }
   }
 
   // GAMING / VIDEO GAME THEMATIC GUARDRAILS
@@ -271,14 +291,14 @@ export function isAuthenticTrack(track) {
   const lowerArtist = artist.toLowerCase();
   const lowerTitle = title.toLowerCase();
 
-  // 1. Generic compilation/workout/soundalike artists
-  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew)\b/i;
+  // 1. Generic compilation/workout/soundalike artists and unofficial YouTube/fan cover artists
+  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew|music\s*box\s*(ensemble|lullaby|collection|band)|lullaby\s*(baby|ensemble|band)|pellek|little\s*v\.?|shironeko|jonathan\s*young|natewantstobattle|tsuko\s*g\.?|richaadeb|rainych|amalee)\b/i;
   if (fakeArtistPatterns.test(lowerArtist)) {
     return false;
   }
 
   // 2. Audio modifications and utility releases in titles
-  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental\s+version|piano\s+version|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by)\b/i;
+  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|music\s*box|musicbox|lullaby|bgm\s+cover|fan\s*cover|metal\s*cover|rock\s*cover|guitar\s*cover|violin\s*cover|piano\s*cover|synth\s*cover|lo-?fi\s*remix|phonk\s*remix|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental\s+version|piano\s+version|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by)\b/i;
   if (audioModPatterns.test(lowerTitle)) {
     return false;
   }
@@ -586,6 +606,19 @@ export async function getRandomSongPool({
         rejections.noKeyword++;
         continue;
       }
+
+      // Guardrail against generic 2-letter soundtrack abbreviations (TV, OP, ED, OST, BGM)
+      // unless the answer is for an authentic artist name
+      if (['TV', 'OP', 'ED', 'OST', 'BGM'].includes(keyword.answer) && keyword.clueType !== 'Artist name') {
+        const altKeyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, seenAnswers, targetLengthBucket });
+        if (altKeyword && !['TV', 'OP', 'ED', 'OST', 'BGM'].includes(altKeyword.answer)) {
+          keyword = altKeyword;
+        } else {
+          rejections.thematic++;
+          continue;
+        }
+      }
+
       if (seenAnswers.has(keyword.answer)) {
         rejections.duplicateAnswer++;
         continue;
@@ -683,24 +716,56 @@ export async function getRandomSongPool({
       const replacementQueries = evalResult.judgment.replacementQueries || [];
       if (replacementQueries.length > 0) {
         const replacementTasks = [];
+        const themeStorefront = detectStorefront(`${prompt || ''} ${queryPlan.genre || ''}`);
+
         for (const q of replacementQueries) {
-          const deezerSearches = [...(q.searchTerms || [])];
-          if (q.artist) deezerSearches.push(`artist:"${q.artist}"`);
+          const deezerSearches = [];
+          const itunesSearches = [];
 
-          replacementTasks.push(
-            musicProvider.getCandidateTracks({
-              genre: q.genre || queryPlan.genre,
-              searches: deezerSearches,
-              limit: 30,
-              popularity: q.popularity || queryPlan.popularity,
-            }).catch(() => [])
-          );
+          if (q.artist && q.trackTitle) {
+            // Compound query: search artist and track together to eliminate cross-genre title collisions
+            deezerSearches.push(`artist:"${q.artist}" track:"${q.trackTitle}"`);
+            itunesSearches.push(`${q.artist} ${q.trackTitle}`);
+          } else if (q.artist) {
+            deezerSearches.push(`artist:"${q.artist}"`);
+            itunesSearches.push(q.artist);
+          } else if (q.trackTitle) {
+            // If only track title is provided, anchor with theme/genre context if short or common
+            const isAnimeTheme = /anime/i.test(`${prompt || ''} ${queryPlan.genre || ''}`);
+            const contextualTitle = isAnimeTheme ? `${q.trackTitle} anime` : q.trackTitle;
+            deezerSearches.push(contextualTitle);
+            itunesSearches.push(contextualTitle);
+          }
 
-          for (const term of (q.searchTerms || []).slice(0, 2)) {
+          // Add any explicit searchTerms provided that aren't already included
+          if (Array.isArray(q.searchTerms)) {
+            for (const term of q.searchTerms) {
+              if (term && !deezerSearches.includes(term)) {
+                deezerSearches.push(term);
+              }
+              if (term && !itunesSearches.includes(term)) {
+                itunesSearches.push(term);
+              }
+            }
+          }
+
+          if (deezerSearches.length > 0) {
+            replacementTasks.push(
+              musicProvider.getCandidateTracks({
+                genre: q.genre || queryPlan.genre,
+                searches: deezerSearches.slice(0, 3),
+                limit: 30,
+                popularity: q.popularity || queryPlan.popularity,
+              }).catch(() => [])
+            );
+          }
+
+          const effectiveStorefront = q.targetStorefront || themeStorefront || 'US';
+          for (const term of itunesSearches.slice(0, 2)) {
             replacementTasks.push(
               itunesMusicProvider.getCandidateTracks({
                 query: term,
-                country: q.targetStorefront || detectStorefront(term),
+                country: effectiveStorefront,
                 limit: 30,
               }).catch(() => [])
             );

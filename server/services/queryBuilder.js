@@ -216,8 +216,8 @@ export function generateThemeVariations(genre = '', decade = '') {
   if (lower === 'anime') {
     variations.add('anime opening');
     variations.add('anime ost');
-    variations.add('anime theme');
-    variations.add('japanese anime');
+    variations.add('anime opening theme');
+    variations.add('tv anime opening');
     if (decade) {
       variations.add(`anime opening ${decade}`);
       variations.add(`anime ost ${decade}`);
@@ -383,6 +383,20 @@ export function buildQueryPlan(userOptions = {}) {
         : ['BTS', 'BLACKPINK', 'TWICE', 'SEVENTEEN', 'Red Velvet', 'NewJeans', 'Stray Kids'];
       const shuffledSeeds = [...seeds].sort(() => 0.5 - Math.random()).slice(0, 3);
       for (const s of shuffledSeeds) {
+        deezerSearches.push(s);
+        itunesSearches.push(s);
+      }
+    }
+
+    // Targeted artist seeding for Anime to ensure authentic Japanese anisong performers
+    if (genre.toLowerCase() === 'anime') {
+      const animeSeeds = [
+        'YOASOBI', 'LiSA', 'Ado', 'Kenshi Yonezu', 'FLOW', 'RADWIMPS',
+        'Asian Kung-Fu Generation', 'Eve', 'Official HIGE DANdism', 'TK from Ling tosite sigure',
+        'SawanoHiroyuki[nZk]', 'ClariS', 'UVERworld', 'SPYAIR', 'Creepy Nuts'
+      ];
+      const shuffledAnimeSeeds = [...animeSeeds].sort(() => 0.5 - Math.random()).slice(0, 3);
+      for (const s of shuffledAnimeSeeds) {
         deezerSearches.push(s);
         itunesSearches.push(s);
       }
