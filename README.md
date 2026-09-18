@@ -20,7 +20,14 @@
   - 🎬 **Anime, Soundtracks & Gaming** (Hans Zimmer, John Williams, Joe Hisaishi)
   - 🔥 **Latin & Reggaeton Hits** (Bad Bunny, Daddy Yankee, Shakira, J Balvin)
   - 🎷 **R&B, Soul & Motown** (Stevie Wonder, Aretha Franklin, Alicia Keys)
-- **⚡ Live On-The-Fly Generator**: Synthesize unique, unplayed crosswords in **< 2 milliseconds** drawing exclusively from 100+ recognized global artists with $\ge \text{250,000}$ followers and high-popularity ranking tracks ($\ge \text{400,000}$).
+- **⚡ Pure & Steered Live Crossword Generator**:
+  - **Pure Random Catalog Universe**: Synthesize unique, unplayed crosswords without popularity bias—from underground indies to global chart-toppers.
+  - **Steered Prompt & AI Discovery**: Type natural prompts like *"obscure 80s synth-pop"*, *"classic 70s rock ballads"*, or target specific artists (*"by Daft Punk"*).
+  - **Popularity Spectrum**: Toggle between **Pure Random** (unfiltered), **Hidden Gems** (indie/underrated cuts), **Balanced** (hits & discoveries), and **Top Hits** (chart-toppers).
+  - **Natural Song Title Answers (Up to 16 Characters)**: Crossword answers combine full multi-word titles without spaces (e.g. `YOURLOVE`, `DONTSTOPBELIEVIN`, `BLINDINGLIGHTS`), with graceful fallbacks for oversized titles.
+  - **Multi-Endpoint Provider Discovery**: Concurrent harvesting across Deezer advanced queries and iTunes Search API for 100% preview availability and rich catalog depth.
+  - **Deterministic Seed Sharing**: Share exact puzzle seeds (e.g. `party-game-42`) with friends using deterministic SHA-256 hash ranking without server bloat.
+  - **Anti-Repetition & Variety Sampling**: Rejection sampling enforces max 1 track per artist, eliminates answer collisions, and respects player history and blacklists.
 - **👥 Real-Time Multiplayer Lounge**:
   - **Co-Op Mode**: Two or more players solve the identical puzzle in real time with live keystroke synchronization.
   - **Versus Race Mode**: Race to complete the puzzle first with live real-time progress bars.
@@ -105,8 +112,17 @@ SpotySpice/
 │   │   └── tracks_cache.json       # Cached preview URLs & track rank
 │   ├── db.js                   # JSON persistence helper
 │   ├── server.js               # REST endpoints & WebSocket room manager
+│   ├── validators.js           # Endpoint and WebSocket payload validators
 │   └── services/
-│       └── musicService.js     # Recognizable random track pool service
+│       ├── deezerMusicProvider.js # Deezer candidate harvesting & catalog taxonomy
+│       ├── itunesMusicProvider.js # iTunes candidate harvesting & fallback previews
+│       ├── musicService.js     # Unified random pool, variety & seed selection
+│       └── queryBuilder.js     # Prompt parser & multi-endpoint query planner
+├── shared/                     # Cross-environment shared logic
+│   ├── liveCrossword.js        # On-the-fly crossword grid layout algorithm
+│   ├── musicIdentity.js        # Identity keys, diacritic folding & blacklist matching
+│   ├── musicKeywords.js        # Combined song title & answer keyword extractor (<= 16 chars)
+│   └── shuffle.js              # Fisher-Yates shuffle
 ├── src/                        # React 19 Frontend
 │   ├── components/
 │   │   ├── AudioPlayerBar.tsx  # Floating Hi-Fi console audio deck
