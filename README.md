@@ -21,7 +21,7 @@
   - 🔥 **Latin & Reggaeton Hits** (Bad Bunny, Daddy Yankee, Shakira, J Balvin)
   - 🎷 **R&B, Soul & Motown** (Stevie Wonder, Aretha Franklin, Alicia Keys)
 - **🗄️ Native SQLite Music Catalog & Multi-Provider Crawler**:
-  - **High-Volume Local Catalog**: Built on Node.js 24 native `node:sqlite` (`DatabaseSync`) with WAL mode (`journal_mode = WAL`) and FTS5 full-text indexing, storing thousands of authentic tracks for sub-millisecond puzzle generation.
+  - **High-Volume Local Catalog**: Built on Node.js 24 native `node:sqlite` (`DatabaseSync`) with WAL mode (`journal_mode = WAL`) and FTS5 full-text indexing, storing 100,000+ authentic tracks across 33,000+ artists for sub-millisecond puzzle generation.
   - **Multi-Vector Autonomous Harvester**: Recursively discovers tracks beyond charts through artist discography graph traversal (spanning 1950s–2020s rock, pop, hip-hop, electronic, jazz, K-Pop, anime, Latin) and high-frequency music lexicon vocabulary sweeping.
   - **100% Deterministic Cross-Referencing**: Merges multi-provider tracks across Deezer, Spotify, and Apple Music/iTunes deterministically via ISRC matching (Tier 1) and acoustic duration delta matching ($\le 3$s) with canonical title/artist normalization (Tier 2).
   - **Strict Authenticity Filter**: Screens out amateur covers, tributes, karaoke, soundalikes, lullaby/lo-fi remixes, and tracks lacking verified 30-second audio previews.

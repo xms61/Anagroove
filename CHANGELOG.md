@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.1] - 2026-09-18
+
+### Changed
+- **Music Catalog Milestone (100,033 Canonical Tracks)**:
+  - Completed multi-vector lexicon harvest sweep, bringing the local SQLite music database (`server/data/catalog.sqlite`) to **100,033 canonical tracks**, **33,455 unique artists**, **100,036 verified audio samples**, and **6,590 cross-referenced tracks**.
+  - Executed WAL checkpoint (`PRAGMA wal_checkpoint(TRUNCATE)`) consolidating all transaction journals directly into `catalog.sqlite` at an ultra-compact 88.0 MB file size.
+  - Added unique constraint collision safeguards to `getOrCreateArtist` handling artist metadata updates.
+
+---
+
 ## [1.9.0] - 2026-09-18
 
 ### Added
