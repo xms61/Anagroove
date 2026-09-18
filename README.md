@@ -21,7 +21,7 @@
   - 🔥 **Latin & Reggaeton Hits** (Bad Bunny, Daddy Yankee, Shakira, J Balvin)
   - 🎷 **R&B, Soul & Motown** (Stevie Wonder, Aretha Franklin, Alicia Keys)
 - **🗄️ Native SQLite Music Catalog & Multi-Provider Crawler**:
-  - **High-Volume Local Catalog**: Built on Node.js 24 native `node:sqlite` (`DatabaseSync`) with WAL mode (`journal_mode = WAL`) and FTS5 full-text indexing, storing thousands of authentic tracks for sub-millisecond puzzle generation.
+  - **High-Volume Local Catalog**: Built on Node.js 24 native `node:sqlite` (`DatabaseSync`) with WAL mode (`journal_mode = WAL`) and FTS5 full-text indexing, storing 100,000+ authentic tracks across 33,000+ artists for sub-millisecond puzzle generation.
   - **Multi-Vector Autonomous Harvester**: Recursively discovers tracks beyond charts through artist discography graph traversal (spanning 1950s–2020s rock, pop, hip-hop, electronic, jazz, K-Pop, anime, Latin) and high-frequency music lexicon vocabulary sweeping.
   - **100% Deterministic Cross-Referencing**: Merges multi-provider tracks across Deezer, Spotify, and Apple Music/iTunes deterministically via ISRC matching (Tier 1) and acoustic duration delta matching ($\le 3$s) with canonical title/artist normalization (Tier 2).
   - **Strict Authenticity Filter**: Screens out amateur covers, tributes, karaoke, soundalikes, lullaby/lo-fi remixes, and tracks lacking verified 30-second audio previews.
@@ -135,19 +135,44 @@ npm run build
 ```
 Production assets are output to the `dist/` directory.
 
-### 6. Crawling & Managing the Massive SQLite Music Catalog (100k+ Tracks)
-To populate or expand the local SQLite database with over 100,000 canonical songs:
+### 6. Creating & Populating the SQLite Music Catalog
+The SQLite database file (`server/data/catalog.sqlite`) is excluded from Git tracking via `.gitignore` to keep the repository lightweight and avoid storing binary blobs. When cloning the repository fresh, you can initialize and populate your local database in seconds:
+
+#### Automatic Initialization
+SpotySpice uses Node.js 24's native `node:sqlite` (`DatabaseSync`) with WAL mode (`journal_mode = WAL`) and FTS5 full-text indexing. The schema (`artists`, `tracks`, `track_samples`, `track_providers`, `crawl_queue`, `tracks_fts`) and indexes are created automatically the first time the catalog is accessed.
+
+#### Populating the Catalog
+Run the autonomous crawler to harvest canonical tracks, authentic metadata, and verified 30-second playable audio previews:
+
 ```bash
-npm run crawl                 # Autonomous crawl across playlists, decades, artists & lexicon (target: 100,000)
-npm run crawl:status          # Display catalog status: artists, tracks, samples, provider links & merges
-```
-You can also customize target counts and discovery vectors via CLI flags:
-```bash
-# Target custom track thresholds or specific vector depths
+# 1. Inspect the current database status (shows 0 tracks if new)
+npm run crawl:status
+
+# 2. Quick seed: Ingest 5,000 canonical tracks (~30 seconds)
+node scripts/crawl_catalog.js --target=5000
+
+# 3. Standard catalog: Ingest 25,000 canonical tracks (~2 minutes)
+node scripts/crawl_catalog.js --target=25000
+
+# 4. Massive full catalog: Ingest 100,000+ canonical tracks (~4–5 minutes)
+npm run crawl
+# or with explicit CLI arguments:
 node scripts/crawl_catalog.js --target=100000 --playlists=40 --artists=200 --lexicon=350
-node scripts/crawl_catalog.js --status
 ```
-The crawler automatically checkpoints and manages SQLite WAL journals (`catalog.sqlite-wal`), guaranteeing zero database bloat and rock-solid deterministic deduplication.
+
+#### Crawler Flags & Options
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `--target=<n>` | `100000` | Stops crawling as soon as the total canonical track count in SQLite reaches `<n>`. |
+| `--playlists=<n>` | `40` | Maximum number of curated genre & historical playlists to spider (Vector 1). Set to `0` to skip. |
+| `--artists=<n>` | `150` | Maximum foundation artists to spider discographies and related artist graphs for (Vector 3). |
+| `--lexicon=<n>` | `350` | Maximum high-frequency vocabulary keywords to sweep across paginated offsets (Vector 4). |
+| `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, and cross-referenced merges without crawling. |
+
+#### Deduplication & Integrity
+- **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks without verified 30-second audio previews are automatically rejected.
+- **Master Deduplication**: Tracks are merged across Deezer, Spotify, and Apple Music via ISRC (Tier 1) and acoustic duration matching ($\le 3$s delta) with title/artist normalization (Tier 2). Radio edit suffixes (`(?:radio\s+)?edit`) and feature tags are stripped to unify duplicate releases.
+- **WAL Journal Compaction**: The crawler folds runtime journals into `catalog.sqlite` via `PRAGMA wal_checkpoint(TRUNCATE)` to keep the database file compact.
 
 ---
 

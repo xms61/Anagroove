@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.2] - 2026-09-18
+
+### Changed
+- **Gitignore Local SQLite Databases (`.gitignore`)**:
+  - Added `*.sqlite` and `server/data/catalog.sqlite*` to `.gitignore` to keep the Git repository lightweight and free of binary database blobs.
+  - Untracked `server/data/catalog.sqlite` from Git index while preserving local database files.
+- **Documentation for SQLite Initialization & Population (`README.md`)**:
+  - Documented automatic schema initialization via Node.js 24 native `node:sqlite` (`DatabaseSync`).
+  - Added comprehensive step-by-step instructions and CLI options table for populating the database at various scales (quick seed, standard catalog, massive 100k catalog).
+
+---
+
+## [1.9.1] - 2026-09-18
+
+### Changed
+- **Music Catalog Milestone (100,033 Canonical Tracks)**:
+  - Completed multi-vector lexicon harvest sweep, bringing the local SQLite music database (`server/data/catalog.sqlite`) to **100,033 canonical tracks**, **33,455 unique artists**, **100,036 verified audio samples**, and **6,590 cross-referenced tracks**.
+  - Executed WAL checkpoint (`PRAGMA wal_checkpoint(TRUNCATE)`) consolidating all transaction journals directly into `catalog.sqlite` at an ultra-compact 88.0 MB file size.
+  - Added unique constraint collision safeguards to `getOrCreateArtist` handling artist metadata updates.
+
+---
+
 ## [1.9.0] - 2026-09-18
 
 ### Added
