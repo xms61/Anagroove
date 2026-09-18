@@ -112,7 +112,7 @@ export function splitArtistNames(artistName) {
   // Collaboration delimiters:
   // e.g. " & ", " and ", " feat. ", " ft. ", " featuring ", " with ", " x ", " X ", " / ", " vs. ", " vs ", ", "
   const parts = raw
-    .split(/\s+(?:feat\.?|ft\.?|featuring|with|x|X|vs\.?|\/)\s+|\s*,\s*|\s+(?:&|and)\s+/)
+    .split(/\s+(?:feat\.?|ft\.?|featuring|with|x|vs\.?|\/)\s+|\s*,\s*|\s+(?:&|and)\s+/i)
     .map(p => p.trim())
     .filter(Boolean);
 
@@ -122,24 +122,26 @@ export function splitArtistNames(artistName) {
 export function extractAllAnswerCandidates(title, artist) {
   if (!title || !artist) return null;
 
+  // Thoroughly strip featured artists and parenthetical annotations from song title
+  // e.g. "APT. (feat. Bruno Mars)" -> "APT."
+  // or "APT. feat. Bruno Mars" -> "APT."
   const cleanTitle = String(title)
-    .replace(/\(feat\..*?\)/gi, '')
-    .replace(/\[feat\..*?\]/gi, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/\(.*?\)/g, '')
+    .replace(/\s*[([](?:feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
+    .replace(/\s*[([][^)\]]*[)\]]/g, '')
+    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.*$/i, '')
     .trim();
 
-  // Combined full song title (3 to 14 letters)
-  // e.g. "Your Love" -> "YOURLOVE" (8), "Blinding Lights" -> "BLINDINGLIGHTS" (14)
-  const combinedTitle = toCrosswordAnswer(cleanTitle, { minLength: 3, maxLength: 14 });
+  // Combined full song title (2 to 14 letters)
+  // e.g. "Go" -> "GO" (2), "Your Love" -> "YOURLOVE" (8), "Blinding Lights" -> "BLINDINGLIGHTS" (14)
+  const combinedTitle = toCrosswordAnswer(cleanTitle, { minLength: 2, maxLength: 14 });
   const titleCandidate = combinedTitle ? {
     answer: combinedTitle,
     clueType: 'Song title',
     clueText: `Iconic track title (${combinedTitle.length} letters)`
   } : null;
 
-  // Split artist names to avoid combining multiple collaborating artists like a title.
-  // e.g. "Ski Aggu & Sira" -> ["Ski Aggu", "Sira"]
+  // Split artist names so multiple collaborating performers are NEVER concatenated together.
+  // e.g. "ROSÉ & Bruno Mars" -> ["ROSÉ", "Bruno Mars"] -> individual candidates "ROSE" (4) and "BRUNOMARS" (9)
   // whereas single-entity groups with '&' ("Above & Beyond", "Mumford & Sons") remain unitary
   // and expand '&' to 'AND' ("ABOVEANDBEYOND", "MUMFORDANDSONS").
   const artistNames = splitArtistNames(artist);
@@ -147,7 +149,7 @@ export function extractAllAnswerCandidates(title, artist) {
 
   for (let i = 0; i < artistNames.length; i++) {
     const name = artistNames[i];
-    const answer = toCrosswordAnswer(name, { minLength: 3, maxLength: 14 });
+    const answer = toCrosswordAnswer(name, { minLength: 2, maxLength: 14 });
     if (answer) {
       artistCandidates.push({
         answer,
@@ -163,17 +165,19 @@ export function extractAllAnswerCandidates(title, artist) {
 
   const primaryArtistCandidate = artistCandidates[0] || null;
 
-  // Prominent single keyword from multi-word title (4 to 10 letters)
-  let keywordCandidate = null;
+  // Single keywords from multi-word title (2 to 10 letters)
+  // Provides shorter 2-5 letter options and 6-8 letter options for rich length variety
   const normalizedWords = cleanTitle
     .normalize('NFKD')
     .replace(/\p{M}/gu, '')
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim()
     .split(/\s+/)
-    .map(w => toCrosswordAnswer(w, { minLength: 4, maxLength: 10 }))
+    .map(w => toCrosswordAnswer(w, { minLength: 2, maxLength: 10 }))
     .filter(Boolean);
 
+  let keywordCandidate = null;
+  let shortKeywordCandidate = null;
   if (normalizedWords.length > 0) {
     const sorted = [...normalizedWords].sort((a, b) => b.length - a.length);
     const candidate = sorted[0];
@@ -184,6 +188,15 @@ export function extractAllAnswerCandidates(title, artist) {
         clueText: `Key word in this track title (${candidate.length} letters)`
       };
     }
+    // Find a shorter keyword candidate (2 to 5 letters) if available
+    const shortWord = normalizedWords.find(w => w.length >= 2 && w.length <= 5);
+    if (shortWord && (!candidate || shortWord !== candidate)) {
+      shortKeywordCandidate = {
+        answer: shortWord,
+        clueType: 'Song title keyword',
+        clueText: `Key word in this track title (${shortWord.length} letters)`
+      };
+    }
   }
 
   return {
@@ -191,6 +204,7 @@ export function extractAllAnswerCandidates(title, artist) {
     artist: primaryArtistCandidate,
     artistCandidates,
     keyword: keywordCandidate,
+    shortKeyword: shortKeywordCandidate,
   };
 }
 
@@ -201,6 +215,7 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   const preferred = typeof options === 'string' ? options : options?.preferredType;
   const allowArtist = options?.allowArtist !== false;
   const seenAnswers = options?.seenAnswers;
+  const targetBucket = options?.targetLengthBucket; // 'short' (2-5), 'medium' (6-8), 'long' (9-14)
   const artistIndex = typeof options?.artistIndex === 'number' ? options.artistIndex : null;
 
   function getBestArtistCandidate() {
@@ -216,18 +231,60 @@ export function extractAnswerKeyword(title, artist, options = {}) {
     return list[0] || candidates.artist;
   }
 
+  const allAvailable = [];
+  if (candidates.title) allAvailable.push(candidates.title);
+  if (candidates.keyword) allAvailable.push(candidates.keyword);
+  if (candidates.shortKeyword) allAvailable.push(candidates.shortKeyword);
+  if (allowArtist && candidates.artistCandidates) {
+    allAvailable.push(...candidates.artistCandidates);
+  }
+
+  // Helper to test if a candidate matches the requested length bucket
+  function inLengthBucket(candidate, bucket) {
+    if (!candidate || !candidate.answer) return false;
+    const len = candidate.answer.length;
+    if (bucket === 'short') return len >= 2 && len <= 5;
+    if (bucket === 'medium') return len >= 6 && len <= 8;
+    if (bucket === 'long') return len >= 9 && len <= 14;
+    return true;
+  }
+
+  // If a specific target length bucket was requested, check if any eligible candidate matches it
+  if (targetBucket) {
+    const bucketMatches = allAvailable.filter(c => (!seenAnswers || !seenAnswers.has(c.answer)) && inLengthBucket(c, targetBucket));
+    if (bucketMatches.length > 0) {
+      // If preferred type matches within bucket, take it
+      if (preferred === 'artist' && allowArtist) {
+        const art = bucketMatches.find(c => c.clueType === 'Artist name');
+        if (art) return art;
+      } else if (preferred === 'title') {
+        const ttl = bucketMatches.find(c => c.clueType === 'Song title');
+        if (ttl) return ttl;
+      } else if (preferred === 'keyword') {
+        const kw = bucketMatches.find(c => c.clueType === 'Song title keyword');
+        if (kw) return kw;
+      }
+      return bucketMatches[0];
+    }
+  }
+
   if (preferred === 'artist') {
     if (allowArtist) {
       const bestArtist = getBestArtistCandidate();
-      if (bestArtist) return bestArtist;
+      if (bestArtist && (!seenAnswers || !seenAnswers.has(bestArtist.answer))) return bestArtist;
     }
-  } else if (preferred && candidates[preferred]) {
-    return candidates[preferred];
+  } else if (preferred === 'title' && candidates.title) {
+    if (!seenAnswers || !seenAnswers.has(candidates.title.answer)) return candidates.title;
+  } else if (preferred === 'keyword' && (candidates.keyword || candidates.shortKeyword)) {
+    const kw = candidates.keyword && (!seenAnswers || !seenAnswers.has(candidates.keyword.answer))
+      ? candidates.keyword
+      : (candidates.shortKeyword && (!seenAnswers || !seenAnswers.has(candidates.shortKeyword.answer)) ? candidates.shortKeyword : null);
+    if (kw) return kw;
   }
 
   // Fallback priority order:
-  // Standard mode: title -> artist -> keyword
-  // Single-artist mode (allowArtist = false): title -> keyword
+  // Standard mode: title -> artist -> keyword -> shortKeyword
+  // Single-artist mode (allowArtist = false): title -> keyword -> shortKeyword
   if (candidates.title && (!seenAnswers || !seenAnswers.has(candidates.title.answer))) {
     return candidates.title;
   }
@@ -239,6 +296,9 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   }
   if (candidates.keyword && (!seenAnswers || !seenAnswers.has(candidates.keyword.answer))) {
     return candidates.keyword;
+  }
+  if (candidates.shortKeyword && (!seenAnswers || !seenAnswers.has(candidates.shortKeyword.answer))) {
+    return candidates.shortKeyword;
   }
 
   if (candidates.title) return candidates.title;

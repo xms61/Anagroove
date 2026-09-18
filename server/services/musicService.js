@@ -450,18 +450,22 @@ export async function getRandomSongPool({
         }
       }
 
-      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers });
+      // Answer length variation (2-14 letters) rotation:
+      const LENGTH_BUCKET_ROTATION = ['short', 'medium', 'long', 'medium', 'short', 'long', 'medium'];
+      const targetLengthBucket = LENGTH_BUCKET_ROTATION[songs.length % LENGTH_BUCKET_ROTATION.length];
+
+      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers, targetLengthBucket });
 
       // If answer already exists on the grid, fallback:
       if (keyword && seenAnswers.has(keyword.answer)) {
         if (keyword.clueType === 'Artist name') {
           // If there is a co-performer (e.g. Sira in "Ski Aggu & Sira"), try them before giving up on artist clues
-          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, seenAnswers, artistIndex: 1 });
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, seenAnswers, artistIndex: 1, targetLengthBucket });
         }
         if (keyword && seenAnswers.has(keyword.answer)) {
-          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist, seenAnswers });
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist, seenAnswers, targetLengthBucket });
           if (keyword && seenAnswers.has(keyword.answer)) {
-            keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist, seenAnswers });
+            keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist, seenAnswers, targetLengthBucket });
           }
         }
       }

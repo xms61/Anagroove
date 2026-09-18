@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
 import { generateLiveCrossword } from '../shared/liveCrossword.js';
-import { extractAnswerKeyword, isSingleEntityArtist, splitArtistNames } from '../shared/musicKeywords.js';
+import { extractAnswerKeyword, extractAllAnswerCandidates, isSingleEntityArtist, splitArtistNames } from '../shared/musicKeywords.js';
 import {
   blacklistIdentityKey,
   blacklistMatchesTrack,
@@ -164,6 +164,27 @@ async function runUnitTests() {
 
   const titleAmpersandKeyword = extractAnswerKeyword('Rock & Roll', 'Led Zeppelin', { preferredType: 'title' });
   assert(titleAmpersandKeyword?.answer === 'ROCKANDROLL', 'Extracts song title with ampersand expanded to AND');
+
+  // Answer length variation (2-14 letters) & feature separation
+  const twoLetterAnswer = toCrosswordAnswer('Go');
+  assert(twoLetterAnswer === 'GO', 'Supports 2-letter answers for crossword grids');
+
+  const aptCandidates = extractAllAnswerCandidates('APT. (feat. Bruno Mars)', 'ROSÉ & Bruno Mars');
+  assert(aptCandidates.title?.answer === 'APT', 'Cleans features from title giving 3-letter answer APT');
+  assert(aptCandidates.artistCandidates?.length === 2, 'Extracts 2 distinct artist candidates for ROSÉ & Bruno Mars');
+  assert(aptCandidates.artistCandidates?.[0].answer === 'ROSE', 'First collaborator candidate is ROSE');
+  assert(aptCandidates.artistCandidates?.[1].answer === 'BRUNOMARS', 'Second collaborator candidate is BRUNOMARS');
+  assert(!aptCandidates.artistCandidates?.some(c => c.answer === 'ROSEBRUNOMARS'), 'Never concatenates collaborating artists into ROSEBRUNOMARS');
+
+  const dieCandidates = extractAllAnswerCandidates('Die With A Smile feat. Lady Gaga', 'Bruno Mars');
+  assert(dieCandidates.title?.answer === 'DIEWITHASMILE', 'Retains clean full title DIEWITHASMILE without feature leakage');
+  assert(dieCandidates.shortKeyword?.answer === 'DIE', 'Extracts short 3-letter keyword DIE for length variance');
+
+  const bucketShort = extractAnswerKeyword('Die With A Smile feat. Lady Gaga', 'Bruno Mars', { targetLengthBucket: 'short' });
+  assert(bucketShort?.answer.length <= 5, 'Honors short length bucket target (<= 5 chars)');
+
+  const bucketLong = extractAnswerKeyword('Die With A Smile feat. Lady Gaga', 'Bruno Mars', { targetLengthBucket: 'long' });
+  assert(bucketLong?.answer.length >= 9, 'Honors long length bucket target (>= 9 chars)');
 
   const migrationIdentityKeys = new Set([
     { type: 'song', name: 'Same Title' },

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.9] - 2026-09-18
+
+### Added
+- **Audio Sample Interactive Scrubber & Playback Controls (`src/components/AudioPlayerBar.tsx`)**:
+  - Replaced the static progress ribbon with an interactive scrubber bar equipped with playhead thumb, clickable track seek, current timestamp, total duration (`0:14 / 0:30`), and quick `-5s` / `+5s` jump buttons.
+- **Word Completion Celebration Animation (`src/index.css`, `src/hooks/useCrosswordGame.ts`, `src/components/CrosswordGrid.tsx`)**:
+  - Detects when an active word is fully filled and correct.
+  - Plays a staggered tactile spring bounce animation (`@keyframes letter-correct-pop`) across each letter cell with an emerald and gold celebration aura.
+- **Reveal Whole Puzzle Hotkey (`src/components/CrosswordGrid.tsx`, `src/components/HintModal.tsx`, `src/App.tsx`)**:
+  - Bound `Shift + Tab` as a direct keyboard shortcut to solve and reveal the entire puzzle.
+  - Updated `<kbd>` badges in the Hint modal and action tooltips.
+
+### Changed
+- **Crossword Tile Typography & Readability Rework (`src/components/CrosswordGrid.tsx`)**:
+  - Increased letter font size from `48%` to `58%` of cell size (`15px` to `27px`) in bold/black uppercase (`font-sans font-black`).
+  - Redesigned cell states for high-contrast legibility: crisp white cardstock for standard tiles, luminous amber for active words, and bright gold with radiant ring for selected tiles.
+- **Dense Crossword Placement Engine with Multi-Crossing Scoring (`shared/liveCrossword.js`)**:
+  - Overhauled crossword generation from first-intersection placement to an exhaustive multi-intersection compactness scoring algorithm.
+  - Exponentially rewards 2+ crossing letters (+120 bonus), penalizes bounding box sprawl, and runs 30 randomized trials to select the densest layout with maximum interlocking words.
+- **Answer Length Variation (2 to 14 Letters) (`shared/musicIdentity.js`, `shared/musicKeywords.js`, `server/services/musicService.js`)**:
+  - Expanded answer length boundaries to 2–14 letters, allowing punchy short keywords (`UP`, `GO`, `DIE`, `APT`) and longer titles (`DIEWITHASMILE`).
+  - Added rotating length buckets (`short`, `medium`, `long`) when assembling puzzle candidate tracks.
+- **Two-Column Clue Layout (`src/components/ClueList.tsx`, `src/App.tsx`)**:
+  - Split Across (Horizontal) and Down (Vertical) clues into a balanced 2-column side-by-side grid, utilizing the full screen width and eliminating empty dead space.
+
+### Removed
+- **Header Badge (`src/App.tsx`)**:
+  - Removed the `LIVE SALON` badge from the header.
+
+### Fixed
+- **Feature & Collaboration Concatenation Elimination (`shared/musicKeywords.js`)**:
+  - Ensured collaborating artists (e.g. `ROSÉ & Bruno Mars`) are strictly emitted as separate candidate entities (`ROSE` and `BRUNOMARS`), never concatenated into combined answers like `ROSEBRUNOMARS`.
+  - Added case-insensitive feature stripping for unparenthesized and parenthesized features (`feat.`, `ft.`, `featuring`) while protecting genuine title words (`Die With A Smile`).
+
+---
+
 ## [1.4.8] - 2026-09-18
 
 ### Fixed

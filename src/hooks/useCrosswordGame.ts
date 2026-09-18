@@ -54,6 +54,9 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
   const [isCompleted, setIsCompleted] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
 
+  // Staggered celebration bounce animation when a typed word is correct
+  const [celebratingCells, setCelebratingCells] = useState<{ row: number; col: number; delay: number }[]>([]);
+
   // Debounced server auto-save ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -302,6 +305,32 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
       }
     }
 
+    // Check if the typed word is completely filled and correct -> trigger small celebration bounce
+    if (activeClue) {
+      let isWordFilled = true;
+      let typedWord = '';
+      for (let i = 0; i < activeClue.length; i++) {
+        const cr = activeClue.direction === 'across' ? activeClue.row : activeClue.row + i;
+        const cc = activeClue.direction === 'across' ? activeClue.col + i : activeClue.col;
+        const char = newLetters[cr]?.[cc];
+        if (!char) {
+          isWordFilled = false;
+          break;
+        }
+        typedWord += char;
+      }
+
+      if (isWordFilled && typedWord.toUpperCase() === activeClue.answer.toUpperCase()) {
+        const cells = Array.from({ length: activeClue.length }, (_, i) => ({
+          row: activeClue.direction === 'across' ? activeClue.row : activeClue.row + i,
+          col: activeClue.direction === 'across' ? activeClue.col + i : activeClue.col,
+          delay: i * 50,
+        }));
+        setCelebratingCells(cells);
+        setTimeout(() => setCelebratingCells([]), 1200);
+      }
+    }
+
     // Auto check if full
     let isFull = true;
     for (let r = 0; r < puzzle.rows; r++) {
@@ -487,6 +516,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     selectedCell,
     direction,
     activeClue,
+    celebratingCells,
     isCompleted,
     showEndScreen,
     setShowEndScreen,

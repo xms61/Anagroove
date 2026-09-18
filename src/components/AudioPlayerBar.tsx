@@ -20,6 +20,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [volume, setVolume] = useState(0.25);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(30);
   const [loadError, setLoadError] = useState(false);
 
   const notifyPlayback = (playing: boolean) => {
@@ -42,6 +44,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     audioRef.current.volume = isMuted ? 0 : volume;
     audioRef.current.src = activeClue.song.audioUrl;
     audioRef.current.currentTime = 0;
+    setCurrentTime(0);
     setProgress(0);
 
     // If was already playing, continue playing the new clue snippet
@@ -74,12 +77,49 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     if (!audioRef.current) return;
     const current = audioRef.current.currentTime;
     const total = audioRef.current.duration || 30;
+    setCurrentTime(current);
+    setDuration(total);
     setProgress((current / total) * 100);
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current?.duration) {
+      setDuration(audioRef.current.duration);
+    }
   };
 
   const handleEnded = () => {
     notifyPlayback(false);
     setProgress(0);
+    setCurrentTime(0);
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const pct = clickX / rect.width;
+    const total = audioRef.current.duration || 30;
+    const target = pct * total;
+    audioRef.current.currentTime = target;
+    setCurrentTime(target);
+    setProgress(pct * 100);
+  };
+
+  const handleSkipSeconds = (offset: number) => {
+    if (!audioRef.current) return;
+    const total = audioRef.current.duration || 30;
+    const target = Math.max(0, Math.min(total, audioRef.current.currentTime + offset));
+    audioRef.current.currentTime = target;
+    setCurrentTime(target);
+    setProgress((target / total) * 100);
+  };
+
+  const formatSeconds = (sec: number) => {
+    const s = Math.floor(sec);
+    const m = Math.floor(s / 60);
+    const remainder = s % 60;
+    return `${m}:${remainder < 10 ? '0' : ''}${remainder}`;
   };
 
   const handleAudioError = () => setLoadError(true);
@@ -107,6 +147,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       <audio
         ref={audioRef}
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
         onError={handleAudioError}
         onPause={() => notifyPlayback(false)}
@@ -231,12 +272,60 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         </div>
       </div>
 
-      {/* Sleek Amber Progress Tape Ribbon */}
-      <div className="w-full bg-black/50 h-1 rounded-b-md overflow-hidden -mt-1 mx-auto max-w-[calc(100%-16px)]">
+      {/* Interactive Audio Sample Scrubber Bar */}
+      <div className="w-full bg-[#0d0f17] border-x border-b border-amber-500/30 rounded-b-xl px-4 py-1.5 -mt-1 mx-auto max-w-[calc(100%-16px)] flex items-center gap-3 shadow-lg select-none">
+        <span className="text-[10px] font-mono text-amber-300 font-bold w-9 text-right shrink-0">
+          {formatSeconds(currentTime)}
+        </span>
+
         <div
-          className="bg-gradient-to-r from-amber-600 via-amber-400 to-amber-300 h-full transition-all duration-150"
-          style={{ width: `${progress}%` }}
-        />
+          onClick={handleSeek}
+          role="slider"
+          aria-label="Seek audio sample"
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={currentTime}
+          title="Click or jump to sample timestamp"
+          className="flex-1 h-3 flex items-center cursor-pointer group relative"
+        >
+          {/* Background track */}
+          <div className="w-full h-1.5 group-hover:h-2 bg-slate-800 rounded-full overflow-hidden transition-all relative">
+            {/* Played gradient progress */}
+            <div
+              className="bg-gradient-to-r from-amber-600 via-amber-400 to-amber-300 h-full rounded-full transition-all duration-75"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          {/* Seeker playhead thumb */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-amber-300 rounded-full border-2 border-slate-950 shadow-[0_0_8px_rgba(245,158,11,0.8)] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+            style={{ left: `${progress}%` }}
+          />
+        </div>
+
+        <span className="text-[10px] font-mono text-slate-400 font-semibold w-9 shrink-0">
+          {formatSeconds(duration)}
+        </span>
+
+        {/* Quick -5s / +5s skip controls */}
+        <div className="flex items-center gap-1 shrink-0 border-l border-white/10 pl-2">
+          <button
+            type="button"
+            onClick={() => handleSkipSeconds(-5)}
+            title="Skip back 5 seconds"
+            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[10px] font-mono text-slate-300 hover:text-white transition cursor-pointer"
+          >
+            -5s
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSkipSeconds(5)}
+            title="Skip forward 5 seconds"
+            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[10px] font-mono text-slate-300 hover:text-white transition cursor-pointer"
+          >
+            +5s
+          </button>
+        </div>
       </div>
 
       {/* Vintage Salon Subtitle */}

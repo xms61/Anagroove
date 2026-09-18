@@ -59,7 +59,7 @@ export function blacklistIdentityKey(item) {
  * Unsupported scripts, empty values, and answers outside the grid limits are
  * rejected instead of being silently mangled.
  */
-export function toCrosswordAnswer(displayName, { minLength = 3, maxLength = 20 } = {}) {
+export function toCrosswordAnswer(displayName, { minLength = 2, maxLength = 20 } = {}) {
   const input = asString(displayName);
   if (!input) return null;
 

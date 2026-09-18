@@ -130,3 +130,25 @@ body {
   color: #ffffff;
 }
 
+/* Tactile bounce and celebration glow when typed word is correct */
+@keyframes letter-correct-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18) translateY(-3px);
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.85), 0 0 25px rgba(245, 158, 11, 0.5);
+  }
+  60% {
+    transform: scale(0.96) translateY(1px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-letter-correct-pop {
+  animation: letter-correct-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+

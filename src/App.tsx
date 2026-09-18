@@ -79,6 +79,7 @@ export default function App() {
     setValidity,
     selectedCell,
     activeClue,
+    celebratingCells,
     showEndScreen,
     setShowEndScreen,
     isCellInActiveWord,
@@ -289,9 +290,6 @@ export default function App() {
             <div>
               <h1 className="font-black text-base tracking-tight text-white flex items-center gap-2">
                 <span>SpotySpice</span>
-                <span className="text-[9px] font-mono font-bold tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded">
-                  LIVE SALON
-                </span>
               </h1>
             </div>
 
@@ -335,7 +333,7 @@ export default function App() {
               onClick={() => setIsHintOpen(true)}
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
-              title="Get a hint ([Space] Letter, [Tab] Word)"
+              title="Get a hint ([Space] Letter, [Tab] Word, [Shift+Tab] Reveal All)"
             >
               <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
               <span>Hint</span>
@@ -434,9 +432,9 @@ export default function App() {
           </button>
         </div>
       ) : (
-        <main className="max-w-6xl mx-auto w-full p-4 lg:p-6 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-8">
+        <main className="max-w-7xl mx-auto w-full p-4 lg:p-6 flex flex-col xl:flex-row items-center xl:items-start justify-center gap-8">
           {/* Crossword Grid with Vinyl Backdrop */}
-          <div className="w-full lg:w-auto flex justify-center">
+          <div className="w-full xl:w-auto flex justify-center">
             <CrosswordGrid
               puzzle={activePuzzle}
               userLetters={userLetters}
@@ -450,11 +448,12 @@ export default function App() {
               onApplyHint={applyHint}
               teammateCell={teammateCell}
               isPlaying={isAudioPlaying}
+              celebratingCells={celebratingCells}
             />
           </div>
 
-          {/* Clue Lists (Across & Down) */}
-          <div className="w-full lg:w-80 shrink-0 bg-[#131722]/85 border border-white/10 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
+          {/* Clue Lists (Across & Down side-by-side) */}
+          <div className="w-full xl:flex-1 xl:max-w-2xl bg-[#131722]/85 border border-white/10 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-200/80 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />

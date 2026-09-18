@@ -11,9 +11,10 @@ interface CrosswordGridProps {
   onInputLetter: (char: string) => void;
   onBackspace: () => void;
   onMoveCursor: (dr: number, dc: number) => void;
-  onApplyHint?: (type: 'letter' | 'word') => void;
+  onApplyHint?: (type: 'letter' | 'word' | 'puzzle') => void;
   teammateCell?: { row: number; col: number; name: string; color: string } | null;
   isPlaying?: boolean;
+  celebratingCells?: { row: number; col: number; delay: number }[];
 }
 
 export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
@@ -29,13 +30,14 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   onApplyHint,
   teammateCell,
   isPlaying = false,
+  celebratingCells = [],
 }) => {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [containerWidth, setContainerWidth] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      return Math.min(window.innerWidth - 32, 540);
+      return Math.min(window.innerWidth - 32, 560);
     }
     return 500;
   });
@@ -60,7 +62,11 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab') {
       e.preventDefault();
-      onApplyHint?.('word');
+      if (e.shiftKey) {
+        onApplyHint?.('puzzle');
+      } else {
+        onApplyHint?.('word');
+      }
     } else if (e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
       onApplyHint?.('letter');
@@ -90,19 +96,19 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   const rows = puzzle.rows || 1;
 
   // Compute maximum available dimensions:
-  // Desktop max width: ~510px to sit comfortably over vinyl
+  // Desktop max width: ~540px to sit comfortably over vinyl
   // Mobile max width: containerWidth - 32px
-  const maxAvailableWidth = Math.min(containerWidth - 32, 510);
-  const maxAvailableHeight = 510;
+  const maxAvailableWidth = Math.min(containerWidth - 32, 540);
+  const maxAvailableHeight = 540;
 
   const maxCellWidth = Math.floor((maxAvailableWidth - (cols - 1) * gapSize) / cols);
   const maxCellHeight = Math.floor((maxAvailableHeight - (rows - 1) * gapSize) / rows);
 
-  // Cell size bounded between 24px (compact mobile layout) and 42px (spacious desktop)
-  const cellSize = Math.max(24, Math.min(42, Math.min(maxCellWidth, maxCellHeight)));
+  // Cell size bounded between 26px (compact mobile layout) and 46px (spacious desktop)
+  const cellSize = Math.max(26, Math.min(46, Math.min(maxCellWidth, maxCellHeight)));
 
-  const letterFontSize = Math.max(12, Math.round(cellSize * 0.48));
-  const numberFontSize = Math.max(7.5, Math.round(cellSize * 0.25));
+  const letterFontSize = Math.max(15, Math.round(cellSize * 0.58));
+  const numberFontSize = Math.max(8.5, Math.round(cellSize * 0.27));
   const gridWidth = cols * cellSize + (cols - 1) * gapSize;
   const gridHeight = rows * cellSize + (rows - 1) * gapSize;
 
@@ -135,54 +141,65 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
         onKeyDown={e => {
           if (e.key === 'Tab') {
             e.preventDefault();
-            onApplyHint?.('word');
+            if (e.shiftKey) {
+              onApplyHint?.('puzzle');
+            } else {
+              onApplyHint?.('word');
+            }
           } else if (e.key === ' ' || e.code === 'Space') {
             e.preventDefault();
             onApplyHint?.('letter');
           } else if (e.key === 'Backspace') {
             e.preventDefault();
             onBackspace();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            onMoveCursor(-1, 0);
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            onMoveCursor(1, 0);
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            onMoveCursor(0, -1);
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            onMoveCursor(0, 1);
           }
         }}
       />
 
-      {/* Realistic Vinyl Record in background (Spins when music plays) */}
+      {/* Vinyl Record Center Turntable Backdrop */}
       <div
-        className={`absolute w-[360px] h-[360px] sm:w-[460px] sm:h-[460px] md:w-[560px] md:h-[560px] rounded-full vinyl-grooves flex items-center justify-center pointer-events-none transition-all duration-700 animate-spin-slow shadow-2xl ${
-          isPlaying ? '' : 'spin-paused'
-        }`}
-        style={{ opacity: 0.95 }}
+        className="absolute rounded-full vinyl-grooves pointer-events-none transition-transform duration-700 ease-out"
+        style={{
+          width: `${Math.max(gridWidth, gridHeight) + 120}px`,
+          height: `${Math.max(gridWidth, gridHeight) + 120}px`,
+        }}
       >
-        {/* Center Vintage Spindle Label */}
-        <div className="w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full bg-gradient-to-br from-amber-200 via-amber-100 to-amber-300 border-[4px] md:border-[5px] border-amber-900/40 flex flex-col items-center justify-center text-center p-2 shadow-inner">
-          <div className="text-[8px] sm:text-[9px] md:text-[10px] tracking-[0.2em] font-black text-amber-950 uppercase">SPOTYSPICE</div>
-          <div className="text-[6.5px] sm:text-[7.5px] md:text-[8px] tracking-wider text-amber-800 font-bold mt-0.5">HI-FI STEREO</div>
-          <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 my-1 sm:my-1.5 rounded-full bg-[#0b0e14] border-2 border-amber-400 shadow-inner flex items-center justify-center">
-            <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-amber-400" />
+        <div className={`w-full h-full rounded-full flex items-center justify-center ${isPlaying ? 'animate-spin-slow' : 'spin-paused'}`}>
+          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-700 via-amber-500 to-amber-400 border-4 border-[#0e1219] flex items-center justify-center shadow-inner opacity-40">
+            <div className="w-5 h-5 rounded-full bg-[#0a0d13] border-2 border-amber-300/40" />
           </div>
-          <div className="text-[6px] sm:text-[7px] md:text-[7.5px] font-mono text-amber-900/80 font-bold uppercase">33⅓ RPM • MICROGROOVE</div>
         </div>
       </div>
 
-      {/* Crossword Grid Matrix: Transparent container so vinyl is visible through all empty blocks */}
+      {/* Grid Container */}
       <div
-        className="relative z-10 grid p-2 bg-transparent select-none transition-all duration-300"
+        className="relative z-10 grid rounded-xl p-3 sm:p-4 bg-[#0a0d14]/85 border border-white/10 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
         style={{
-          gap: `${gapSize}px`,
           gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
           gridTemplateRows: `repeat(${rows}, ${cellSize}px)`,
-          width: `${gridWidth}px`,
-          height: `${gridHeight}px`,
+          gap: `${gapSize}px`,
         }}
       >
-        {puzzle.grid.map((row, r) =>
-          row.map((cell, c) => {
+        {puzzle.grid.map((rowCells, r) =>
+          rowCells.map((cell, c) => {
             if (cell.isBlock) {
               return (
                 <div
                   key={`${r}-${c}`}
                   style={{ width: `${cellSize}px`, height: `${cellSize}px` }}
-                  className="bg-transparent pointer-events-none"
+                  className="rounded-[4px] bg-[#0c1017]/80 border border-white/[0.04]"
                 />
               );
             }
@@ -192,26 +209,30 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
             const letter = userLetters[r]?.[c] || '';
             const cellValid = validity[r]?.[c] || 'untested';
             const isTeammate = teammateCell?.row === r && teammateCell?.col === c;
+            const celebration = celebratingCells?.find(item => item.row === r && item.col === c);
 
             // Crisp, high-contrast floating crossword tiles
-            let bgStyle = 'bg-white text-slate-900 hover:bg-slate-100';
-            let borderStyle = 'border border-slate-300/90';
+            let bgStyle = 'bg-white text-slate-900 hover:bg-amber-50/50';
+            let borderStyle = 'border border-slate-300 shadow-[0_2px_4px_rgba(0,0,0,0.12)]';
 
             if (isSelected) {
-              bgStyle = 'bg-[#fef08a] text-slate-950 font-black z-20 shadow-[0_0_14px_rgba(250,204,21,0.6)]';
-              borderStyle = 'border-2 border-amber-500 ring-2 ring-amber-400/50';
+              bgStyle = 'bg-[#fde047] text-slate-950 font-black z-20 shadow-[0_0_18px_rgba(250,204,21,0.7)]';
+              borderStyle = 'border-2 border-amber-600 ring-2 ring-amber-400';
             } else if (isInActiveWord) {
-              bgStyle = 'bg-[#fce7f3] text-slate-900 font-bold';
-              borderStyle = 'border border-pink-300';
+              bgStyle = 'bg-[#fef3c7] text-amber-950 font-black';
+              borderStyle = 'border-2 border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.25)]';
             }
 
             if (cellValid === 'wrong') {
-              bgStyle = 'bg-[#fee2e2] text-[#991b1b]';
-              borderStyle = 'border-2 border-rose-500';
+              bgStyle = 'bg-[#fee2e2] text-[#991b1b] font-black';
+              borderStyle = 'border-2 border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]';
             } else if (cellValid === 'correct' && !isSelected && !isInActiveWord) {
-              bgStyle = 'bg-[#dcfce7] text-[#166534]';
-              borderStyle = 'border-2 border-emerald-500';
+              bgStyle = 'bg-[#dcfce7] text-[#065f46] font-black';
+              borderStyle = 'border-2 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]';
             }
+
+            const celebrationClass = celebration ? 'animate-letter-correct-pop z-30' : '';
+            const celebrationDelay = celebration ? `${celebration.delay}ms` : undefined;
 
             return (
               <button
@@ -222,8 +243,12 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
                   onSelectCell(r, c);
                   hiddenInputRef.current?.focus();
                 }}
-                style={{ width: `${cellSize}px`, height: `${cellSize}px` }}
-                className={`relative rounded-[4px] font-bold flex items-center justify-center transition-all cursor-pointer tile-shadow ${bgStyle} ${borderStyle}`}
+                style={{
+                  width: `${cellSize}px`,
+                  height: `${cellSize}px`,
+                  animationDelay: celebrationDelay,
+                }}
+                className={`relative rounded-[4px] font-bold flex items-center justify-center transition-all cursor-pointer tile-shadow ${bgStyle} ${borderStyle} ${celebrationClass}`}
               >
                 {/* Red studio tape corner mark on selected cell (positioned top-right to avoid clue numbers) */}
                 {isSelected && (
@@ -248,7 +273,7 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
                 {/* Clue Number Indicator */}
                 {cell.number && (
                   <span
-                    className="absolute top-[1px] left-[2px] leading-none text-slate-500 font-semibold pointer-events-none"
+                    className="absolute top-[1px] left-[2px] leading-none text-slate-500 font-bold pointer-events-none"
                     style={{ fontSize: `${numberFontSize}px` }}
                   >
                     {cell.number}
@@ -257,9 +282,10 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
 
                 {/* Entered Character */}
                 <span
-                  className="font-mono tracking-tight"
+                  className="font-sans font-black tracking-tight uppercase select-none"
                   style={{
                     fontSize: `${letterFontSize}px`,
+                    lineHeight: 1,
                     marginTop: `${Math.max(1, Math.round(cellSize * 0.08))}px`,
                   }}
                 >
