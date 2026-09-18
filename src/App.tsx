@@ -1,39 +1,60 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import catalogData from './data/themes_catalog.json';
-import { ThemesCatalog, Puzzle, CellValidity } from './types/crossword';
+import { Puzzle, CellValidity } from './types/crossword';
 import { useCrosswordGame } from './hooks/useCrosswordGame';
 import { CrosswordGrid } from './components/CrosswordGrid';
 import { ClueList } from './components/ClueList';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { HintModal } from './components/HintModal';
 import { EndScreenModal } from './components/EndScreenModal';
-import { PuzzlePickerModal } from './components/PuzzlePickerModal';
 import { LiveGeneratorModal } from './components/LiveGeneratorModal';
 import { BlacklistModal } from './components/BlacklistModal';
 import { MultiplayerModal } from './components/MultiplayerModal';
 import { LoungeDrawer } from './components/LoungeDrawer';
-import { SongItem, generateLiveCrossword } from './utils/liveGenerator';
 import { apiClient, getMultiplayerPlayerId } from './services/apiClient';
 import { socketService, MultiplayerRoom } from './services/socketService';
 import { useBlacklist } from './hooks/useBlacklist';
-import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords } from 'lucide-react';
-import { shuffleArray } from '../shared/shuffle';
+import { dynamicMusicService } from './services/dynamicMusicService';
+import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle } from 'lucide-react';
 
-const catalog: ThemesCatalog = catalogData as unknown as ThemesCatalog;
+const EMPTY_PUZZLE: Puzzle = {
+  id: 'placeholder',
+  title: 'Live Deezer Crossword',
+  difficulty: 'medium',
+  rows: 10,
+  cols: 10,
+  grid: Array.from({ length: 10 }, (_, r) =>
+    Array.from({ length: 10 }, (_, c) => ({
+      row: r,
+      col: c,
+      char: null,
+      isBlock: true,
+      number: null,
+    }))
+  ),
+  clues: [],
+};
 
 export default function App() {
   const playerId = useMemo(() => getMultiplayerPlayerId(), []);
-  const [activeThemeId, setActiveThemeId] = useState<string>('mixed');
+  const [currentGenre, setCurrentGenre] = useState<string>(() => {
+    return localStorage.getItem('spotyspice_active_genre') || 'all';
+  });
 
-  const activeTheme = useMemo(() => {
-    return catalog.themes.find(t => t.id === activeThemeId) || catalog.themes[0];
-  }, [activeThemeId]);
+  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(() => {
+    try {
+      const saved = localStorage.getItem('spotyspice_active_live_puzzle');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return null;
+  });
 
-  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle>(activeTheme.puzzles[0]);
+  const [isLoadingPuzzle, setIsLoadingPuzzle] = useState(false);
+  const [puzzleError, setPuzzleError] = useState<string | null>(null);
 
   // Modals state
   const [isHintOpen, setIsHintOpen] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isLiveGeneratorOpen, setIsLiveGeneratorOpen] = useState(false);
   const [isBlacklistOpen, setIsBlacklistOpen] = useState(false);
   const [isMultiplayerOpen, setIsMultiplayerOpen] = useState(false);
@@ -49,25 +70,7 @@ export default function App() {
   // Playback state for vinyl animation sync
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
-  // All catalog songs for the live generator
-  const allCatalogSongs = useMemo(() => {
-    const map = new Map<string, SongItem>();
-    catalog.themes.forEach(t => {
-      t.puzzles.forEach(p => {
-        p.clues.forEach(c => {
-          if (!map.has(c.song.id)) {
-            map.set(c.song.id, {
-              ...c.song,
-              answer: c.answer,
-              clueType: c.clueType,
-              clueText: c.clueText,
-            });
-          }
-        });
-      });
-    });
-    return Array.from(map.values());
-  }, []);
+  const activePuzzle = currentPuzzle || EMPTY_PUZZLE;
 
   const {
     userLetters,
@@ -88,37 +91,56 @@ export default function App() {
     prevClue,
     applyHint,
     validateGrid,
-  } = useCrosswordGame(currentPuzzle, {
-    themeId: activeThemeId,
+  } = useCrosswordGame(activePuzzle, {
+    themeId: currentGenre,
     multiplayerRoom,
     playerId,
     playerName: localStorage.getItem('spotyspice_player_name') || 'Player',
     playerColor: '#1db954',
   });
 
+  const generateNewPuzzle = useCallback(async (genre = currentGenre, targetWords = 10) => {
+    setIsLoadingPuzzle(true);
+    setPuzzleError(null);
+    try {
+      const { puzzle } = await dynamicMusicService.generateLivePuzzle(genre, targetWords);
+      setCurrentPuzzle(puzzle);
+      setCurrentGenre(genre);
+      localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(puzzle));
+      localStorage.setItem('spotyspice_active_genre', genre);
+      setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
+      setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
+      setShowEndScreen(false);
+    } catch (err: unknown) {
+      console.error('Failed to generate live puzzle:', err);
+      setPuzzleError(err instanceof Error ? err.message : 'Could not generate live crossword.');
+    } finally {
+      setIsLoadingPuzzle(false);
+    }
+  }, [currentGenre, setUserLetters, setValidity, setShowEndScreen]);
+
+  // Initial load: generate random puzzle if none stored in localStorage
+  useEffect(() => {
+    if (!currentPuzzle) {
+      generateNewPuzzle(currentGenre, 10);
+    }
+  }, [currentPuzzle, currentGenre, generateNewPuzzle]);
+
   // Restore server progress on initial load (no accounts needed)
   useEffect(() => {
+    if (!currentPuzzle) return;
     apiClient.getProgress().then(saved => {
-      if (saved && saved.puzzleId) {
-        // Find puzzle in catalog
-        for (const t of catalog.themes) {
-          const found = t.puzzles.find(p => p.id === saved.puzzleId);
-          if (found) {
-            setActiveThemeId(saved.themeId || t.id);
-            setCurrentPuzzle(found);
-            if (saved.userLetters && saved.userLetters.length === found.rows) {
-              setUserLetters(saved.userLetters);
-            }
-            if (saved.validity && saved.validity.length === found.rows) {
-              setValidity(saved.validity as CellValidity[][]);
-            }
-            console.log('☁️ Restored progress from server session without account');
-            break;
-          }
+      if (saved && saved.puzzleId && saved.puzzleId === currentPuzzle.id) {
+        if (saved.userLetters && saved.userLetters.length === currentPuzzle.rows) {
+          setUserLetters(saved.userLetters);
         }
+        if (saved.validity && saved.validity.length === currentPuzzle.rows) {
+          setValidity(saved.validity as CellValidity[][]);
+        }
+        console.log('☁️ Restored progress from server session without account');
       }
     });
-  }, [setUserLetters, setValidity]);
+  }, [currentPuzzle?.id, setUserLetters, setValidity]);
 
   // Initialize socket connection on mount
   useEffect(() => {
@@ -135,6 +157,7 @@ export default function App() {
       setMultiplayerRoom(data.room);
       if (data.room?.puzzle) {
         setCurrentPuzzle(data.room.puzzle);
+        localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(data.room.puzzle));
         if (data.room.sharedGrid && Array.isArray(data.room.sharedGrid)) {
           setUserLetters(data.room.sharedGrid);
         } else {
@@ -152,15 +175,17 @@ export default function App() {
       setMultiplayerRoom(prev => prev ? { ...prev, players: data.players, hostId: data.newHostId || prev.hostId } : null);
     });
 
-    const offGameStarted = (data: any) => {
-      if (data.puzzle) {
-        setCurrentPuzzle(data.puzzle);
+    const offGameStarted = (data: { puzzle?: Puzzle; sharedGrid?: string[][]; room?: MultiplayerRoom }) => {
+      const puzzle = data.puzzle;
+      if (puzzle) {
+        setCurrentPuzzle(puzzle);
+        localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(puzzle));
         if (data.sharedGrid && Array.isArray(data.sharedGrid)) {
           setUserLetters(data.sharedGrid);
         } else {
-          setUserLetters(Array.from({ length: data.puzzle.rows }, () => Array(data.puzzle.cols).fill('')));
+          setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
         }
-        setValidity(Array.from({ length: data.puzzle.rows }, () => Array(data.puzzle.cols).fill('untested')));
+        setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
       }
       if (data.room) {
         setMultiplayerRoom(data.room);
@@ -216,83 +241,30 @@ export default function App() {
     };
   }, [setUserLetters, setValidity]);
 
-  const handleSelectTheme = (themeId: string) => {
-    setActiveThemeId(themeId);
-    const theme = catalog.themes.find(t => t.id === themeId);
-    if (theme && theme.puzzles.length > 0) {
-      setCurrentPuzzle(theme.puzzles[0]);
-    }
-  };
-
   const handleNextPuzzle = () => {
-    const idx = activeTheme.puzzles.findIndex(p => p.id === currentPuzzle.id);
-    const nextIdx = (idx + 1) % activeTheme.puzzles.length;
-    setCurrentPuzzle(activeTheme.puzzles[nextIdx]);
-    setShowEndScreen(false);
+    generateNewPuzzle(currentGenre, 10);
   };
 
   const handleRestartPuzzle = () => {
-    setCurrentPuzzle({ ...currentPuzzle });
+    if (currentPuzzle) {
+      setUserLetters(Array.from({ length: currentPuzzle.rows }, () => Array(currentPuzzle.cols).fill('')));
+      setValidity(Array.from({ length: currentPuzzle.rows }, () => Array(currentPuzzle.cols).fill('untested')));
+    }
     setShowEndScreen(false);
   };
 
-  // Helper to generate a brand-new, fresh crossword specifically for multiplayer lobbies
-  const createFreshCrosswordForLobby = useCallback((themeId: string = 'mixed'): Puzzle => {
-    const theme = catalog.themes.find(t => t.id === themeId) || catalog.themes[0];
-    let candidates: SongItem[];
-
-    if (themeId === 'mixed') {
-      candidates = allCatalogSongs.filter(s =>
-        !blacklist.some(b => s.artist.toLowerCase().includes(b.name.toLowerCase()) || s.title.toLowerCase().includes(b.name.toLowerCase()))
-      );
-    } else {
-      const map = new Map<string, SongItem>();
-      theme.puzzles.forEach(p => {
-        p.clues.forEach(c => {
-          if (!map.has(c.song.id)) {
-            const isBl = blacklist.some(b => c.song.artist.toLowerCase().includes(b.name.toLowerCase()) || c.song.title.toLowerCase().includes(b.name.toLowerCase()));
-            if (!isBl) {
-              map.set(c.song.id, {
-                ...c.song,
-                answer: c.answer,
-                clueType: c.clueType,
-                clueText: c.clueText
-              });
-            }
-          }
-        });
-      });
-      candidates = Array.from(map.values());
+  const handleCreateRoom = useCallback(async (playerName: string, mode: 'coop' | 'race', themeId = 'all') => {
+    try {
+      const { puzzle: newLobbyPuzzle, livePuzzleToken } = await dynamicMusicService.generateLivePuzzle(themeId === 'mixed' ? 'all' : themeId);
+      setCurrentPuzzle(newLobbyPuzzle);
+      localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(newLobbyPuzzle));
+      setUserLetters(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('')));
+      setValidity(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('untested')));
+      socketService.createRoom(playerId, playerName, mode, livePuzzleToken);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to generate a live multiplayer puzzle.');
     }
-
-    const shuffled = shuffleArray(candidates);
-    const uniquePuzzleId = `mp-${themeId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    const generated = generateLiveCrossword(shuffled, `👥 Match: ${theme.name}`, 10);
-
-    if (generated) {
-      return {
-        ...generated,
-        id: uniquePuzzleId,
-        title: `👥 Match: ${theme.name}`,
-      };
-    }
-
-    // Fallback: Pick a random verified puzzle from theme and assign a unique ID so it resets all boards cleanly
-    const randomExisting = theme.puzzles[Math.floor(Math.random() * theme.puzzles.length)];
-    return {
-      ...randomExisting,
-      id: uniquePuzzleId,
-      title: `👥 Match: ${randomExisting.title}`,
-    };
-  }, [allCatalogSongs, blacklist]);
-
-  const handleCreateRoom = (playerName: string, mode: 'coop' | 'race', themeId: string = 'mixed') => {
-    const newLobbyPuzzle = createFreshCrosswordForLobby(themeId);
-    setCurrentPuzzle(newLobbyPuzzle);
-    setUserLetters(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('')));
-    setValidity(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('untested')));
-    socketService.createRoom(playerId, playerName, mode, newLobbyPuzzle);
-  };
+  }, [playerId, setUserLetters, setValidity]);
 
   const handleJoinRoom = (roomCode: string, playerName: string) => {
     socketService.joinRoom(roomCode, playerId, playerName);
@@ -300,7 +272,7 @@ export default function App() {
 
   const handleStartRoomGame = () => {
     if (multiplayerRoom) {
-      socketService.startGame(multiplayerRoom.code, playerId, multiplayerRoom.puzzle || currentPuzzle);
+      socketService.startGame(multiplayerRoom.code, playerId, multiplayerRoom.puzzle || activePuzzle);
     }
   };
 
@@ -309,7 +281,7 @@ export default function App() {
       {/* Top Clean Minimalist Header */}
       <header className="border-b border-white/10 bg-[#12141c]/90 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-          {/* Brand & Theme Pill */}
+          {/* Brand & Live Style Selector */}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.35)] shrink-0">
               <Disc3 className={`w-5 h-5 ${isAudioPlaying ? 'animate-spin-slow' : ''}`} />
@@ -318,36 +290,51 @@ export default function App() {
               <h1 className="font-black text-base tracking-tight text-white flex items-center gap-2">
                 <span>SpotySpice</span>
                 <span className="text-[9px] font-mono font-bold tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded">
-                  HI-FI SALON
+                  LIVE SALON
                 </span>
               </h1>
             </div>
 
-            {/* Quick Theme / Puzzle Selector Button */}
+            {/* Live Style Badge & Generator Trigger */}
             <button
               type="button"
-              onClick={() => setIsPickerOpen(true)}
+              onClick={() => setIsLiveGeneratorOpen(true)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#1f2333] border border-amber-500/30 hover:border-amber-500/60 text-xs font-semibold text-slate-200 transition cursor-pointer shadow-sm group"
-              title="Click to browse all 20 puzzles or switch theme"
+              title="Click to generate a custom live crossword or change musical style"
             >
-              <span>{activeTheme.icon}</span>
-              <span className="font-bold text-amber-200 truncate max-w-[130px] sm:max-w-[180px]">
-                {currentPuzzle.title}
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-bold text-amber-200 truncate max-w-[130px] sm:max-w-[200px]">
+                {currentPuzzle?.title || 'Live Crossword'}
               </span>
-              <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-                ({currentPuzzle.clues.length} clues)
-              </span>
+              {currentPuzzle && (
+                <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                  ({currentPuzzle.clues.length} clues)
+                </span>
+              )}
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-300 ml-0.5" />
             </button>
           </div>
 
-          {/* Essential Actions: Hint, Check, and Salon Menu (☰) */}
+          {/* Essential Actions: Quick Shuffle, Hint, Check, and Salon Menu (☰) */}
           <div className="flex items-center gap-2">
+            {/* Quick Random Shuffle Button */}
+            <button
+              type="button"
+              onClick={() => generateNewPuzzle(currentGenre, 10)}
+              disabled={isLoadingPuzzle}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-50"
+              title="Generate a fresh random crossword on the fly"
+            >
+              <Shuffle className={`w-3.5 h-3.5 text-amber-400 ${isLoadingPuzzle ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Shuffle</span>
+            </button>
+
             {/* Hint Button */}
             <button
               type="button"
               onClick={() => setIsHintOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm"
+              disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
               title="Get a hint (letter, word, or reveal)"
             >
               <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
@@ -358,14 +345,15 @@ export default function App() {
             <button
               type="button"
               onClick={validateGrid}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-bold shadow-[0_0_12px_rgba(16,185,129,0.3)] transition cursor-pointer active:scale-95"
+              disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-bold shadow-[0_0_12px_rgba(16,185,129,0.3)] transition cursor-pointer active:scale-95 disabled:opacity-40"
               title="Check answers"
             >
               <CheckSquare className="w-3.5 h-3.5" />
               <span>Check</span>
             </button>
 
-            {/* Lounge Menu Button (Consolidates themes, live generator, multiplayer, blacklist, history) */}
+            {/* Lounge Menu Button */}
             <button
               type="button"
               onClick={() => setIsLoungeDrawerOpen(true)}
@@ -374,7 +362,7 @@ export default function App() {
                   ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
                   : 'bg-[#171a25] hover:bg-[#202536] text-slate-200 border-white/10 hover:border-amber-500/40'
               }`}
-              title="Open Lounge Menu (Themes, Live Mode, Multiplayer, Blacklist, History)"
+              title="Open Lounge Menu (Live Generator, Multiplayer, Blacklist, History)"
             >
               <Menu className="w-4 h-4 text-amber-400" />
               <span className="hidden sm:inline">Menu</span>
@@ -415,43 +403,75 @@ export default function App() {
       )}
 
       {/* Main Game Arena */}
-      <main className="max-w-6xl mx-auto w-full p-4 lg:p-6 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-8">
-        {/* Crossword Grid with Vinyl Backdrop */}
-        <div className="w-full lg:w-auto flex justify-center">
-          <CrosswordGrid
-            puzzle={currentPuzzle}
-            userLetters={userLetters}
-            validity={validity}
-            selectedCell={selectedCell}
-            isCellInActiveWord={isCellInActiveWord}
-            onSelectCell={selectCell}
-            onInputLetter={handleInputLetter}
-            onBackspace={handleBackspace}
-            onMoveCursor={moveCursor}
-            teammateCell={teammateCell}
-            isPlaying={isAudioPlaying}
-          />
+      {isLoadingPuzzle && !currentPuzzle ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[450px]">
+          <div className="relative mb-6">
+            <div className="w-20 h-20 rounded-full border-4 border-amber-500/20 flex items-center justify-center animate-spin">
+              <Disc3 className="w-12 h-12 text-amber-400" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-4 h-4 rounded-full bg-slate-950 border-2 border-amber-400 animate-pulse" />
+            </div>
+          </div>
+          <h2 className="text-xl font-black text-white mb-2 tracking-tight">Tuning Turntable...</h2>
+          <p className="text-xs text-slate-400 max-w-sm text-center leading-relaxed">
+            Gathering live Deezer track previews and weaving a dynamic music crossword grid on the fly.
+          </p>
         </div>
-
-        {/* Clue Lists (Across & Down) */}
-        <div className="w-full lg:w-80 shrink-0 bg-[#131722]/85 border border-white/10 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-200/80 flex items-center gap-1.5">
-              <span>{activeTheme.icon}</span>
-              <span>{activeTheme.name}</span>
-            </span>
-            <span className="text-xs font-mono font-bold text-slate-400">
-              {currentPuzzle.clues.length} Words
-            </span>
+      ) : puzzleError && !currentPuzzle ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[450px]">
+          <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-4 text-rose-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-white mb-1">Unable to Load Live Crossword</h2>
+          <p className="text-xs text-slate-400 mb-6 max-w-sm text-center">{puzzleError}</p>
+          <button
+            type="button"
+            onClick={() => generateNewPuzzle('all', 10)}
+            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:opacity-95 text-slate-950 font-bold rounded-xl text-xs cursor-pointer shadow-lg shadow-amber-500/20"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : (
+        <main className="max-w-6xl mx-auto w-full p-4 lg:p-6 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-8">
+          {/* Crossword Grid with Vinyl Backdrop */}
+          <div className="w-full lg:w-auto flex justify-center">
+            <CrosswordGrid
+              puzzle={activePuzzle}
+              userLetters={userLetters}
+              validity={validity}
+              selectedCell={selectedCell}
+              isCellInActiveWord={isCellInActiveWord}
+              onSelectCell={selectCell}
+              onInputLetter={handleInputLetter}
+              onBackspace={handleBackspace}
+              onMoveCursor={moveCursor}
+              teammateCell={teammateCell}
+              isPlaying={isAudioPlaying}
+            />
           </div>
 
-          <ClueList
-            clues={currentPuzzle.clues}
-            activeClue={activeClue}
-            onSelectClue={selectClue}
-          />
-        </div>
-      </main>
+          {/* Clue Lists (Across & Down) */}
+          <div className="w-full lg:w-80 shrink-0 bg-[#131722]/85 border border-white/10 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-200/80 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Live Clues</span>
+              </span>
+              <span className="text-xs font-mono font-bold text-slate-400">
+                {activePuzzle.clues.length} Words
+              </span>
+            </div>
+
+            <ClueList
+              clues={activePuzzle.clues}
+              activeClue={activeClue}
+              onSelectClue={selectClue}
+            />
+          </div>
+        </main>
+      )}
 
       {/* Persistent Bottom Audio Player */}
       <AudioPlayerBar
@@ -461,25 +481,16 @@ export default function App() {
         onPlaybackChange={setIsAudioPlaying}
       />
 
-      {/* 20-Puzzle Browser Modal */}
-      <PuzzlePickerModal
-        isOpen={isPickerOpen}
-        onClose={() => setIsPickerOpen(false)}
-        activeTheme={activeTheme}
-        currentPuzzleId={currentPuzzle.id}
-        onSelectPuzzle={p => setCurrentPuzzle(p)}
-      />
-
-      {/* On-The-Fly Live Generator Modal with Live Global Charts */}
+      {/* On-The-Fly Live Generator Modal */}
       <LiveGeneratorModal
         isOpen={isLiveGeneratorOpen}
         onClose={() => setIsLiveGeneratorOpen(false)}
-        themes={catalog.themes}
-        allSongs={allCatalogSongs}
-        blacklist={blacklist}
         onPuzzleGenerated={livePuzzle => {
           setCurrentPuzzle(livePuzzle);
-          setActiveThemeId('mixed');
+          localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(livePuzzle));
+          setUserLetters(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('')));
+          setValidity(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('untested')));
+          setShowEndScreen(false);
         }}
       />
 
@@ -502,8 +513,7 @@ export default function App() {
         onCreateRoom={handleCreateRoom}
         onJoinRoom={handleJoinRoom}
         onStartGame={handleStartRoomGame}
-        currentPuzzle={currentPuzzle}
-        themes={catalog.themes}
+        currentPuzzle={currentPuzzle || undefined}
       />
 
       {/* Hint Modal */}
@@ -515,31 +525,33 @@ export default function App() {
       />
 
       {/* Victory / Song Showcase Modal */}
-      <EndScreenModal
-        isOpen={showEndScreen}
-        onClose={() => setShowEndScreen(false)}
-        puzzle={currentPuzzle}
-        onNextPuzzle={handleNextPuzzle}
-        onRestartPuzzle={handleRestartPuzzle}
-        onBlacklistArtist={addArtist}
-        onBlacklistSong={addSong}
-      />
+      {currentPuzzle && (
+        <EndScreenModal
+          isOpen={showEndScreen}
+          onClose={() => setShowEndScreen(false)}
+          puzzle={currentPuzzle}
+          onNextPuzzle={handleNextPuzzle}
+          onRestartPuzzle={handleRestartPuzzle}
+          onBlacklistArtist={addArtist}
+          onBlacklistSong={addSong}
+        />
+      )}
 
       {/* Unified Lounge Slide-Over Menu */}
       <LoungeDrawer
         isOpen={isLoungeDrawerOpen}
         onClose={() => setIsLoungeDrawerOpen(false)}
-        themes={catalog.themes}
-        activeThemeId={activeThemeId}
-        onSelectTheme={handleSelectTheme}
-        onOpenPuzzlePicker={() => setIsPickerOpen(true)}
         onOpenLiveGenerator={() => setIsLiveGeneratorOpen(true)}
+        onInstantRandomPuzzle={() => {
+          setIsLoungeDrawerOpen(false);
+          generateNewPuzzle(currentGenre, 10);
+        }}
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
         onOpenBlacklist={() => setIsBlacklistOpen(true)}
         onOpenSolvedHistory={() => setShowEndScreen(true)}
         blacklistCount={blacklist.length}
         multiplayerCode={multiplayerRoom?.code}
-        activePuzzleTitle={currentPuzzle.title}
+        activePuzzleTitle={currentPuzzle?.title || 'Live Crossword'}
       />
     </div>
   );

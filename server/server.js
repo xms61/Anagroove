@@ -1,16 +1,19 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { db } from './db.js';
 import { getRandomSongPool } from './services/musicService.js';
+import { generateLiveCrossword } from '../shared/liveCrossword.js';
 import {
   validateUserId,
   validateProgressPayload,
   validateHistoryPayload,
   validateBlacklistPayload,
+  validateLivePuzzlePayload,
   validateMusicQuery,
   validateWsMessage
 } from './validators.js';
@@ -20,7 +23,81 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
+const LIVE_PUZZLE_TTL_MS = 5 * 60 * 1000;
+const MAX_LIVE_PUZZLES = 100;
+
+export function createLivePuzzleStore({
+  ttlMs = LIVE_PUZZLE_TTL_MS,
+  maxEntries = MAX_LIVE_PUZZLES,
+  createToken = crypto.randomUUID,
+} = {}) {
+  const puzzles = new Map();
+  const capacity = Math.max(1, maxEntries);
+
+  function remove(token) {
+    const record = puzzles.get(token);
+    if (!record) return null;
+    clearTimeout(record.expiryTimer);
+    puzzles.delete(token);
+    return record;
+  }
+
+  function expire(token) {
+    const record = puzzles.get(token);
+    if (!record) return;
+    const remainingMs = record.expiresAt - Date.now();
+    if (remainingMs > 0) {
+      record.expiryTimer = setTimeout(() => expire(token), remainingMs);
+      record.expiryTimer.unref?.();
+      return;
+    }
+    puzzles.delete(token);
+  }
+
+  function removeExpired() {
+    for (const [token, record] of puzzles) {
+      if (record.expiresAt <= Date.now()) remove(token);
+    }
+  }
+
+  return {
+    add(puzzle) {
+      removeExpired();
+      while (puzzles.size >= capacity) {
+        remove(puzzles.keys().next().value);
+      }
+
+      const token = createToken();
+      const record = {
+        puzzle,
+        expiresAt: Date.now() + ttlMs,
+        expiryTimer: null,
+      };
+      puzzles.set(token, record);
+      record.expiryTimer = setTimeout(() => expire(token), ttlMs);
+      record.expiryTimer.unref?.();
+      return token;
+    },
+    consume(token) {
+      const record = puzzles.get(token);
+      if (!record || record.expiresAt <= Date.now()) {
+        remove(token);
+        return null;
+      }
+      return remove(token);
+    },
+    clear() {
+      for (const token of puzzles.keys()) remove(token);
+    },
+    get size() {
+      removeExpired();
+      return puzzles.size;
+    },
+  };
+}
+
+const livePuzzles = createLivePuzzleStore();
+const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3011);
 
 // Configurable CORS Policy
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
@@ -50,6 +127,17 @@ app.use(cors({
 // Body parser with size limits
 app.use(express.json({ limit: '256kb' }));
 
+// Live API request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    if (req.path.startsWith('/api')) {
+      console.log(`[API] ${req.method} ${req.originalUrl || req.url} -> ${res.statusCode} (${Date.now() - start}ms)`);
+    }
+  });
+  next();
+});
+
 // Apply Sliding-Window Rate Limiters to APIs
 const generalApiLimiter = createRateLimiter({ windowMs: 60000, max: 120 });
 const musicApiLimiter = createRateLimiter({
@@ -60,6 +148,7 @@ const musicApiLimiter = createRateLimiter({
 
 app.use('/api', generalApiLimiter);
 app.use('/api/music/random', musicApiLimiter);
+app.use('/api/puzzles/live', musicApiLimiter);
 
 // Public health check
 app.get('/api/health', (req, res) => {
@@ -90,6 +179,64 @@ app.get('/api/music/random', async (req, res) => {
   } catch (err) {
     console.error('Error generating random music pool:', err);
     res.status(500).json({ error: 'Failed to generate recognizable song pool' });
+  }
+});
+
+// Builds one complete puzzle on the server so every multiplayer participant
+// receives the host's same, already-selected Deezer tracks and grid.
+app.post('/api/puzzles/live', async (req, res) => {
+  const rawUserId = req.headers['x-user-id'] || req.query.userId;
+  const userId = validateUserId(rawUserId);
+  if (!userId) {
+    return res.status(400).json({ error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)' });
+  }
+
+  const validation = validateLivePuzzlePayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  try {
+    const { genre, minFans, targetWords, recentIds } = validation.data;
+    const songs = await getRandomSongPool({
+      genre,
+      minFans,
+      count: Math.min(40, targetWords + 12),
+      blacklist: db.getBlacklist(userId),
+      recentIds,
+    });
+
+    if (songs.length < 6) {
+      return res.status(422).json({
+        error: 'Not enough eligible Deezer tracks are currently available for a live puzzle.',
+        available: songs.length,
+      });
+    }
+
+    const puzzle = generateLiveCrossword(songs, `⚡ Live: ${genre === 'all' ? 'Eclectic Hits' : genre}`, targetWords);
+    if (!puzzle) {
+      return res.status(422).json({
+        error: 'Eligible Deezer tracks could not form an intersecting crossword. Please try again.',
+        available: songs.length,
+      });
+    }
+
+    const livePuzzleToken = livePuzzles.add(puzzle);
+
+    res.json({
+      success: true,
+      puzzle,
+      livePuzzleToken,
+      selection: {
+        provider: 'deezer',
+        candidateCount: songs.length,
+        genre,
+        minFans,
+      },
+    });
+  } catch (err) {
+    console.error('Error generating live Deezer puzzle:', err);
+    res.status(503).json({ error: 'Live Deezer music is temporarily unavailable. Please try again.' });
   }
 });
 
@@ -165,6 +312,7 @@ app.delete('/api/blacklist/:id', (req, res) => {
 // -------------------------------------------------------------
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
+server.on('close', () => livePuzzles.clear());
 
 // In-memory rooms
 const rooms = new Map();
@@ -204,6 +352,7 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  console.log(`[WS] Client connected: ${ip}`);
   const allowMessage = wsRateLimiter.createMessageTracker(35);
   let currentPlayer = null;
   let currentRoomCode = null;
@@ -228,9 +377,15 @@ wss.on('connection', (ws, req) => {
       }
 
       const data = validation.data;
+      console.log(`[WS] Action: ${data.action} (Player: ${data.playerId || 'anonymous'}, Room: ${data.roomCode || 'new'})`);
 
       switch (data.action) {
         case 'create_room': {
+          const livePuzzle = livePuzzles.consume(data.livePuzzleToken);
+          if (!livePuzzle) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Live puzzle has expired. Generate a new puzzle before creating a room.' }));
+            return;
+          }
           const roomCode = generateRoomCode();
           currentPlayer = {
             id: data.playerId,
@@ -245,9 +400,9 @@ wss.on('connection', (ws, req) => {
             code: roomCode,
             hostId: data.playerId,
             mode: data.mode === 'race' ? 'race' : 'coop',
-            puzzle: data.puzzle || null,
-            sharedGrid: data.puzzle && data.puzzle.rows && data.puzzle.cols
-              ? Array.from({ length: Math.min(30, data.puzzle.rows) }, () => Array(Math.min(30, data.puzzle.cols)).fill(''))
+            puzzle: livePuzzle.puzzle,
+            sharedGrid: livePuzzle.puzzle.rows && livePuzzle.puzzle.cols
+              ? Array.from({ length: Math.min(30, livePuzzle.puzzle.rows) }, () => Array(Math.min(30, livePuzzle.puzzle.cols)).fill(''))
               : null,
             isStarted: false,
             players: [currentPlayer]
@@ -322,13 +477,6 @@ wss.on('connection', (ws, req) => {
         case 'start_game': {
           const room = rooms.get(data.roomCode);
           if (room && (!data.playerId || room.hostId === data.playerId)) {
-            if (data.puzzle && data.puzzle.rows && data.puzzle.cols) {
-              room.puzzle = data.puzzle;
-              room.sharedGrid = Array.from(
-                { length: Math.min(30, data.puzzle.rows) },
-                () => Array(Math.min(30, data.puzzle.cols)).fill('')
-              );
-            }
             room.isStarted = true;
             broadcastToRoom(data.roomCode, {
               type: 'game_started',

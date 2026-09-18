@@ -2,12 +2,21 @@ export type Direction = 'across' | 'down';
 
 export interface Song {
   id: string;
+  provider?: string;
+  providerTrackId?: string;
+  providerArtistId?: string;
   title: string;
   artist: string;
   album: string;
   albumArt: string;
   audioUrl: string;
-  spotifyUrl: string;
+  spotifyUrl?: string;
+  providerUrl?: string;
+  selection?: {
+    source: string;
+    rank: number;
+    artistFans: number;
+  };
 }
 
 export interface Clue {

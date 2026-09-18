@@ -1,7 +1,21 @@
 import React, { useState } from 'react';
 import { MultiplayerRoom } from '../services/socketService';
-import { Puzzle, ThemeCategory } from '../types/crossword';
+import { Puzzle } from '../types/crossword';
 import { Users, X, Copy, Check, Play, Crown, Zap, Swords, HeartHandshake, Sparkles } from 'lucide-react';
+
+export const MULTIPLAYER_STYLES = [
+  { id: 'all', name: 'Mixed & Eclectic', icon: '🎲' },
+  { id: 'rock', name: 'Rock & Retro', icon: '🎸' },
+  { id: 'pop', name: 'Global Pop', icon: '✨' },
+  { id: 'kpop', name: 'K-Pop Universe', icon: '🌸' },
+  { id: 'hiphop', name: 'Hip-Hop Giants', icon: '🎤' },
+  { id: 'edm', name: 'EDM & Dance', icon: '🎧' },
+  { id: 'latin', name: 'Latin & Reggaeton', icon: '🔥' },
+  { id: 'gaming', name: 'Video Game OSTs', icon: '🎮' },
+  { id: 'anime', name: 'Anime & J-Rock', icon: '⚔️' },
+  { id: 'cinematic', name: 'Cinematic OSTs', icon: '🎬' },
+  { id: 'poppunk', name: 'Pop-Punk & Emo', icon: '🖤' },
+];
 
 interface MultiplayerModalProps {
   isOpen: boolean;
@@ -11,8 +25,7 @@ interface MultiplayerModalProps {
   onCreateRoom: (playerName: string, mode: 'coop' | 'race', themeId: string) => void;
   onJoinRoom: (roomCode: string, playerName: string) => void;
   onStartGame: () => void;
-  currentPuzzle: Puzzle;
-  themes?: ThemeCategory[];
+  currentPuzzle?: Puzzle;
 }
 
 export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
@@ -23,7 +36,6 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   onCreateRoom,
   onJoinRoom,
   onStartGame,
-  themes = [],
 }) => {
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
   const [playerName, setPlayerName] = useState(() => {
@@ -31,7 +43,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   });
   const [joinCode, setJoinCode] = useState('');
   const [selectedMode, setSelectedMode] = useState<'coop' | 'race'>('coop');
-  const [selectedTheme, setSelectedTheme] = useState<string>('mixed');
+  const [selectedTheme, setSelectedTheme] = useState<string>('all');
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -254,35 +266,24 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                   </div>
                 </div>
 
-                {/* Theme Select for Brand New Crossword */}
+                {/* Theme / Style Select for Brand New Crossword */}
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    2. Crossword Musical Theme
+                    2. Crossword Musical Style
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-32 overflow-y-auto pr-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTheme('mixed')}
-                      className={`p-2 rounded-xl border text-xs font-semibold text-left transition cursor-pointer truncate ${
-                        selectedTheme === 'mixed'
-                          ? 'bg-amber-500/25 border-amber-500 text-amber-200'
-                          : 'bg-[#181e2c] border-white/5 text-slate-300 hover:bg-[#202738]'
-                      }`}
-                    >
-                      🎲 Mixed Hits (Fresh)
-                    </button>
-                    {themes.slice(1).map(t => (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1 custom-scrollbar">
+                    {MULTIPLAYER_STYLES.map(style => (
                       <button
-                        key={t.id}
+                        key={style.id}
                         type="button"
-                        onClick={() => setSelectedTheme(t.id)}
+                        onClick={() => setSelectedTheme(style.id)}
                         className={`p-2 rounded-xl border text-xs font-semibold text-left transition cursor-pointer truncate ${
-                          selectedTheme === t.id
-                            ? 'bg-amber-500/25 border-amber-500 text-amber-200'
+                          selectedTheme === style.id
+                            ? 'bg-cyan-500/25 border-cyan-500 text-cyan-200'
                             : 'bg-[#181e2c] border-white/5 text-slate-300 hover:bg-[#202738]'
                         }`}
                       >
-                        {t.icon} {t.name}
+                        {style.icon} {style.name}
                       </button>
                     ))}
                   </div>

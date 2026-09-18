@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { ThemeCategory } from '../types/crossword';
 import { 
   X, 
   Disc3, 
@@ -7,21 +6,18 @@ import {
   Users, 
   Ban, 
   ListMusic, 
-  Layers, 
   Sparkles,
   Keyboard,
   Radio,
-  ChevronRight
+  ChevronRight,
+  Shuffle
 } from 'lucide-react';
 
 interface LoungeDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  themes: ThemeCategory[];
-  activeThemeId: string;
-  onSelectTheme: (themeId: string) => void;
-  onOpenPuzzlePicker: () => void;
   onOpenLiveGenerator: () => void;
+  onInstantRandomPuzzle: () => void;
   onOpenMultiplayer: () => void;
   onOpenBlacklist: () => void;
   onOpenSolvedHistory: () => void;
@@ -33,11 +29,8 @@ interface LoungeDrawerProps {
 export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
   isOpen,
   onClose,
-  themes,
-  activeThemeId,
-  onSelectTheme,
-  onOpenPuzzlePicker,
   onOpenLiveGenerator,
+  onInstantRandomPuzzle,
   onOpenMultiplayer,
   onOpenBlacklist,
   onOpenSolvedHistory,
@@ -57,8 +50,6 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-
-  const activeTheme = themes.find(t => t.id === activeThemeId) || themes[0];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -109,7 +100,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
                 <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                 <span>ACTIVE TURNTABLE</span>
               </span>
-              <span className="text-slate-400 font-bold">{activeTheme.icon} {activeTheme.name}</span>
+              <span className="text-emerald-400 font-bold">⚡ Live Crossword</span>
             </div>
 
             <div className="text-lg font-black text-white tracking-tight mb-3">
@@ -120,12 +111,12 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
               type="button"
               onClick={() => {
                 onClose();
-                onOpenPuzzlePicker();
+                onInstantRandomPuzzle();
               }}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 font-bold text-xs transition cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 font-bold text-xs transition cursor-pointer"
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Browse All 20 Puzzles In This Theme</span>
+              <Shuffle className="w-3.5 h-3.5" />
+              <span>Generate Fresh Random Puzzle</span>
               <ChevronRight className="w-3.5 h-3.5 ml-auto" />
             </button>
           </div>
@@ -134,7 +125,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
           <div>
             <div className="text-[11px] font-mono uppercase tracking-widest text-slate-400 mb-2.5 flex items-center gap-1.5 font-bold">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Listening Stations & Modes</span>
+              <span>Crossword Generators & Modes</span>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5">
@@ -153,10 +144,10 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
                   </div>
                   <div>
                     <div className="text-sm font-bold text-slate-100 group-hover:text-amber-200 transition">
-                      Live Studio (On-The-Fly)
+                      Live Studio (Style & Size Picker)
                     </div>
                     <div className="text-xs text-slate-400">
-                      Instantly generate a crossword from 100+ recognized artists
+                      Generate crosswords by genre (Rock, Pop, K-Pop, Gaming & more)
                     </div>
                   </div>
                 </div>
@@ -196,48 +187,6 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition" />
               </button>
-            </div>
-          </div>
-
-          {/* Record Crate: 11 Themes Catalog */}
-          <div>
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="text-[11px] font-mono uppercase tracking-widest text-slate-400 font-bold flex items-center gap-1.5">
-                <Disc3 className="w-3.5 h-3.5 text-amber-400" />
-                <span>The Vinyl Crate (11 Themes)</span>
-              </div>
-              <span className="text-[10px] font-mono text-slate-500 font-bold">220+ PUZZLES</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {themes.map(t => {
-                const isSelected = t.id === activeThemeId;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectTheme(t.id);
-                      onClose();
-                    }}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                      isSelected
-                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.2)] font-bold'
-                        : 'bg-[#141824] hover:bg-[#1a2030] border-white/5 text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-lg shrink-0">{t.icon}</span>
-                    <div className="truncate">
-                      <div className="text-xs font-semibold truncate leading-snug">
-                        {t.name}
-                      </div>
-                      <div className="text-[10px] font-mono text-slate-500">
-                        20 Puzzles
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
             </div>
           </div>
 

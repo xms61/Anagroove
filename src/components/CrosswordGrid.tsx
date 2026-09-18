@@ -50,7 +50,7 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
     } else if (e.key === 'Backspace') {
       e.preventDefault();
       onBackspace();
-    } else if (/^[a-zA-Z]$/.test(e.key)) {
+    } else if (/^[a-zA-Z0-9]$/.test(e.key)) {
       e.preventDefault();
       onInputLetter(e.key);
     }
@@ -75,7 +75,7 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
           const val = e.target.value;
           if (val) {
             const lastChar = val.slice(-1);
-            if (/^[a-zA-Z]$/.test(lastChar)) {
+            if (/^[a-zA-Z0-9]$/.test(lastChar)) {
               onInputLetter(lastChar);
             }
           }

@@ -1,11 +1,12 @@
 /**
- * Extracts a clean uppercase A-Z answer word (length 3 to 10) from a song title or artist name.
- * Canonical implementation shared across backend music services and frontend generators.
+ * Extracts a title keyword, falling back to a complete normalized artist name.
  *
  * @param {string} title - Track title
  * @param {string} artist - Artist or band name
  * @returns {{ answer: string, clueType: string, clueText: string } | null}
  */
+import { toCrosswordAnswer } from './musicIdentity.js';
+
 export function extractAnswerKeyword(title, artist) {
   if (!title || !artist) return null;
 
@@ -13,12 +14,12 @@ export function extractAnswerKeyword(title, artist) {
     .replace(/\(feat\..*?\)/gi, '')
     .replace(/\[.*?\]/g, '')
     .replace(/\(.*?\)/g, '')
-    .replace(/[^a-zA-Z\s]/g, '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim();
 
   const titleWords = cleanTitle.split(/\s+/).filter(w => w.length >= 3 && w.length <= 10);
-  const cleanArtist = String(artist).replace(/[^a-zA-Z\s]/g, '').trim();
-  const artistWords = cleanArtist.split(/\s+/).filter(w => w.length >= 3 && w.length <= 10);
 
   // Strategy 1: Single-word song title
   if (titleWords.length === 1 && /^[a-zA-Z]{3,10}$/.test(titleWords[0])) {
@@ -41,9 +42,9 @@ export function extractAnswerKeyword(title, artist) {
     };
   }
 
-  // Strategy 3: Artist name keyword
-  if (artistWords.length > 0) {
-    const candidate = artistWords[0].toUpperCase();
+  // Strategy 3: Complete artist answer. Never drop words from a display name.
+  const candidate = toCrosswordAnswer(artist);
+  if (candidate) {
     return {
       answer: candidate,
       clueType: 'Artist name',

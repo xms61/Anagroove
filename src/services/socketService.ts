@@ -107,8 +107,8 @@ class SocketService {
     }
   }
 
-  public createRoom(playerId: string, playerName: string, mode: 'coop' | 'race', puzzle: Puzzle | null) {
-    return this.send('create_room', { playerId, playerName, mode, puzzle });
+  public createRoom(playerId: string, playerName: string, mode: 'coop' | 'race', livePuzzleToken: string) {
+    return this.send('create_room', { playerId, playerName, mode, livePuzzleToken });
   }
 
   public joinRoom(roomCode: string, playerId: string, playerName: string) {

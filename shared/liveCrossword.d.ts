@@ -1,7 +1,6 @@
-import { generateLiveCrossword as buildLiveCrossword } from '../../shared/liveCrossword';
-import { Puzzle } from '../types/crossword';
+import type { Puzzle } from '../src/types/crossword';
 
-export interface SongItem {
+export interface LiveSong {
   id: string;
   provider?: string;
   providerTrackId?: string;
@@ -22,10 +21,8 @@ export interface SongItem {
   clueText: string;
 }
 
-export function generateLiveCrossword(
-  songs: SongItem[],
-  title = '⚡ Live Crossword',
-  targetWords = 10
-): Puzzle | null {
-  return buildLiveCrossword(songs, title, targetWords);
-}
+export declare function generateLiveCrossword(
+  songs: LiveSong[],
+  title?: string,
+  targetWords?: number
+): Puzzle | null;

@@ -120,7 +120,7 @@ export function validateHistoryPayload(body) {
 export function validateBlacklistPayload(body) {
   if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
 
-  const { name, type } = body;
+  const { name, type, provider, providerArtistId, providerTrackId } = body;
 
   if (typeof name !== 'string' || name.trim().length === 0 || name.length > 100) {
     return { valid: false, error: 'Name must be between 1 and 100 characters' };
@@ -130,13 +130,53 @@ export function validateBlacklistPayload(body) {
     return { valid: false, error: 'Type must be either "artist" or "song"' };
   }
 
+  const normalizedProvider = typeof provider === 'string' ? provider.trim().toLowerCase() : '';
+  const artistId = typeof providerArtistId === 'string' || typeof providerArtistId === 'number'
+    ? String(providerArtistId).trim().slice(0, 100)
+    : '';
+  const trackId = typeof providerTrackId === 'string' || typeof providerTrackId === 'number'
+    ? String(providerTrackId).trim().slice(0, 100)
+    : '';
+
+  if (normalizedProvider && !/^[a-z0-9_-]{1,30}$/.test(normalizedProvider)) {
+    return { valid: false, error: 'Invalid music provider' };
+  }
+
   return {
     valid: true,
     data: {
       name: name.trim(),
-      type
+      type,
+      ...(normalizedProvider ? { provider: normalizedProvider } : {}),
+      ...(type === 'artist' && artistId ? { providerArtistId: artistId } : {}),
+      ...(type === 'song' && trackId ? { providerTrackId: trackId } : {}),
     }
   };
+}
+
+/**
+ * Validates an on-demand live puzzle request.
+ */
+export function validateLivePuzzlePayload(body) {
+  if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
+  if (body.genre !== undefined && typeof body.genre !== 'string') return { valid: false, error: 'Invalid genre' };
+  if (body.minFans !== undefined && !Number.isFinite(Number(body.minFans))) return { valid: false, error: 'Invalid minFans' };
+  if (body.targetWords !== undefined && !Number.isFinite(Number(body.targetWords))) return { valid: false, error: 'Invalid targetWords' };
+  if (body.recentIds !== undefined && !Array.isArray(body.recentIds)) return { valid: false, error: 'recentIds must be an array' };
+
+  const rawGenre = typeof body.genre === 'string' ? body.genre.trim().toLowerCase() : 'all';
+  const genre = rawGenre.replace(/[^a-z0-9_-]/g, '').slice(0, 30) || 'all';
+  const minFans = Math.max(0, Math.min(50000000, parseInt(body.minFans) || 250000));
+  const targetWords = Math.max(6, Math.min(15, parseInt(body.targetWords) || 10));
+  const recentIds = Array.isArray(body.recentIds)
+    ? body.recentIds
+      .slice(-50)
+      .filter(id => typeof id === 'string' || typeof id === 'number')
+      .map(id => String(id).trim().slice(0, 100))
+      .filter(Boolean)
+    : [];
+
+  return { valid: true, data: { genre, minFans, targetWords, recentIds } };
 }
 
 /**
@@ -199,6 +239,12 @@ export function validateWsMessage(data) {
 
   if (data.playerName) {
     data.playerName = String(data.playerName).slice(0, 30).trim();
+  }
+
+  if (data.action === 'create_room') {
+    if (typeof data.livePuzzleToken !== 'string' || !/^[a-f0-9-]{36}$/i.test(data.livePuzzleToken)) {
+      return { valid: false, error: 'A server-generated live puzzle token is required to create a room' };
+    }
   }
 
   if (data.action === 'coop_cell_update') {

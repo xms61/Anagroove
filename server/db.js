@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { blacklistIdentityKey, canonicalArtistKey, canonicalTrackKey } from '../shared/musicIdentity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -186,18 +187,36 @@ export const db = {
 
   getBlacklist(userId) {
     const user = this.getUser(userId);
-    return user ? user.blacklist || [] : [];
+    return user
+      ? (user.blacklist || []).map(item => ({
+        ...item,
+        canonicalKey: item.canonicalKey || (item.type === 'artist'
+          ? canonicalArtistKey(item.name)
+          : canonicalTrackKey(item.name)),
+      }))
+      : [];
   },
 
   addBlacklistItem(userId, item) {
     const user = this.getUser(userId);
     if (!user) return [];
     const trimmedName = String(item.name).trim();
-    if (!user.blacklist.some(b => b.name.toLowerCase() === trimmedName.toLowerCase() && b.type === item.type)) {
+    const canonicalKey = item.type === 'artist'
+      ? canonicalArtistKey(trimmedName)
+      : canonicalTrackKey(trimmedName);
+    const identityKey = blacklistIdentityKey({ ...item, canonicalKey });
+    const hasSameItem = user.blacklist.some(b =>
+      b.type === item.type && blacklistIdentityKey(b) === identityKey
+    );
+    if (!hasSameItem) {
       user.blacklist.push({
         id: item.id || `bl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: trimmedName,
         type: item.type, // 'artist' | 'song'
+        canonicalKey,
+        ...(item.provider ? { provider: item.provider } : {}),
+        ...(item.type === 'artist' && item.providerArtistId ? { providerArtistId: item.providerArtistId } : {}),
+        ...(item.type === 'song' && item.providerTrackId ? { providerTrackId: item.providerTrackId } : {}),
         dateAdded: Date.now()
       });
       persistStore();
@@ -208,7 +227,8 @@ export const db = {
   removeBlacklistItem(userId, itemId) {
     const user = this.getUser(userId);
     if (!user) return [];
-    user.blacklist = user.blacklist.filter(b => b.id !== itemId && b.name.toLowerCase() !== String(itemId).toLowerCase());
+    const lookupKey = canonicalArtistKey(String(itemId));
+    user.blacklist = user.blacklist.filter(b => b.id !== itemId && (b.canonicalKey || canonicalArtistKey(b.name)) !== lookupKey);
     persistStore();
     return user.blacklist;
   }

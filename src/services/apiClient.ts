@@ -43,8 +43,14 @@ export interface BlacklistItem {
   id: string;
   name: string;
   type: 'artist' | 'song';
+  canonicalKey?: string;
+  provider?: string;
+  providerArtistId?: string;
+  providerTrackId?: string;
   dateAdded: number;
 }
+
+export type BlacklistTarget = Omit<BlacklistItem, 'id' | 'dateAdded' | 'canonicalKey'>;
 
 export const apiClient = {
   async getProgress(): Promise<SavedProgress | null> {
@@ -114,7 +120,7 @@ export const apiClient = {
     return [];
   },
 
-  async getBlacklist(): Promise<BlacklistItem[]> {
+  async getBlacklist(): Promise<BlacklistItem[] | null> {
     try {
       const res = await fetch('/api/blacklist', { headers: headers() });
       if (res.ok) {
@@ -124,15 +130,15 @@ export const apiClient = {
     } catch (err) {
       console.warn('Could not fetch blacklist from server:', err);
     }
-    return [];
+    return null;
   },
 
-  async addBlacklist(name: string, type: 'artist' | 'song'): Promise<BlacklistItem[]> {
+  async addBlacklist(target: BlacklistTarget): Promise<BlacklistItem[] | null> {
     try {
       const res = await fetch('/api/blacklist', {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ name, type }),
+        body: JSON.stringify(target),
       });
       if (res.ok) {
         const data = await res.json();
@@ -141,10 +147,10 @@ export const apiClient = {
     } catch (err) {
       console.warn('Could not add to blacklist on server:', err);
     }
-    return [];
+    return null;
   },
 
-  async removeBlacklist(id: string): Promise<BlacklistItem[]> {
+  async removeBlacklist(id: string): Promise<BlacklistItem[] | null> {
     try {
       const res = await fetch(`/api/blacklist/${encodeURIComponent(id)}`, {
         method: 'DELETE',
@@ -157,6 +163,6 @@ export const apiClient = {
     } catch (err) {
       console.warn('Could not remove blacklist item on server:', err);
     }
-    return [];
+    return null;
   },
 };

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Puzzle } from '../types/crossword';
 import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban } from 'lucide-react';
-import { resolveFreshAudioUrl } from '../utils/audioResolver';
+import { Song } from '../types/crossword';
 
 interface EndScreenModalProps {
   isOpen: boolean;
@@ -9,8 +9,8 @@ interface EndScreenModalProps {
   puzzle: Puzzle;
   onNextPuzzle?: () => void;
   onRestartPuzzle?: () => void;
-  onBlacklistArtist?: (artist: string) => void;
-  onBlacklistSong?: (title: string) => void;
+  onBlacklistArtist?: (song: Song) => void;
+  onBlacklistSong?: (song: Song) => void;
 }
 
 export const EndScreenModal: React.FC<EndScreenModalProps> = ({
@@ -31,7 +31,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
     new Map(puzzle.clues.map(clue => [clue.song.id, { song: clue.song, answer: clue.answer }])).values()
   );
 
-  const handlePlayAudio = async (songId: string, audioUrl: string, songTitle: string, artist: string) => {
+  const handlePlayAudio = async (songId: string, audioUrl: string) => {
     if (!audioRef.current) return;
 
     if (playingSongId === songId) {
@@ -41,17 +41,9 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
       audioRef.current.src = audioUrl;
       audioRef.current.play().then(() => {
         setPlayingSongId(songId);
-      }).catch(async (err) => {
-        console.warn("Playback error, resolving fresh link dynamically:", err);
-        const fresh = await resolveFreshAudioUrl(songTitle, artist, audioUrl);
-        if (fresh && audioRef.current) {
-          audioRef.current.src = fresh;
-          audioRef.current.play().then(() => {
-            setPlayingSongId(songId);
-          }).catch(() => setPlayingSongId(null));
-        } else {
-          setPlayingSongId(null);
-        }
+      }).catch((err) => {
+        console.warn('Preview playback failed:', err);
+        setPlayingSongId(null);
       });
     }
   };
@@ -112,7 +104,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => handlePlayAudio(song.id, song.audioUrl, song.title, song.artist)}
+                      onClick={() => handlePlayAudio(song.id, song.audioUrl)}
                       className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-90 group-hover:opacity-100 transition cursor-pointer"
                       title={isCurrentPlaying ? "Pause preview" : "Play preview"}
                     >
@@ -143,7 +135,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                   {onBlacklistArtist && (
                     <button
                       type="button"
-                      onClick={() => onBlacklistArtist(song.artist)}
+                      onClick={() => onBlacklistArtist(song)}
                       title={`Blacklist artist: ${song.artist}`}
                       className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px]"
                     >
@@ -155,7 +147,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                   {onBlacklistSong && (
                     <button
                       type="button"
-                      onClick={() => onBlacklistSong(song.title)}
+                      onClick={() => onBlacklistSong(song)}
                       title={`Blacklist track: ${song.title}`}
                       className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px]"
                     >
@@ -168,16 +160,16 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     {answer}
                   </span>
 
-                  <a
-                    href={song.spotifyUrl}
+                  {(song.providerUrl || song.spotifyUrl) && <a
+                    href={song.providerUrl || song.spotifyUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#1db954]/20 text-[#1db954] hover:bg-[#1db954] hover:text-slate-950 border border-[#1db954]/30 text-xs font-bold transition shadow-sm"
-                    title="Open track on Spotify"
+                    title={`Open track on ${song.provider === 'deezer' ? 'Deezer' : 'Spotify'}`}
                   >
-                    <span>Spotify</span>
+                    <span>{song.provider === 'deezer' ? 'Deezer' : 'Spotify'}</span>
                     <ExternalLink className="w-3 h-3" />
-                  </a>
+                  </a>}
                 </div>
               </div>
             );

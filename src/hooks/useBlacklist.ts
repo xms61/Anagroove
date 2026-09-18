@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient, BlacklistItem } from '../services/apiClient';
+import { Song } from '../types/crossword';
+import { blacklistIdentityKey, canonicalMusicKey } from '../../shared/musicIdentity';
 
 const LOCAL_STORAGE_KEY = 'spotyspice_local_blacklist';
 
@@ -16,71 +18,88 @@ export function useBlacklist() {
   // Sync from server on mount
   useEffect(() => {
     apiClient.getBlacklist().then(serverList => {
-      if (serverList && serverList.length > 0) {
+      if (serverList) {
+        const serverKeys = new Set(serverList.map(blacklistIdentityKey));
+        const localOnly = blacklist.filter(item => !serverKeys.has(blacklistIdentityKey(item)));
+        if (localOnly.length > 0) {
+          Promise.all(localOnly.map(item => apiClient.addBlacklist({
+            name: item.name,
+            type: item.type,
+            ...(item.provider ? { provider: item.provider } : {}),
+            ...(item.providerArtistId ? { providerArtistId: item.providerArtistId } : {}),
+            ...(item.providerTrackId ? { providerTrackId: item.providerTrackId } : {}),
+          }))).then(() => apiClient.getBlacklist()).then(migrated => {
+            if (migrated) {
+              setBlacklist(migrated);
+              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(migrated));
+            }
+          });
+          return;
+        }
         setBlacklist(serverList);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(serverList));
       }
     });
   }, []);
 
-  const addArtist = useCallback(async (artistName: string) => {
+  const addArtist = useCallback(async (artist: Pick<Song, 'artist' | 'provider' | 'providerArtistId'> | string) => {
+    const artistName = typeof artist === 'string' ? artist : artist.artist;
     const trimmed = artistName.trim();
     if (!trimmed) return;
 
-    const updated = await apiClient.addBlacklist(trimmed, 'artist');
-    if (updated.length > 0) {
-      setBlacklist(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } else {
-      setBlacklist(prev => {
-        if (prev.some(b => b.name.toLowerCase() === trimmed.toLowerCase() && b.type === 'artist')) return prev;
-        const next = [...prev, { id: `bl-${Date.now()}`, name: trimmed, type: 'artist' as const, dateAdded: Date.now() }];
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
-        return next;
-      });
+    const target = {
+      name: trimmed,
+      type: 'artist' as const,
+      ...(typeof artist !== 'string' && artist.provider ? { provider: artist.provider } : {}),
+      ...(typeof artist !== 'string' && artist.providerArtistId ? { providerArtistId: artist.providerArtistId } : {}),
+    };
+    const updated = await apiClient.addBlacklist(target);
+    if (!updated) {
+      alert('Could not save your blacklist change. Live puzzles were not changed.');
+      return;
     }
+    setBlacklist(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
-  const addSong = useCallback(async (songTitle: string) => {
+  const addSong = useCallback(async (song: Pick<Song, 'title' | 'provider' | 'providerTrackId'> | string) => {
+    const songTitle = typeof song === 'string' ? song : song.title;
     const trimmed = songTitle.trim();
     if (!trimmed) return;
 
-    const updated = await apiClient.addBlacklist(trimmed, 'song');
-    if (updated.length > 0) {
-      setBlacklist(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } else {
-      setBlacklist(prev => {
-        if (prev.some(b => b.name.toLowerCase() === trimmed.toLowerCase() && b.type === 'song')) return prev;
-        const next = [...prev, { id: `bl-${Date.now()}`, name: trimmed, type: 'song' as const, dateAdded: Date.now() }];
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
-        return next;
-      });
+    const target = {
+      name: trimmed,
+      type: 'song' as const,
+      ...(typeof song !== 'string' && song.provider ? { provider: song.provider } : {}),
+      ...(typeof song !== 'string' && song.providerTrackId ? { providerTrackId: song.providerTrackId } : {}),
+    };
+    const updated = await apiClient.addBlacklist(target);
+    if (!updated) {
+      alert('Could not save your blacklist change. Live puzzles were not changed.');
+      return;
     }
+    setBlacklist(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   const removeItem = useCallback(async (idOrName: string) => {
     const updated = await apiClient.removeBlacklist(idOrName);
-    if (updated) {
-      setBlacklist(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } else {
-      setBlacklist(prev => {
-        const next = prev.filter(b => b.id !== idOrName && b.name.toLowerCase() !== idOrName.toLowerCase());
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
-        return next;
-      });
+    if (!updated) {
+      alert('Could not remove this blacklist item. Live puzzles were not changed.');
+      return;
     }
+    setBlacklist(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   const isBlacklisted = useCallback((songTitle: string, artistName: string) => {
-    const lowerT = songTitle.toLowerCase();
-    const lowerA = artistName.toLowerCase();
+    const titleKey = canonicalMusicKey(songTitle);
+    const artistKey = canonicalMusicKey(artistName);
     return blacklist.some(b => {
-      const blName = b.name.toLowerCase();
-      if (b.type === 'artist') return lowerA.includes(blName);
-      if (b.type === 'song') return lowerT.includes(blName);
-      return lowerT.includes(blName) || lowerA.includes(blName);
+      const blacklistKey = b.canonicalKey || canonicalMusicKey(b.name);
+      return b.type === 'artist'
+        ? artistKey === blacklistKey || artistKey.includes(blacklistKey)
+        : titleKey === blacklistKey || titleKey.includes(blacklistKey);
     });
   }, [blacklist]);
 

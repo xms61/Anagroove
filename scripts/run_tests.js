@@ -2,14 +2,29 @@ import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
 import { extractAnswerKeyword } from '../shared/musicKeywords.js';
 import {
+  blacklistIdentityKey,
+  blacklistMatchesTrack,
+  canonicalArtistKey,
+  toCrosswordAnswer,
+} from '../shared/musicIdentity.js';
+import {
+  deezerMusicProvider,
+  DEEZER_GENRE_TAXONOMY,
+  getDeezerCacheStatsForTesting,
+  mapDeezerTrack,
+  resetDeezerCachesForTesting,
+} from '../server/services/deezerMusicProvider.js';
+import { getRandomSongPool, setMusicProviderForTesting } from '../server/services/musicService.js';
+import {
   validateUserId,
   validateProgressPayload,
   validateHistoryPayload,
   validateBlacklistPayload,
   validateMusicQuery,
+  validateLivePuzzlePayload,
   validateWsMessage
 } from '../server/validators.js';
-import { server } from '../server/server.js';
+import { createLivePuzzleStore, server } from '../server/server.js';
 import { db } from '../server/db.js';
 
 let passedCount = 0;
@@ -60,6 +75,23 @@ async function runUnitTests() {
 
   const nullResult = extractAnswerKeyword('', '');
   assert(nullResult === null, 'Returns null on empty input');
+  assert(canonicalArtistKey('  21 PILOTS  ') === '21 pilots', 'Artist identity preserves numeric tokens');
+  assert(canonicalArtistKey('Beyoncé') === canonicalArtistKey('BEYONCE'), 'Artist identity folds case and diacritics');
+  assert(toCrosswordAnswer('Beyoncé') === 'BEYONCE', 'Artist answers remove diacritics without truncation');
+  assert(toCrosswordAnswer('21 pilots') === '21PILOTS', 'Artist answers retain every numeric and word token');
+  assert(toCrosswordAnswer('東京') === null, 'Rejects unsupported crossword answers instead of corrupting them');
+
+  const migrationIdentityKeys = new Set([
+    { type: 'song', name: 'Same Title' },
+    { type: 'song', name: 'Same Title', provider: 'deezer', providerTrackId: '101' },
+    { type: 'song', name: 'same-title', provider: 'deezer', providerTrackId: '202' },
+    { type: 'artist', name: 'Beyoncé' },
+    { type: 'artist', name: 'beyonce', provider: 'deezer', providerArtistId: '42' },
+  ].map(blacklistIdentityKey));
+  assert(
+    migrationIdentityKeys.size === 5,
+    'Blacklist migration identities retain generic and distinct provider-scoped entries'
+  );
 
   console.log('\n--- 3. Testing Backend Input Validators ---');
   assert(validateUserId('valid_user-123') === 'valid_user-123', 'Accepts valid user ID format');
@@ -93,12 +125,14 @@ async function runUnitTests() {
 
   const validQuery = validateMusicQuery({ genre: 'rock', minFans: '500000', count: '15', recent: 'a,b,c' });
   assert(validQuery.genre === 'rock' && validQuery.count === 15 && validQuery.recentIds.length === 3, 'Sanitizes and parses music query parameters');
+  assert(validateLivePuzzlePayload({ targetWords: 'bad' }).valid === false, 'Rejects malformed live-puzzle requests');
 
   const validWs = validateWsMessage({
     action: 'create_room',
     playerId: 'host_123',
     playerName: 'Alice',
-    mode: 'coop'
+    mode: 'coop',
+    livePuzzleToken: '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
   });
   assert(validWs.valid === true, 'Accepts valid WebSocket action');
 
@@ -107,10 +141,130 @@ async function runUnitTests() {
     playerId: 'user_1'
   });
   assert(invalidWs.valid === false, 'Rejects unlisted WebSocket action');
+
+  console.log('\n--- 3b. Testing Live Mode Genre Taxonomy & Catalog Parity ---');
+  const catalogThemes = [
+    'mixed', 'kpop', 'anime', 'gaming', 'pop', 'rock',
+    'hiphop', 'edm', 'cinematic', 'latin', 'poppunk'
+  ];
+  for (const theme of catalogThemes) {
+    const puzValidation = validateLivePuzzlePayload({ genre: theme });
+    assert(puzValidation.valid && puzValidation.data.genre === theme, `validateLivePuzzlePayload accepts genre '${theme}'`);
+    const conf = DEEZER_GENRE_TAXONOMY[theme];
+    assert(
+      conf && (conf.chartId !== undefined || conf.searches?.length > 0) && conf.minFans > 0 && conf.minRank > 0,
+      `DEEZER_GENRE_TAXONOMY defines viable configuration for catalog theme '${theme}'`
+    );
+  }
+  assert(Boolean(DEEZER_GENRE_TAXONOMY.all && DEEZER_GENRE_TAXONOMY.electronic), 'Backward compatibility aliases all and electronic exist');
+
+  console.log('\n--- 4. Testing Deezer Provider Resilience and Cache Bounds ---');
+  const originalFetch = globalThis.fetch;
+  const originalDateNow = Date.now;
+  let now = 0;
+  let chartRequests = 0;
+  let failedArtistRequests = 0;
+  let successfulArtistRequests = 0;
+  let retryFailedArtistRequests = true;
+  let failAllArtistRequests = false;
+  let topLevelFailure = false;
+  resetDeezerCachesForTesting();
+  Date.now = () => now;
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/chart/0/tracks')) {
+      chartRequests++;
+      if (topLevelFailure) return new Response('', { status: 400 });
+      return new Response(JSON.stringify({
+        data: [
+          { id: 1, title: 'First Hit', preview: 'https://cdn.example.test/1.mp3', rank: 500000, artist: { id: 10, name: 'First Artist' } },
+          { id: 2, title: 'Second Hit', preview: 'https://cdn.example.test/2.mp3', rank: 500000, artist: { id: 20, name: 'Second Artist' } },
+        ],
+      }), { status: 200 });
+    }
+    if (requestUrl.includes('/artist/10')) {
+      failedArtistRequests++;
+      return new Response('', { status: retryFailedArtistRequests ? 503 : 400 });
+    }
+    if (failAllArtistRequests) return new Response('', { status: 400 });
+    successfulArtistRequests++;
+    return new Response(JSON.stringify({ nb_fan: 900000 }), { status: 200 });
+  };
+
+  try {
+    const candidates = await deezerMusicProvider.getCandidateTracks({ limit: 2, minFans: 250000 });
+    assert(
+      candidates.length === 1 && candidates[0].providerTrackId === '2' &&
+      failedArtistRequests === 3 && successfulArtistRequests === 1,
+      'Skips an artist enrichment after retries while retaining other Deezer candidates'
+    );
+
+    now += (5 * 60 * 1000) + 1;
+    await deezerMusicProvider.getCandidateTracks({ limit: 2, minFans: 250000 });
+    assert(
+      chartRequests === 2 && successfulArtistRequests === 2,
+      'Expired Deezer track and artist cache entries are removed and refetched'
+    );
+
+    resetDeezerCachesForTesting();
+    retryFailedArtistRequests = false;
+    failAllArtistRequests = true;
+    const requestsBeforeFailedScan = chartRequests;
+    const emptyCandidates = await deezerMusicProvider.getCandidateTracks({ limit: 2, minFans: 250000 });
+    failAllArtistRequests = false;
+    const recoveredCandidates = await deezerMusicProvider.getCandidateTracks({ limit: 2, minFans: 250000 });
+    assert(
+      emptyCandidates.length === 0 && recoveredCandidates.length === 1 &&
+      chartRequests === requestsBeforeFailedScan + 2,
+      'Failed artist scans do not cache an empty candidate pool'
+    );
+
+    resetDeezerCachesForTesting();
+    topLevelFailure = true;
+    let propagatedTopLevelFailure = false;
+    try {
+      await deezerMusicProvider.getCandidateTracks({ limit: 1, minFans: 250000 });
+    } catch {
+      propagatedTopLevelFailure = true;
+    }
+    topLevelFailure = false;
+    assert(propagatedTopLevelFailure, 'Propagates top-level Deezer provider failures');
+
+    resetDeezerCachesForTesting();
+    for (let i = 0; i <= 100; i++) {
+      await deezerMusicProvider.getCandidateTracks({ minFans: i, limit: 1 });
+    }
+    const requestsBeforeEvictedCacheRead = chartRequests;
+    await deezerMusicProvider.getCandidateTracks({ minFans: 0, limit: 1 });
+    const cacheStats = getDeezerCacheStatsForTesting();
+    assert(
+      cacheStats.trackEntries === 100 && cacheStats.artistEntries <= 100 &&
+      chartRequests === requestsBeforeEvictedCacheRead + 1,
+      'Deezer caches use a bounded deterministic eviction limit'
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalDateNow;
+    resetDeezerCachesForTesting();
+  }
+
+  let tokenNumber = 0;
+  const livePuzzleStore = createLivePuzzleStore({
+    ttlMs: 10,
+    maxEntries: 2,
+    createToken: () => `token-${++tokenNumber}`,
+  });
+  livePuzzleStore.add({ id: 1 });
+  livePuzzleStore.add({ id: 2 });
+  livePuzzleStore.add({ id: 3 });
+  assert(livePuzzleStore.size === 2, 'Live puzzle store evicts the oldest payload at capacity');
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert(livePuzzleStore.size === 0, 'Live puzzle store expires idle payloads independently');
+  livePuzzleStore.clear();
 }
 
 async function runIntegrationTests() {
-  console.log('\n--- 4. Running Integration Tests with Ephemeral Server ---');
+  console.log('\n--- 5. Running Integration Tests with Ephemeral Server ---');
 
   // Start ephemeral server on random available port
   const testServer = await new Promise((resolve) => {
@@ -175,6 +329,180 @@ async function runIntegrationTests() {
     const blData = await blGet.json();
     assert(blData.blacklist.some(b => b.name === 'The Beatles'), 'GET /api/blacklist contains added item');
 
+    const beyonceBlacklist = await fetch(`${baseUrl}/api/blacklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ name: 'Beyoncé', type: 'artist', provider: 'deezer', providerArtistId: '42' })
+    });
+    const beyonceGeneric = await fetch(`${baseUrl}/api/blacklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ name: 'beyonce', type: 'artist' })
+    });
+    const beyonceSecondScoped = await fetch(`${baseUrl}/api/blacklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ name: 'BEYONCE', type: 'artist', provider: 'deezer', providerArtistId: '43' })
+    });
+    const beyonceGenericVariant = await fetch(`${baseUrl}/api/blacklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ name: 'BEYONCÉ', type: 'artist' })
+    });
+    const beyonceData = await beyonceGenericVariant.json();
+    const beyonceEntries = beyonceData.blacklist.filter(item => item.canonicalKey === 'beyonce');
+    const genericBeyonce = beyonceEntries.find(item => !item.provider);
+    const scopedBeyonce = beyonceEntries.find(item =>
+      item.provider === 'deezer' && item.providerArtistId === '42'
+    );
+    assert(
+      beyonceBlacklist.status === 200 && beyonceGeneric.status === 200 && beyonceSecondScoped.status === 200 &&
+      beyonceEntries.length === 3 && genericBeyonce && scopedBeyonce &&
+      beyonceEntries.some(item => item.provider === 'deezer' && item.providerArtistId === '43'),
+      'Generic and distinct provider-scoped artist blacklist entries coexist'
+    );
+
+    const mapped = mapDeezerTrack({
+      id: 99,
+      title: 'Test Track',
+      preview: 'https://cdn.example.test/preview.mp3',
+      link: 'https://www.deezer.com/track/99',
+      rank: 500000,
+      artist: { id: 42, name: 'Beyoncé' },
+      album: { title: 'Test Album', cover_medium: 'https://cdn.example.test/cover.jpg' }
+    }, { nb_fan: 900000 });
+    assert(
+      mapped?.artist === 'Beyoncé' && mapped.provider === 'deezer' && mapped.providerTrackId === '99' && mapped.providerArtistId === '42',
+      'Deezer mapping preserves display names and provider IDs'
+    );
+    assert(
+      blacklistMatchesTrack([genericBeyonce], { ...mapped, artist: 'BEYONCE', providerArtistId: '43' }) &&
+      blacklistMatchesTrack([scopedBeyonce], { ...mapped, artist: 'BEYONCE' }) &&
+      !blacklistMatchesTrack([scopedBeyonce], { ...mapped, artist: 'BEYONCE', providerArtistId: '43' }) &&
+      !blacklistMatchesTrack([scopedBeyonce], { ...mapped, provider: 'other', artist: 'BEYONCE' }),
+      'Generic artists match canonically while scoped artists match exact provider IDs'
+    );
+    assert(
+      !blacklistMatchesTrack(
+        [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '1' }],
+        { provider: 'deezer', providerTrackId: '2', title: 'Hello', artist: 'Different Artist' }
+      ),
+      'Provider-specific blacklist IDs do not block homonyms'
+    );
+
+    const [firstSameTitleSong, secondSameTitleSong, genericSong, genericSongVariant] = await Promise.all([
+      fetch(`${baseUrl}/api/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+        body: JSON.stringify({ name: 'Same Title', type: 'song', provider: 'deezer', providerTrackId: '101' })
+      }),
+      fetch(`${baseUrl}/api/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+        body: JSON.stringify({ name: 'same-title', type: 'song', provider: 'deezer', providerTrackId: '202' })
+      }),
+      fetch(`${baseUrl}/api/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+        body: JSON.stringify({ name: 'same-title', type: 'song' })
+      }),
+      fetch(`${baseUrl}/api/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+        body: JSON.stringify({ name: 'Same Title', type: 'song' })
+      }),
+    ]);
+    const songBlacklist = db.getBlacklist(testUserId);
+    const sameTitleEntries = songBlacklist.filter(item => item.canonicalKey === 'same title');
+    const genericSameTitle = sameTitleEntries.find(item => !item.provider);
+    const scopedSameTitle = sameTitleEntries.find(item =>
+      item.provider === 'deezer' && item.providerTrackId === '101'
+    );
+    assert(
+      [firstSameTitleSong, secondSameTitleSong, genericSong, genericSongVariant].every(response => response.status === 200) &&
+      songBlacklist.filter(item => item.provider === 'deezer' &&
+        ['101', '202'].includes(item.providerTrackId)).length === 2 &&
+      sameTitleEntries.length === 3 && genericSameTitle && scopedSameTitle &&
+      blacklistMatchesTrack([genericSameTitle], {
+        provider: 'deezer', providerTrackId: '303', title: 'Same Title', artist: 'Artist Three'
+      }) &&
+      blacklistMatchesTrack([scopedSameTitle], {
+        provider: 'deezer', providerTrackId: '101', title: 'Same Title', artist: 'Artist One'
+      }) &&
+      !blacklistMatchesTrack([scopedSameTitle], {
+        provider: 'deezer', providerTrackId: '202', title: 'Same Title', artist: 'Artist Two'
+      }),
+      'Generic and provider-scoped songs coexist with exact scoped matching'
+    );
+
+    const mockTracks = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({
+      id: `deezer:${index}`,
+      provider: 'deezer',
+      providerTrackId: String(index),
+      providerArtistId: String(index),
+      title,
+      artist: index === 0 ? '21 pilots' : `Artist ${index}`,
+      album: 'Mock Album',
+      albumArt: '',
+      audioUrl: `https://cdn.example.test/${index}.mp3`,
+      providerUrl: `https://www.deezer.com/track/${index}`,
+      rank: 500000,
+      fans: 900000,
+      selection: { source: 'deezer', rank: 500000, artistFans: 900000 },
+    }));
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
+    const filteredPool = await getRandomSongPool({
+      count: 8,
+      blacklist: [{ type: 'artist', name: 'artist 1' }],
+      recentIds: ['deezer:2', 'hit-3']
+    });
+    assert(
+      filteredPool.every(song => song.id !== 'deezer:2' && song.id !== 'deezer:3' && song.providerArtistId !== '1') &&
+      filteredPool.some(song => song.artist === '21 pilots'),
+      'Provider pool honors recent Deezer and legacy hit IDs without changing artist displays'
+    );
+
+    const duplicateAnswerTracks = [
+      { ...mockTracks[0], id: 'deezer:duplicate-1', providerTrackId: 'duplicate-1', title: 'Neon', artist: 'Artist One' },
+      { ...mockTracks[1], id: 'deezer:duplicate-2', providerTrackId: 'duplicate-2', title: 'Neon', artist: 'Artist Two' },
+    ];
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => duplicateAnswerTracks });
+    const uniqueAnswerPool = await getRandomSongPool({ count: 2 });
+    assert(
+      uniqueAnswerPool.length === 1 && uniqueAnswerPool[0].answer === 'NEON',
+      'Provider pool excludes tracks that would duplicate a crossword answer'
+    );
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
+
+    const invalidLive = await fetch(`${baseUrl}/api/puzzles/live`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ targetWords: 'not-a-number' })
+    });
+    assert(invalidLive.status === 400, 'POST /api/puzzles/live validates request data');
+
+    const livePuzzle = await fetch(`${baseUrl}/api/puzzles/live`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ genre: 'all', targetWords: 6, recentIds: [] })
+    });
+    const livePuzzleData = await livePuzzle.json();
+    assert(
+      livePuzzle.status === 200 && livePuzzleData.selection?.provider === 'deezer' &&
+      typeof livePuzzleData.livePuzzleToken === 'string' &&
+      livePuzzleData.puzzle?.clues?.every(clue => clue.song.provider === 'deezer' && clue.song.selection?.source === 'deezer'),
+      'POST /api/puzzles/live returns a complete Deezer puzzle payload'
+    );
+
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => { throw new Error('provider offline'); } });
+    const unavailableLive = await fetch(`${baseUrl}/api/puzzles/live`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
+      body: JSON.stringify({ genre: 'all', targetWords: 6 })
+    });
+    assert(unavailableLive.status === 503, 'Live provider failure returns an error without static fallback');
+    setMusicProviderForTesting();
+
     // WebSocket Room Creation & Messaging
     await new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
@@ -188,7 +516,8 @@ async function runIntegrationTests() {
           action: 'create_room',
           playerId: testUserId,
           playerName: 'Tester',
-          mode: 'coop'
+          mode: 'coop',
+          livePuzzleToken: livePuzzleData.livePuzzleToken
         }));
       });
 

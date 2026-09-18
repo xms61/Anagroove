@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Clue } from '../types/crossword';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, AlertCircle } from 'lucide-react';
-import { resolveFreshAudioUrl } from '../utils/audioResolver';
 
 interface AudioPlayerBarProps {
   activeClue?: Clue;
@@ -54,22 +53,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       audioRef.current.play().then(() => {
         notifyPlayback(true);
         setLoadError(false);
-      }).catch(async (err) => {
-        console.warn("Audio playback issue, attempting dynamic self-healing:", err);
-        if (activeClue) {
-          const fresh = await resolveFreshAudioUrl(activeClue.song.title, activeClue.song.artist, activeClue.song.audioUrl);
-          if (fresh && audioRef.current) {
-            audioRef.current.src = fresh;
-            audioRef.current.play().then(() => {
-              notifyPlayback(true);
-              setLoadError(false);
-            }).catch(() => {
-              notifyPlayback(false);
-              setLoadError(true);
-            });
-            return;
-          }
-        }
+      }).catch((err) => {
+        console.warn('Audio playback failed:', err);
         notifyPlayback(false);
         setLoadError(true);
       });
@@ -89,20 +74,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     setProgress(0);
   };
 
-  // Dynamic self-healing if audio source 404s
-  const handleAudioError = async () => {
-    if (!activeClue) return;
-    console.warn("Audio resource error (404/expired). Resolving fresh link dynamically...");
-    const fresh = await resolveFreshAudioUrl(activeClue.song.title, activeClue.song.artist, activeClue.song.audioUrl);
-    if (fresh && audioRef.current && audioRef.current.src !== fresh) {
-      audioRef.current.src = fresh;
-      if (isPlaying) {
-        audioRef.current.play().catch(() => notifyPlayback(false));
-      }
-    } else {
-      setLoadError(true);
-    }
-  };
+  const handleAudioError = () => setLoadError(true);
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVol = parseFloat(e.target.value);
@@ -187,7 +159,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         <div className="flex items-center gap-3 shrink-0">
           {loadError && (
             <span className="text-xs text-amber-300 flex items-center gap-1 font-medium bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-500/30">
-              <AlertCircle className="w-3 h-3 text-amber-400" /> Reconnecting...
+              <AlertCircle className="w-3 h-3 text-amber-400" /> Preview unavailable
             </span>
           )}
 

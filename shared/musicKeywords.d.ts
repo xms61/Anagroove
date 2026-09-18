@@ -5,7 +5,7 @@ export interface KeywordExtractionResult {
 }
 
 /**
- * Extracts a clean uppercase A-Z answer word (length 3 to 10) from a song title or artist name.
+ * Extracts a title keyword, falling back to a complete normalized artist name.
  */
 export declare function extractAnswerKeyword(
   title: string,
