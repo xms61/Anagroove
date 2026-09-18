@@ -167,16 +167,26 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     {answer}
                   </span>
 
-                  {(song.providerUrl || song.spotifyUrl) && <a
-                    href={song.providerUrl || song.spotifyUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#1db954]/20 text-[#1db954] hover:bg-[#1db954] hover:text-slate-950 border border-[#1db954]/30 text-xs font-bold transition shadow-sm"
-                    title={`Open track on ${song.provider === 'deezer' ? 'Deezer' : 'Spotify'}`}
-                  >
-                    <span>{song.provider === 'deezer' ? 'Deezer' : 'Spotify'}</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>}
+                  {(song.providerUrl || song.spotifyUrl) && (() => {
+                    const providerLabel = song.provider === 'deezer' ? 'Deezer' : song.provider === 'itunes' ? 'Apple Music' : 'Spotify';
+                    const badgeStyle = song.provider === 'itunes'
+                      ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white border-rose-500/30'
+                      : song.provider === 'deezer'
+                        ? 'bg-purple-500/20 text-purple-300 hover:bg-purple-500 hover:text-white border-purple-500/30'
+                        : 'bg-[#1db954]/20 text-[#1db954] hover:bg-[#1db954] hover:text-slate-950 border-[#1db954]/30';
+                    return (
+                      <a
+                        href={song.providerUrl || song.spotifyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold transition shadow-sm border ${badgeStyle}`}
+                        title={`Open track on ${providerLabel}`}
+                      >
+                        <span>{providerLabel}</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    );
+                  })()}
                 </div>
               </div>
             );

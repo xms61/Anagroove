@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.4] - 2026-09-18
+
+### Added
+- **Hint Hotkeys (<kbd>Space</kbd> for Letter, <kbd>Tab</kbd> for Word) (`src/components/CrosswordGrid.tsx`, `src/components/HintModal.tsx`, `src/App.tsx`, `src/hooks/useCrosswordGame.ts`)**:
+  - Bound <kbd>Space</kbd> to instantly reveal the letter at the current cursor cell, validate it, and automatically advance the cursor to the next empty cell in the active word.
+  - Bound <kbd>Tab</kbd> to instantly fill and reveal the entire active word and automatically advance to the next clue.
+  - Added visual keyboard badges (`<kbd>Space</kbd>` and `<kbd>Tab</kbd>`) inside `HintModal.tsx` and updated the header hint button tooltip.
+  - Added real-time co-op synchronization for hints in multiplayer rooms.
+- **Universal Remaster / Reissue Historical Vintage Detection (`server/services/musicService.js`)**:
+  - Implemented regex vintage parser detecting original release stamps in track/album metadata (e.g. `(YYYY Remaster)`, `(Remastered YYYY)`, `(Live YYYY)`).
+  - Automatically evaluates true musical vintage against requested temporal bounds, preventing legacy songs re-released recently (e.g. deathcore remasters) from falsely qualifying for contemporary prompts (`2020-2026`).
+- **Cross-Theme Semantic Prefix & Homonym Guardrails (`server/services/musicService.js`, `server/services/queryBuilder.js`)**:
+  - **Anime**: Filtered out Deezer prefix stem collisions matching `anim*` (`Animal Collective`, `Techno Animal`, `Animosity`, `Os Abelhudos - As Crianças e os Animais`), filtered hardcore techno DJ *AniMe*, and rejected Apple Music JP storefront leakage (K-Pop singles like *TWICE*).
+  - **High-Intent Compound Anime Searches**: Upgraded search generation to query `"anime opening"`, `"anime ost"`, `"anime theme"` instead of bare `"anime"`.
+  - **Gaming / Video Games**: Filtered out rapper *The Game* and non-gaming stem collisions (e.g. *Gamin*).
+  - **Pop-Punk**: Filtered out electronic act *Daft Punk*.
+  - **EDM / Dance**: Filtered out post-hardcore band *Dance Gavin Dance* and Tina Turner's *Private Dancer*.
+  - **Latin**: Filtered out British 80s new wave band *Latin Quarter*.
+- **Accurate Provider Badge Display (`src/components/EndScreenModal.tsx`)**:
+  - Updated puzzle solve screen to display **"Apple Music"** with distinct rose badge styling when tracks originate from the iTunes/Apple Music provider, avoiding misleading "Spotify" badges.
+- **Comprehensive Automated Test Expansion (`scripts/run_tests.js`)**:
+  - Added 17 unit tests verifying cross-theme guardrails, remaster vintage detection, and storefront leakage, bringing the test suite to **172 passing tests**.
+
+---
+
 ## [1.4.3] - 2026-09-18
 
 ### Changed

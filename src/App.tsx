@@ -335,7 +335,7 @@ export default function App() {
               onClick={() => setIsHintOpen(true)}
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
-              title="Get a hint (letter, word, or reveal)"
+              title="Get a hint ([Space] Letter, [Tab] Word)"
             >
               <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
               <span>Hint</span>
@@ -447,6 +447,7 @@ export default function App() {
               onInputLetter={handleInputLetter}
               onBackspace={handleBackspace}
               onMoveCursor={moveCursor}
+              onApplyHint={applyHint}
               teammateCell={teammateCell}
               isPlaying={isAudioPlaying}
             />

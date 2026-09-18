@@ -401,8 +401,35 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     if (type === 'letter') {
       const cell = puzzle.grid[selectedCell.row][selectedCell.col];
       if (!cell.isBlock && cell.char) {
-        newLetters[selectedCell.row][selectedCell.col] = cell.char.toUpperCase();
+        const correctChar = cell.char.toUpperCase();
+        newLetters[selectedCell.row][selectedCell.col] = correctChar;
         newValidity[selectedCell.row][selectedCell.col] = 'correct';
+
+        if (multiplayerRoom?.mode === 'coop' && playerId) {
+          socketService.sendCoopCellUpdate(
+            multiplayerRoom.code,
+            selectedCell.row,
+            selectedCell.col,
+            correctChar,
+            playerId,
+            playerName || 'Teammate',
+            playerColor || '#1db954'
+          );
+        }
+
+        // Advance cursor to next cell in active clue
+        if (activeClue) {
+          const idxInWord =
+            direction === 'across'
+              ? selectedCell.col - activeClue.col
+              : selectedCell.row - activeClue.row;
+
+          if (idxInWord + 1 < activeClue.length) {
+            const nextR = direction === 'across' ? activeClue.row : activeClue.row + idxInWord + 1;
+            const nextC = direction === 'across' ? activeClue.col + idxInWord + 1 : activeClue.col;
+            setSelectedCell({ row: nextR, col: nextC });
+          }
+        }
       }
     } else if (type === 'word' && activeClue) {
       for (let i = 0; i < activeClue.length; i++) {
@@ -410,9 +437,29 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
         const c = activeClue.direction === 'across' ? activeClue.col + i : activeClue.col;
         const expected = puzzle.grid[r][c].char;
         if (expected) {
-          newLetters[r][c] = expected.toUpperCase();
+          const correctChar = expected.toUpperCase();
+          newLetters[r][c] = correctChar;
           newValidity[r][c] = 'correct';
+
+          if (multiplayerRoom?.mode === 'coop' && playerId) {
+            socketService.sendCoopCellUpdate(
+              multiplayerRoom.code,
+              r,
+              c,
+              correctChar,
+              playerId,
+              playerName || 'Teammate',
+              playerColor || '#1db954'
+            );
+          }
         }
+      }
+
+      // Advance to next clue
+      const currentIndex = puzzle.clues.findIndex(clue => clue.id === activeClue.id);
+      if (currentIndex !== -1 && puzzle.clues.length > 1) {
+        const nextIndex = (currentIndex + 1) % puzzle.clues.length;
+        selectClue(puzzle.clues[nextIndex]);
       }
     } else if (type === 'puzzle') {
       for (let r = 0; r < puzzle.rows; r++) {
@@ -429,7 +476,8 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     setUserLetters(newLetters);
     setValidity(newValidity);
     validateGrid(newLetters);
-  }, [userLetters, validity, puzzle, selectedCell, activeClue, validateGrid]);
+    scheduleServerSave(newLetters, newValidity);
+  }, [userLetters, validity, puzzle, selectedCell, activeClue, direction, validateGrid, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor, selectClue]);
 
   return {
     userLetters,

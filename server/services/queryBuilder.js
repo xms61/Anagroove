@@ -221,6 +221,15 @@ export function generateThemeVariations(genre = '', decade = '') {
 
   // Add recognized subgenre synonyms
   const lower = trimmed.toLowerCase();
+  if (lower === 'anime' || lower.includes('anime')) {
+    variations.add('anime opening');
+    variations.add('anime ost');
+    variations.add('anime theme');
+  }
+  if (lower === 'gaming' || lower.includes('gaming') || lower.includes('video game')) {
+    variations.add('video game soundtrack');
+    variations.add('video game ost');
+  }
   if (lower.includes('french house')) variations.add('french touch');
   if (lower.includes('krautrock')) variations.add('kosmische musik');
   if (lower.includes('city pop') || lower.includes('citypop')) variations.add('japanese city pop');
@@ -332,7 +341,12 @@ export function buildQueryPlan(userOptions = {}) {
   // Targeted year queries when a temporal filter is present
   if (options.yearRange) {
     const { start, end } = options.yearRange;
-    const baseSubject = genre || artist || '';
+    let baseSubject = genre || artist || '';
+    if (genre.toLowerCase() === 'anime') {
+      baseSubject = 'anime opening';
+    } else if (genre.toLowerCase() === 'gaming') {
+      baseSubject = 'video game soundtrack';
+    }
     if (baseSubject) {
       if (start !== undefined && end !== undefined) {
         if (start === end) {

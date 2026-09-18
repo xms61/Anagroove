@@ -58,6 +58,7 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
   const title = String(track?.title || '').trim();
   const lowerArtist = artist.toLowerCase();
   const lowerTitle = title.toLowerCase();
+  const candidateGenre = String(track?.selection?.genre || track?.genre || '').toLowerCase();
 
   // Cultural keyword homonym check
   // E.g. prompt is "Japanese City Pop" or "French House" or "German Krautrock"
@@ -98,9 +99,67 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
     }
   }
 
-  // E.g. "Anime": reject tracks where the artist or title is literally just the word "Anime"
+  // ANIME THEMATIC & STEM COLLISION GUARDRAILS
   if (/\banime\b/i.test(context)) {
+    // 1. Literal "Anime" as artist or title
     if (/^anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) {
+      return false;
+    }
+
+    // 2. Hardcore techno DJ "AniMe" and anthem tracks
+    if (/\b(official\s+dominator|ground\s+zero\s+\d+|toxicator\s+\d+|hardcore|anthem)\b/i.test(lowerTitle)) {
+      return false;
+    }
+
+    // 3. Deezer prefix/stem collisions on "anim*" (Animal, Animals, Animais, Animosity, Animate, Animatrix, Anima)
+    // When track contains non-anime Latin/English stems and lacks Japanese/Anime context
+    const hasJapaneseAnimeAffiliation =
+      /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(track?.title || '') ||
+      /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(track?.artist || '') ||
+      /\b(ost|opening|ending|theme|tv\s*size|soundtrack|version\s*tv|j-rock|j-pop|frieren|naruto|kenshin|bleach|one\s*piece|dragon\s*ball|attack\s*on\s*titan|shingeki|jujutsu|demon\s*slayer|kimetsu|bocchi|evangelion|dandadan)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`);
+
+    if (!hasJapaneseAnimeAffiliation) {
+      if (/\b(animals?|animais|animosity|animate|animated|animation|animatrix|anima)\b/i.test(`${lowerArtist} ${lowerTitle}`)) {
+        return false;
+      }
+    }
+
+    // 4. Storefront chart leakage: Reject non-anime genres (e.g. K-Pop charting on Apple Music JP)
+    if (candidateGenre && /\b(k-?pop|korean\s+hip-?hop|country|latin)\b/i.test(candidateGenre)) {
+      return false;
+    }
+  }
+
+  // GAMING / VIDEO GAME THEMATIC GUARDRAILS
+  if (/\b(gaming|video\s*games?)\b/i.test(context)) {
+    if (/^(the\s+)?game$/i.test(lowerArtist)) {
+      return false;
+    }
+    if (/\bgamin(e|s)?\b/i.test(`${lowerArtist} ${lowerTitle}`)) {
+      return false;
+    }
+  }
+
+  // POP PUNK / PUNK GUARDRAILS
+  if (/\b(pop-?punk|punk\s+rock)\b/i.test(context)) {
+    if (/\bdaft\s+punk\b/i.test(lowerArtist)) {
+      return false;
+    }
+  }
+
+  // EDM / ELECTRONIC / DANCE GUARDRAILS
+  if (/\b(edm|electro|dance)\b/i.test(context)) {
+    if (/\bdance\s+gavin\s+dance\b/i.test(lowerArtist) || /\bdance\s+hall\s+crashers\b/i.test(lowerArtist)) {
+      return false;
+    }
+    if (/\bprivate\s+dancer\b/i.test(lowerTitle)) {
+      return false;
+    }
+  }
+
+  // LATIN GUARDRAILS
+  if (/\blatin\b/i.test(context)) {
+    if (/\blatin\s+quarter\b/i.test(lowerArtist) || /\blatin\s+alliance\b/i.test(lowerArtist)) {
       return false;
     }
   }
@@ -109,21 +168,47 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
 }
 
 /**
- * Detects whether a candidate track's release year falls within the requested yearRange.
+ * Detects whether a candidate track's release year falls within the requested yearRange,
+ * accounting for digital remaster and reissue vintage tags.
  */
 export function isTemporalPermitted(track, yearRange) {
   if (!yearRange || (yearRange.start === undefined && yearRange.end === undefined)) {
     return true;
   }
   const dateStr = track?.releaseDate || track?.selection?.releaseDate || '';
-  if (!dateStr) {
+  let year = null;
+  if (dateStr) {
+    const match = String(dateStr).match(/\b(\d{4})\b/);
+    if (match) {
+      year = parseInt(match[1], 10);
+    }
+  }
+
+  // Universal Remaster / Reissue Historical Vintage Detection
+  const titleAndAlbum = `${track?.title || ''} ${track?.album || ''}`;
+  const vintageMatch =
+    titleAndAlbum.match(/\b(19\d{2}|20[0-1]\d)\b.*?\b(?:remaster|re-?mastered|anniversary|deluxe|live|edition)\b/i) ||
+    titleAndAlbum.match(/\b(?:remaster|re-?mastered|anniversary|deluxe|live|edition).*?\b(19\d{2}|20[0-1]\d)\b/i);
+
+  if (vintageMatch) {
+    const vintageYear = parseInt(vintageMatch[1], 10);
+    if (!isNaN(vintageYear)) {
+      year = vintageYear;
+    }
+  }
+
+  // If user requested contemporary era (e.g. 2020-2026 or 2024-2026):
+  // Any track explicitly tagged as a legacy remaster/reissue is not a contemporary original release
+  if (yearRange.start !== undefined && yearRange.start >= 2020) {
+    if (/\b(?:remaster|re-?mastered|anniversary\s+edition|deluxe\s+edition)\b/i.test(titleAndAlbum)) {
+      return false;
+    }
+  }
+
+  if (year === null || isNaN(year)) {
     // If provider did not report a release date, keep candidate
     return true;
   }
-  const match = String(dateStr).match(/\b(\d{4})\b/);
-  if (!match) return true;
-  const year = parseInt(match[1], 10);
-  if (isNaN(year)) return true;
 
   if (yearRange.start !== undefined && year < yearRange.start) {
     return false;

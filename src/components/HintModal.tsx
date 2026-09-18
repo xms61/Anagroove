@@ -54,8 +54,11 @@ export const HintModal: React.FC<HintModalProps> = ({
             <div className="w-9 h-9 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
               <Type className="w-5 h-5" />
             </div>
-            <div>
-              <div className="font-bold text-sm text-slate-100">Reveal Letter</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm text-slate-100 flex items-center justify-between">
+                <span>Reveal Letter</span>
+                <kbd className="px-2 py-0.5 rounded bg-black/50 text-cyan-300 font-mono text-[11px] border border-cyan-500/20 shadow-inner">Space</kbd>
+              </div>
               <div className="text-xs text-slate-400">Reveals the correct letter at your selected cell.</div>
             </div>
           </button>
@@ -72,9 +75,10 @@ export const HintModal: React.FC<HintModalProps> = ({
             <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
               <FileText className="w-5 h-5" />
             </div>
-            <div>
-              <div className="font-bold text-sm text-slate-100">
-                Reveal Word {activeClue ? `(${activeClue.id})` : ''}
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm text-slate-100 flex items-center justify-between">
+                <span>Reveal Word {activeClue ? `(${activeClue.id})` : ''}</span>
+                <kbd className="px-2 py-0.5 rounded bg-black/50 text-amber-300 font-mono text-[11px] border border-amber-500/20 shadow-inner">Tab</kbd>
               </div>
               <div className="text-xs text-slate-400">
                 Fills in the entire active word on the grid.

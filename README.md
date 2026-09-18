@@ -29,8 +29,9 @@
   - **Natural Song Title Answers (Up to 14 Characters)**: Crossword answers combine multi-word titles without spaces (e.g. `YOURLOVE`, `GETLUCKY`, `BLINDINGLIGHTS`), perfectly fitted to grid dimensions.
   - **Balanced Clue Variety**: Puzzles offer an engaging mix of **Song Title**, **Artist Name**, and **Title Keyword** questions rather than being dominated by a single clue type.
   - **Language Precision & Regional Storefronts**: Strict English language enforcement across general categories, with automatic regional storefront steering for international prompts (Japan, South Korea, France, Germany, Brazil, Jamaica, Nigeria, UK, US).
-  - **Thematic Homonym & Novelty Act Filtering**: Rejects Western artist collisions matching nationality adjectives (e.g. *The Japanese House*, *French Montana*, *German Brigante*) and novelty songs to ensure 100% authentic genre fidelity.
-  - **Multi-Endpoint Provider Discovery**: Concurrent harvesting across Deezer advanced queries and iTunes Search API for 100% preview availability and rich catalog depth.
+  - **Thematic Homonym & Semantic Guardrails**: Rejects Western artist collisions matching nationality adjectives (e.g. *The Japanese House*, *French Montana*, *German Brigante*) and filters prefix stem collisions across themes (e.g. *Animal Collective*, *Animosity*, and *Os Abelhudos* for anime; *The Game* for gaming; *Daft Punk* for pop-punk; *Dance Gavin Dance* for EDM; *Latin Quarter* for Latin).
+  - **Universal Remaster & Reissue Vintage Parser**: Detects original recording stamps (e.g. `(YYYY Remaster)`, `(Remastered YYYY)`, `(Live YYYY)`) to prevent legacy re-releases from falsely qualifying as contemporary releases for temporal prompts (`2020-2026`).
+  - **Multi-Endpoint Provider Discovery**: Concurrent harvesting across Deezer advanced queries and iTunes Search API for 100% preview availability and rich catalog depth with distinct provider badges (Apple Music, Deezer, Spotify).
   - **Deterministic Seed Sharing**: Share exact puzzle seeds (e.g. `party-game-42`) with friends using deterministic SHA-256 hash ranking without server bloat.
   - **Anti-Repetition & Variety Sampling**: Tiered play-frequency sampling guarantees $\le 3$ repetitions per song across 50 consecutive crosswords, enforces max 1 track per artist, and respects player history and blacklists.
 - **👥 Real-Time Multiplayer Lounge**:
@@ -41,8 +42,9 @@
   - Grid letter entries, check validities, completed puzzle histories, and blacklists are persisted server-side via unique anonymous tokens.
 - **🚫 Crate Blacklist**:
   - Block specific artists or tracks from ever appearing in your crosswords.
-- **💡 Multi-Tier Hint System**:
-  - Reveal a single letter, solve the current word, or reveal the entire puzzle.
+- **💡 Multi-Tier Hint System & Hotkeys**:
+  - **Interactive Hotkeys**: Press <kbd>Space</kbd> to instantly reveal and validate the letter at the active cursor cell and advance, or press <kbd>Tab</kbd> to solve and complete the entire active word and advance to the next clue.
+  - **Modal Assistance**: Visual hints modal offering single letter reveal, active word reveal, or whole puzzle reveal with live co-op multiplayer synchronization.
 - **🏆 Victory Showcase**:
   - Confetti celebration, full song breakdown with album cover artwork, track titles, artist details, and direct preview playback.
 

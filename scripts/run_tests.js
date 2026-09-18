@@ -334,6 +334,38 @@ async function runUnitTests() {
   assert(isTemporalPermitted({ releaseDate: '1993-09-21T00:00:00Z' }, { end: 1993 }) === true, 'Permits release year meeting upper bound');
   assert(isTemporalPermitted({ releaseDate: '1994-03-08T00:00:00Z' }, { end: 1993 }) === false, 'Rejects release year exceeding upper bound');
 
+  // Universal Remaster / Reissue Vintage Filtering
+  assert(isTemporalPermitted({ title: 'Saved (2024 Remaster)', releaseDate: '2024-01-01' }, { start: 2024, end: 2026 }) === false, 'Rejects legacy remaster tagged as 2024 for contemporary prompt');
+  assert(isTemporalPermitted({ title: 'Animate (2004 Remaster)', releaseDate: '2024-01-01' }, { start: 2024, end: 2026 }) === false, 'Extracts 2004 vintage year from title and rejects outside 2024-2026');
+  assert(isTemporalPermitted({ title: 'Same Blue', releaseDate: '2024-10-01' }, { start: 2024, end: 2026 }) === true, 'Permits original 2024 track');
+
+  // Cross-theme stem collision and homonym guardrail tests
+  // Anime stem collisions (anim*)
+  assert(isThematicallyPermitted({ title: 'Bat You\'ll Fly', artist: 'Animal Collective' }, 'anime', 'anime songs from 2024 to 2026') === false, 'Rejects "Animal Collective" prefix collision for anime');
+  assert(isThematicallyPermitted({ title: 'Saved', artist: 'Animosity' }, 'anime', 'anime songs from 2024 to 2026') === false, 'Rejects "Animosity" prefix collision for anime');
+  assert(isThematicallyPermitted({ title: 'As Crianças E Os Animais', artist: 'Os Abelhudos' }, 'anime', 'anime') === false, 'Rejects "Animais" prefix collision for anime');
+  assert(isThematicallyPermitted({ title: 'Freefall', artist: 'Techno Animal' }, 'anime', 'anime') === false, 'Rejects "Techno Animal" for anime');
+  assert(isThematicallyPermitted({ title: 'Dominator Anthem', artist: 'AniMe' }, 'anime', 'anime') === false, 'Rejects DJ AniMe hardcore anthem for anime');
+  assert(isThematicallyPermitted({ title: 'Same Blue', artist: 'Official髭男dism' }, 'anime', 'anime songs from 2024 to 2026') === true, 'Permits authentic anime theme for Japanese artist');
+  assert(isThematicallyPermitted({ title: 'Sousou no Frieren Opening', artist: 'Dimension Anime' }, 'anime', 'anime') === true, 'Permits authentic anime opening release');
+
+  // Storefront leakage (K-Pop in Apple Music JP)
+  assert(isThematicallyPermitted({ title: 'I GOT YOU', artist: 'TWICE', selection: { genre: 'K-Pop' } }, 'anime', 'anime songs from 2024 to 2026') === false, 'Rejects K-Pop storefront leakage for anime prompt');
+
+  // Gaming stem collisions
+  assert(isThematicallyPermitted({ title: 'How We Do', artist: 'The Game' }, 'gaming', 'video game music') === false, 'Rejects rapper "The Game" for gaming prompt');
+  assert(isThematicallyPermitted({ title: 'Un Gamin de Paris', artist: 'Francis Lemarque' }, 'gaming', 'video game music') === false, 'Rejects "Gamin" collision for gaming');
+
+  // Pop-Punk collisions
+  assert(isThematicallyPermitted({ title: 'Around the World', artist: 'Daft Punk' }, 'poppunk', 'pop-punk hits') === false, 'Rejects Daft Punk for pop-punk');
+
+  // EDM / Dance collisions
+  assert(isThematicallyPermitted({ title: 'We Own The Night', artist: 'Dance Gavin Dance' }, 'edm', 'dance edm') === false, 'Rejects post-hardcore band Dance Gavin Dance for EDM');
+  assert(isThematicallyPermitted({ title: 'Private Dancer', artist: 'Tina Turner' }, 'edm', 'dance music') === false, 'Rejects Tina Turner Private Dancer for EDM');
+
+  // Latin collisions
+  assert(isThematicallyPermitted({ title: 'Radio Africa', artist: 'Latin Quarter' }, 'latin', 'latin music') === false, 'Rejects British band Latin Quarter for Latin');
+
   console.log('\n--- 4. Testing Deezer Provider Resilience and Cache Bounds ---');
   const originalFetch = globalThis.fetch;
   const originalDateNow = Date.now;

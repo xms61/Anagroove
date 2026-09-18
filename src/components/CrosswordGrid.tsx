@@ -11,6 +11,7 @@ interface CrosswordGridProps {
   onInputLetter: (char: string) => void;
   onBackspace: () => void;
   onMoveCursor: (dr: number, dc: number) => void;
+  onApplyHint?: (type: 'letter' | 'word') => void;
   teammateCell?: { row: number; col: number; name: string; color: string } | null;
   isPlaying?: boolean;
 }
@@ -25,6 +26,7 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   onInputLetter,
   onBackspace,
   onMoveCursor,
+  onApplyHint,
   teammateCell,
   isPlaying = false,
 }) => {
@@ -35,7 +37,13 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   }, [selectedCell]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowUp') {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      onApplyHint?.('word');
+    } else if (e.key === ' ' || e.code === 'Space') {
+      e.preventDefault();
+      onApplyHint?.('letter');
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       onMoveCursor(-1, 0);
     } else if (e.key === 'ArrowDown') {
@@ -82,7 +90,13 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
           e.target.value = '';
         }}
         onKeyDown={e => {
-          if (e.key === 'Backspace') {
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            onApplyHint?.('word');
+          } else if (e.key === ' ' || e.code === 'Space') {
+            e.preventDefault();
+            onApplyHint?.('letter');
+          } else if (e.key === 'Backspace') {
             e.preventDefault();
             onBackspace();
           }
