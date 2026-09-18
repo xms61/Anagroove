@@ -22,6 +22,15 @@ export function setMusicProviderForTesting(provider) {
  */
 export function isLanguagePermitted(track, genre = 'all', prompt = '') {
   const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
+  const title = String(track?.title || '');
+  const artist = String(track?.artist || '');
+
+  // Reject foreign animated soundtrack dubs and localized karaoke/sing-along tracks across all genres
+  // e.g. "Soda Pop (version française)", "How Far I'll Go (Spanish Version)", "Sing-Along"
+  const foreignDubMarkers = /\b(?:version\s+française|french\s+version|spanish\s+version|versión\b|portuguese\s+version|german\s+version|italian\s+version|tagalog\s+version|sing-along|karaoke)\b/i;
+  if (foreignDubMarkers.test(title)) {
+    return false;
+  }
 
   // Cultural and international exemptions
   const internationalPatterns = /\b(anime|kpop|k-pop|korean|japanese|japan|city\s*pop|j-pop|jpop|latin|spanish|french|german|brazil|bossanova|reggaeton|cumbia|salsa|flamenco|afrobeats|bollywood|mandopop|cantopop)\b/i;
@@ -29,8 +38,12 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '') {
     return true;
   }
 
-  const title = String(track?.title || '');
-  const artist = String(track?.artist || '');
+  // Reject tracks categorized under explicit foreign language genres unless theme permits
+  const trackGenre = String(track?.selection?.genre || track?.genre || '').toLowerCase();
+  const foreignGenres = /\b(pop\s+latino|música\s+mexicana|urbano\s+latino|latin|música\s+tropical|mpb|sertanejo|french\s+pop|german\s+pop|deutschrap|chanson|russian|arabic|punjabi|bollywood|c-pop|cantopop|mandopop)\b/i;
+  if (foreignGenres.test(trackGenre)) {
+    return false;
+  }
 
   // Reject non-Latin alphabets (Cyrillic, Greek, Arabic, Kanji, Hiragana, Hangul, Thai, etc.)
   // \u0020-\u024F encompasses standard printable characters and Latin Extended (common Western European accents)
@@ -38,11 +51,28 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '') {
     return false;
   }
 
-  // Reject tracks containing common non-English linguistic markers
-  // (Spanish/Portuguese/French/German stopwords) unless it's a known theme
-  const foreignMarkers = /\b(amor|de|el|la|los|las|del|por|para|una|uno|vida|mi|su|tu|dans|avec|pour|des|une|und|nicht|ist|dass|como|mais|pra|você|sen|ben|bir)\b/i;
-  if (foreignMarkers.test(title)) {
+  // Reject tracks containing common non-English linguistic markers (Spanish/Portuguese/French/German/Italian stopwords)
+  const foreignMarkers = /\b(amor|vida|corazón|fiesta|feliz|navidad|noche|mi|su|tu|como|mais|pra|você|sen|ben|bir|del|los|las|por|para|una|uno|dans|avec|pour|des|une|und|nicht|ist|dass|les|le|aux?|sur|sans|nous|vous|sont|mon|ton|son|sa|ses|qui|que|der|die|das|dem|den|ein|eine|einem|einen|einer|eines|mit|auf|für|von|zu|con|sin|sobre|gli|della|delle|dello)\b/i;
+  if (foreignMarkers.test(title) || foreignMarkers.test(artist)) {
     return false;
+  }
+
+  // Reject classical/orchestral movements and choir works from mainstream puzzles unless classical requested
+  const isClassicalContext = /\b(classical|baroque|orchestra|symphon|opera|choir|choral)\b/i.test(context);
+  if (!isClassicalContext) {
+    const classicalMarkers = /\b(symphonie|symphony|concerto|sonata|opus|\bop\.\s*\d+|bwv\s*\d+|larghetto|allegro|adagio|andante|presto|philharmonic|orchester|orchestra|chœur|chor\b)\b/i;
+    if (classicalMarkers.test(title) || classicalMarkers.test(artist)) {
+      return false;
+    }
+  }
+
+  // Reject nursery rhymes and children's music from general puzzles unless requested
+  const isKidsContext = /\b(kids?|children|nursery|lullab)\b/i.test(context);
+  if (!isKidsContext) {
+    const kidsMarkers = /\b(nursery\s+rhymes?|lullaby|cocomelon|baby\s+songs?|toddler\s+songs?|kids\s+songs?|chansons\s+pour\s+enfants)\b/i;
+    if (kidsMarkers.test(title) || kidsMarkers.test(artist)) {
+      return false;
+    }
   }
 
   return true;
@@ -92,9 +122,55 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
     }
   }
 
-  // E.g. "K-Pop": reject non-Korean rap tracks simply named "K-POP" (like Travis Scott - K-POP)
+  // K-POP THEMATIC & STOREFRONT GUARDRAILS
   if (/\b(kpop|k-pop)\b/i.test(context)) {
-    if (/^k-?pop$/i.test(lowerTitle)) {
+    // 1. Reject tracks simply named after the search query ("K-POP", "NEW GEN", "4TH GEN")
+    if (/^(k-?pop|new\s+gen|4th\s+gen|5th\s+gen)$/i.test(lowerTitle)) {
+      return false;
+    }
+
+    // 2. Reject Western pop/country/rock/indie acts matched on fuzzy token collisions ("gen", "pop", "korean")
+    const westernActsInKpop = /\b(m4rkim|steven\s+wilson|carrie\s+underwood|destiny'?s\s+child|billy\s+idol|hozier|maroon\s+5|selena\s+gomez|dua\s+lipa|adele|kid\s+cudi|foster\s+the\s+people|becky\s+g|ton\s+koopman|nelis\s+leeman|michael\s+jackson|oasis|chappell\s+roan|billie\s+eilish|travis\s+scott|the\s+weeknd|lacrim|410|snoop\s+dogg|eminem|post\s+malone|drake)\b/i;
+    if (westernActsInKpop.test(lowerArtist)) {
+      return false;
+    }
+
+    // 3. iTunes Genre Verification: Disallow non-Asian genres on iTunes unless Korean Hangul text is present
+    if (track?.provider === 'itunes' || track?.selection?.source === 'itunes') {
+      const itunesGenre = (track?.selection?.genre || track?.genre || '').toLowerCase();
+      const nonKpopGenres = ['country', 'rock', 'alternative', 'metal', 'r&b/soul', 'blues', 'punk', 'latin'];
+      if (nonKpopGenres.includes(itunesGenre)) {
+        const hasHangul = /[\uac00-\ud7af\u1100-\u11ff]/.test(`${artist} ${title}`);
+        if (!hasHangul) {
+          return false;
+        }
+      }
+    }
+  }
+
+  // GAMING THEMATIC GUARDRAILS
+  if (/\bgaming\b/i.test(context) || /\bvideo\s+game\b/i.test(context)) {
+    if (track?.provider === 'itunes' || track?.selection?.source === 'itunes') {
+      const itunesGenre = (track?.selection?.genre || track?.genre || '').toLowerCase();
+      if (!['soundtrack', 'video game', 'anime', 'instrumental'].includes(itunesGenre)) {
+        const hasGamingAffiliation = /\b(video\s*game|game|soundtrack|ost|theme|zelda|mario|sonic|pokemon|final\s+fantasy|halo|cyberpunk|skyrim|genshin|undertale|megalovania|toby\s+fox)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`);
+        if (!hasGamingAffiliation) {
+          return false;
+        }
+      }
+    }
+  }
+
+  // CINEMATIC THEMATIC GUARDRAILS
+  if (/\b(cinematic|movie\s+ost|film\s+score)\b/i.test(context)) {
+    if (/^(the\s+)?movies?$/i.test(lowerTitle) && !/\b(soundtrack|score|theme|original|motion\s+picture)\b/i.test(`${track?.album || ''} ${candidateGenre}`)) {
+      return false;
+    }
+  }
+
+  // EDM THEMATIC GUARDRAILS
+  if (/\b(edm|electro|dance)\b/i.test(context)) {
+    if (/^(édith\s+piaf|edith\s+piaf|yo\s+la\s+tengo)\b/i.test(lowerArtist)) {
       return false;
     }
   }
@@ -177,6 +253,31 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
     if (/\blatin\s+quarter\b/i.test(lowerArtist) || /\blatin\s+alliance\b/i.test(lowerArtist)) {
       return false;
     }
+  }
+
+  return true;
+}
+
+/**
+ * Rejects low-quality imitation tracks, workout mixes, generic cover/tribute artists,
+ * and sped-up/slowed-down audio modifications.
+ */
+export function isAuthenticTrack(track) {
+  const artist = String(track?.artist || '').trim();
+  const title = String(track?.title || '').trim();
+  const lowerArtist = artist.toLowerCase();
+  const lowerTitle = title.toLowerCase();
+
+  // 1. Generic compilation/workout/soundalike artists
+  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew)\b/i;
+  if (fakeArtistPatterns.test(lowerArtist)) {
+    return false;
+  }
+
+  // 2. Audio modifications and utility releases in titles
+  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental\s+version|piano\s+version|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by)\b/i;
+  if (audioModPatterns.test(lowerTitle)) {
+    return false;
   }
 
   return true;
@@ -409,6 +510,12 @@ export async function getRandomSongPool({
 
       // Thematic relevance constraint: reject cultural homonyms and split-genre collisions
       if (!isThematicallyPermitted(track, queryPlan.genre, prompt || queryPlan.prompt)) {
+        rejections.thematic++;
+        continue;
+      }
+
+      // Authenticity constraint: reject workout remixes, tribute bands, slowed/8-bit modifications
+      if (!isAuthenticTrack(track)) {
         rejections.thematic++;
         continue;
       }

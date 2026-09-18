@@ -10,7 +10,8 @@ import {
   Keyboard,
   Radio,
   ChevronRight,
-  Shuffle
+  Shuffle,
+  Settings
 } from 'lucide-react';
 
 interface LoungeDrawerProps {
@@ -21,6 +22,7 @@ interface LoungeDrawerProps {
   onOpenMultiplayer: () => void;
   onOpenBlacklist: () => void;
   onOpenSolvedHistory: () => void;
+  onOpenSettings?: () => void;
   blacklistCount: number;
   multiplayerCode?: string | null;
   activePuzzleTitle: string;
@@ -34,6 +36,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
   onOpenMultiplayer,
   onOpenBlacklist,
   onOpenSolvedHistory,
+  onOpenSettings,
   blacklistCount,
   multiplayerCode,
   activePuzzleTitle,
@@ -251,6 +254,33 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
               </button>
+
+              {/* Lounge Settings */}
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSettings();
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-[#141824] hover:bg-[#1a2030] border border-white/5 transition text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center justify-center">
+                      <Settings className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-200">
+                        Lounge Settings
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Adjust audio volume and word solve animations
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                </button>
+              )}
             </div>
           </div>
 

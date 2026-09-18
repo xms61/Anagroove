@@ -23,6 +23,7 @@ import {
   isLanguagePermitted,
   isThematicallyPermitted,
   isTemporalPermitted,
+  isAuthenticTrack,
 } from '../server/services/musicService.js';
 import {
   validateUserId,
@@ -436,6 +437,113 @@ async function runUnitTests() {
 
   // Latin collisions
   assert(isThematicallyPermitted({ title: 'Radio Africa', artist: 'Latin Quarter' }, 'latin', 'latin music') === false, 'Rejects British band Latin Quarter for Latin');
+
+  // K-Pop Generation Prompt Parsing
+  const newGenPrompt = parsePrompt('new gen kpop');
+  assert(
+    newGenPrompt.genre === 'kpop' &&
+    newGenPrompt.generation === 'new' &&
+    newGenPrompt.yearRange?.start === 2020 &&
+    newGenPrompt.yearRange?.end === 2026,
+    'Parses "new gen kpop" into 2020-2026 year range and kpop genre'
+  );
+
+  const thirdGenPrompt = parsePrompt('3rd gen kpop');
+  assert(
+    thirdGenPrompt.genre === 'kpop' &&
+    thirdGenPrompt.generation === '3rd' &&
+    thirdGenPrompt.yearRange?.start === 2012 &&
+    thirdGenPrompt.yearRange?.end === 2019,
+    'Parses "3rd gen kpop" into 2012-2019 year range and kpop genre'
+  );
+
+  const kpopVariations = generateThemeVariations('kpop');
+  assert(
+    !kpopVariations.some(v => v.startsWith('gen ')) &&
+    !kpopVariations.includes('kpop hits'),
+    'Theme variations for kpop avoid "gen kpop" prefixes and over-broad hit queries'
+  );
+
+  // Default shuffle buildQueryPlan uses balanced popularity
+  const shufflePlan = buildQueryPlan({ genre: 'all' });
+  assert(
+    shufflePlan.popularity === 'balanced' && shufflePlan.minFans >= 25000,
+    'Shuffle query plan defaults to balanced popularity with active fan thresholds'
+  );
+
+  // Foreign Dub & Language Filters
+  assert(
+    isLanguagePermitted({ title: 'Soda Pop (version française)', artist: 'Saja Boys' }, 'kpop', 'new gen kpop') === false,
+    'Rejects foreign dub "(version française)" for K-Pop'
+  );
+  assert(
+    isLanguagePermitted({ title: 'Symphonie à dix-sept parties, RH 64: II. Larghetto', artist: 'François-Xavier Roth' }, 'all') === false,
+    'Rejects classical orchestral movements for mainstream crosswords'
+  );
+  assert(
+    isLanguagePermitted({ title: 'Rock a Bye Baby', artist: 'Nursery Rhymes 123' }, 'all') === false,
+    'Rejects nursery rhyme compilations'
+  );
+  assert(
+    isLanguagePermitted({ title: 'Telegrama', artist: 'Zeca Baleiro', selection: { genre: 'Pop Latino' } }, 'all') === false,
+    'Rejects foreign genre tracks (Pop Latino) for general crosswords'
+  );
+
+  // Authenticity & Low-Quality/Workout/Tribute Filter
+  assert(
+    isAuthenticTrack({ title: 'Like a G6 (Workout Mix 128 BPM)', artist: 'Power Music Workout' }) === false,
+    'Rejects Power Music Workout tracks'
+  );
+  assert(
+    isAuthenticTrack({ title: 'NewJeans (8-Bit Computer Game Version)', artist: '8-Bit Arcade' }) === false,
+    'Rejects 8-bit arcade tribute tracks'
+  );
+  assert(
+    isAuthenticTrack({ title: 'White Winged Dove', artist: '1981 Rock Classics' }) === false,
+    'Rejects generic year compilation brands'
+  );
+  assert(
+    isAuthenticTrack({ title: 'New Jeans (Slowed + Reverb)', artist: 'Lucrativerecords' }) === false,
+    'Rejects slowed/reverb modifications'
+  );
+  assert(
+    isAuthenticTrack({ title: 'New Jeans (Instrumental Version)', artist: 'Lewis Hanton' }) === false,
+    'Rejects instrumental covers'
+  );
+  assert(
+    isAuthenticTrack({ title: 'Attention', artist: 'NewJeans' }) === true,
+    'Permits authentic track release'
+  );
+
+  // K-Pop Thematic Guardrails (Rejection of Carrie Underwood, Steven Wilson, Destiny\'s Child)
+  assert(
+    isThematicallyPermitted({ title: 'People Who Eat Darkness', artist: 'Steven Wilson' }, 'kpop', 'new gen kpop') === false,
+    'Rejects Steven Wilson for K-Pop'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'Before He Cheats', artist: 'Carrie Underwood' }, 'kpop', 'new gen kpop') === false,
+    'Rejects Carrie Underwood for K-Pop'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'Cater 2 U', artist: 'Destiny\'s Child' }, 'kpop', 'new gen kpop') === false,
+    'Rejects Destiny\'s Child for K-Pop'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'Eyes Without a Face', artist: 'Billy Idol', selection: { genre: 'Rock' } }, 'kpop', 'new gen kpop') === false,
+    'Rejects Western Rock on iTunes for K-Pop'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'NEW GEN', artist: 'M4rkim' }, 'kpop', 'new gen kpop') === false,
+    'Rejects non-Korean artist token collision for K-Pop'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'Liminal Space', artist: 'LE SSERAFIM', selection: { genre: 'K-Pop' } }, 'kpop', 'new gen kpop') === true,
+    'Permits authentic K-Pop group LE SSERAFIM'
+  );
+  assert(
+    isThematicallyPermitted({ title: 'CASE 143', artist: 'Stray Kids', selection: { genre: 'K-Pop' } }, 'kpop', 'new gen kpop') === true,
+    'Permits authentic K-Pop group Stray Kids'
+  );
 
   console.log('\n--- 4. Testing Deezer Provider Resilience and Cache Bounds ---');
   const originalFetch = globalThis.fetch;

@@ -5,6 +5,43 @@ All notable changes to the **SpotySpice** project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+---\n
+## [1.5.0] - 2026-09-18
+
+### Added
+- **Lounge Settings Screen (`src/components/SettingsModal.tsx`, `src/App.tsx`, `src/components/LoungeDrawer.tsx`)**:
+  - New dedicated Lounge Settings modal accessible via the header toolbar gear icon and slide-over menu.
+  - Interactive toggle switch for word correct celebration animations (`enableWordAnimations`), persisted in `localStorage` (`spotyspice_settings`).
+  - Interactive master default volume slider from 0% to 100% with live percentage readout.
+  - Turntable keyboard shortcuts reference card.
+- **K-Pop Generation Temporal Parsing (`server/services/queryBuilder.js`)**:
+  - Added natural language parsing for K-Pop generations in free-text prompts:
+    - `new gen`, `4th gen`, `5th gen` -> bounds release window to `2020-2026` and anchors genre to `kpop`.
+    - `3rd gen` -> bounds release window to `2012-2019`.
+    - `2nd gen` -> bounds release window to `2003-2011`.
+    - `1st gen` -> bounds release window to `1990-2002`.
+  - Added flagship modern K-Pop group seeding (`NewJeans`, `LE SSERAFIM`, `aespa`, `Stray Kids`, `IVE`, `ENHYPEN`, `TXT`, `ITZY`, `KISS OF LIFE`) to ensure prompt richness.
+- **Authenticity & Imitation Filter (`server/services/musicService.js`)**:
+  - Built `isAuthenticTrack` to reject workout compilations and soundalikes (`Power Music Workout`, `Fitness Workout`), 8-bit arcade tribute versions (`8-Bit Arcade`), generic retrospective packaging (`1981 Rock Classics`), and audio speed modifications (`(Slowed + Reverb)`, `(Sped Up)`, `(Nightcore)`, `(Instrumental Version)`).
+
+### Changed
+- **Default Master Volume Reduced to 15% (`src/components/AudioPlayerBar.tsx`, `src/components/EndScreenModal.tsx`)**:
+  - Lowered base preview audio volume from 25% to a gentle, comfortable 15% across all audio elements with `localStorage` user persistence.
+- **Open Shuffle & Random Crossword Quality Elevation (`server/services/queryBuilder.js`, `server/services/musicService.js`)**:
+  - Elevated default popularity for open shuffle from uncurated `pure` (`minFans: 0`, `minRank: 0`) to `balanced` (`minFans: 25,000`).
+  - Eliminated arbitrary 2-letter alphabetic random seeds (`"rh"`, `"gl"`, etc.) in open shuffle in favor of curated rotating genre chart pools.
+  - Added strict multilingual stopword filtering and `foreignGenres` rejection (e.g. `Pop Latino`, `Música Mexicana`, `Urbano latino`, `MPB`, `French Pop`) to prevent non-English and obscure international tracks from slipping into standard puzzles.
+  - Added filters for classical orchestral movements (`Symphonie`, `Concerto`, `Larghetto`) and children's nursery rhyme albums.
+- **Crossword Grid Animation Control (`src/components/CrosswordGrid.tsx`)**:
+  - Connected `enableWordAnimations` prop to conditionally trigger tile celebration ripples.
+
+### Fixed
+- **Thematic Precision & Western Collisions in K-Pop & Other Themes (`server/services/musicService.js`, `server/services/deezerMusicProvider.js`)**:
+  - Prevented generation prefix leakage (`"gen kpop"`) from entering search queries.
+  - Added hard guardrails rejecting Western acts matched via token homonyms (Steven Wilson, Carrie Underwood, Destiny's Child, Billy Idol, Hozier, M4rkim, etc.).
+  - Added foreign dub marker filtering, rejecting French dubs and language translations (e.g. `Saja Boys - Soda Pop (version française)`).
+  - Cleaned up keyword taxonomies across `gaming`, `cinematic`, `poppunk`, `hiphop`, and `edm`.
+
 ---
 
 ## [1.4.9] - 2026-09-18

@@ -30,16 +30,6 @@ try {
  */
 
 /**
- * Generates a dynamic, non-predetermined alphanumeric search seed for open exploration.
- * Uses uniform random letter or bigram sampling across the entire alphabet.
- */
-function generateDynamicSeed() {
-  const char1 = String.fromCharCode(97 + Math.floor(Math.random() * 26));
-  const char2 = String.fromCharCode(97 + Math.floor(Math.random() * 26));
-  return `${char1}${char2}`;
-}
-
-/**
  * Parses a free-text prompt into structured steering parameters.
  * Handles single artists, compound genres, popularity modifiers, and temporal bounds/ranges.
  * e.g. "anime from the years 2020-2026", "songs by Daft Punk", "Queen", "rock before 1990"
@@ -111,6 +101,44 @@ export function parsePrompt(prompt = '') {
       options.yearRange = { start, end: start + 9 };
     }
     text = text.replace(decadeMatch[0], ' ');
+  }
+
+  // 2f. Generation Eras: e.g. "new gen", "4th gen", "5th gen", "3rd gen", "2nd gen", "1st gen"
+  // Particularly critical for K-Pop, Hip-Hop, and contemporary pop generations
+  const newGenMatch = text.match(/\b(new|4th|5th|next|current|modern|contemporary)\s*gen(?:eration)?\b/i);
+  if (newGenMatch) {
+    options.generation = 'new';
+    if (!options.yearRange) {
+      options.yearRange = { start: 2020, end: 2026 };
+    }
+    text = text.replace(newGenMatch[0], ' ');
+  } else {
+    const gen3Match = text.match(/\b3rd\s*gen(?:eration)?\b/i);
+    if (gen3Match) {
+      options.generation = '3rd';
+      if (!options.yearRange) {
+        options.yearRange = { start: 2012, end: 2019 };
+      }
+      text = text.replace(gen3Match[0], ' ');
+    } else {
+      const gen2Match = text.match(/\b2nd\s*gen(?:eration)?\b/i);
+      if (gen2Match) {
+        options.generation = '2nd';
+        if (!options.yearRange) {
+          options.yearRange = { start: 2003, end: 2011 };
+        }
+        text = text.replace(gen2Match[0], ' ');
+      } else {
+        const gen1Match = text.match(/\b1st\s*gen(?:eration)?\b/i);
+        if (gen1Match) {
+          options.generation = '1st';
+          if (!options.yearRange) {
+            options.yearRange = { start: 1990, end: 2002 };
+          }
+          text = text.replace(gen1Match[0], ' ');
+        }
+      }
+    }
   }
 
   // 3. Artist Directive: e.g. "by <Artist>", "from <Artist>", "artist: <Artist>", "feat <Artist>"
@@ -214,9 +242,11 @@ export function generateThemeVariations(genre = '', decade = '') {
     } else {
       // For non-cultural phrases (e.g. "alternative indie rock" -> "indie rock")
       const coreSubGenre = words.slice(-2).join(' ');
-      variations.add(coreSubGenre);
-      if (decade) {
-        variations.add(`${coreSubGenre} ${decade}`);
+      if (!/^(gen|generation|new|old|best|top)\s+/i.test(coreSubGenre)) {
+        variations.add(coreSubGenre);
+        if (decade) {
+          variations.add(`${coreSubGenre} ${decade}`);
+        }
       }
     }
   }
@@ -242,7 +272,7 @@ export function generateThemeVariations(genre = '', decade = '') {
   }
   if (lower === 'gaming' || lower.includes('gaming') || lower.includes('video game')) {
     variations.add('video game soundtrack');
-    variations.add('video game ost');
+    variations.add('video game music');
   }
   if (lower.includes('french house')) variations.add('french touch');
   if (lower.includes('krautrock')) variations.add('kosmische musik');
@@ -251,8 +281,8 @@ export function generateThemeVariations(genre = '', decade = '') {
   if (lower.includes('grunge')) variations.add('grunge rock');
   if (lower.includes('reggae')) variations.add('roots reggae');
   if (lower.includes('k-pop') || lower.includes('kpop')) {
+    variations.add('k-pop');
     variations.add('kpop');
-    variations.add('korean pop');
   }
 
   return Array.from(variations).slice(0, 6);
@@ -291,7 +321,7 @@ export function buildQueryPlan(userOptions = {}) {
     options.yearRange = promptOptions.yearRange;
   }
 
-  const popularity = options.popularity || (options.genre === 'all' && !options.artist ? 'pure' : 'balanced');
+  const popularity = options.popularity || 'balanced';
   const artist = typeof options.artist === 'string' ? options.artist.trim() : '';
   const album = typeof options.album === 'string' ? options.album.trim() : '';
   const genre = effectiveGenre.trim();
@@ -338,11 +368,24 @@ export function buildQueryPlan(userOptions = {}) {
     itunesSearches.push(album);
   }
 
-  if (genre) {
+  if (genre && genre !== 'all') {
     const variations = generateThemeVariations(genre, decade);
     for (const term of variations) {
       deezerSearches.push(term);
       itunesSearches.push(term);
+    }
+
+    // Targeted artist seeding for K-Pop to avoid fuzzy matches on non-Korean tracks
+    if (genre.toLowerCase() === 'kpop' || genre.toLowerCase() === 'k-pop') {
+      const isNewGen = options.generation === 'new' || (options.yearRange && options.yearRange.start >= 2020);
+      const seeds = isNewGen
+        ? ['NewJeans', 'LE SSERAFIM', 'aespa', 'Stray Kids', 'IVE', 'ENHYPEN', 'TXT', 'ITZY', 'KISS OF LIFE']
+        : ['BTS', 'BLACKPINK', 'TWICE', 'SEVENTEEN', 'Red Velvet', 'NewJeans', 'Stray Kids'];
+      const shuffledSeeds = [...seeds].sort(() => 0.5 - Math.random()).slice(0, 3);
+      for (const s of shuffledSeeds) {
+        deezerSearches.push(s);
+        itunesSearches.push(s);
+      }
     }
   } else if (decade) {
     const yearBase = parseInt(decade, 10);
@@ -355,7 +398,7 @@ export function buildQueryPlan(userOptions = {}) {
   // Targeted year queries when a temporal filter is present
   if (options.yearRange) {
     const { start, end } = options.yearRange;
-    let baseSubject = genre || artist || '';
+    let baseSubject = (genre && genre !== 'all') ? genre : artist || '';
     if (genre.toLowerCase() === 'anime') {
       baseSubject = 'anime opening';
     } else if (genre.toLowerCase() === 'gaming') {
@@ -395,19 +438,21 @@ export function buildQueryPlan(userOptions = {}) {
     }
   }
 
-  // STRICT GUARDRAIL: ONLY when completely open (no artist, album, genre, decade, OR prompt specified),
-  // inject dynamic random alphanumeric exploration (never hardcoded dictionary words)
-  const hasThematicCriteria = Boolean(artist || album || genre || decade || prompt);
+  // Open / Shuffle Mode (no artist, album, genre, decade, OR prompt specified)
+  // Query curated charts and popular genres instead of noisy 2-letter alphabetic searches
+  const hasThematicCriteria = Boolean(artist || album || (genre && genre !== 'all') || decade || prompt);
   if (deezerSearches.length === 0 && !hasThematicCriteria) {
-    const dynamicSeed = generateDynamicSeed();
-    deezerSearches.push(dynamicSeed);
-    itunesSearches.push(dynamicSeed);
+    const openSeeds = ['pop hits', 'rock classics', 'dance hits', 'billboard'];
+    const selectedSeed = openSeeds[Math.floor(Math.random() * openSeeds.length)];
+    deezerSearches.push(selectedSeed);
+    itunesSearches.push(selectedSeed);
+    itunesSearches.push('top hits');
   }
 
   // Dynamic sorting order to explore varied catalog depths on repeated calls
   const SORT_ORDERS = ['RANKING', 'TRACK_ASC', 'RATING_ASC', 'DURATION_ASC'];
   const randomOrder = SORT_ORDERS[Math.floor(Math.random() * SORT_ORDERS.length)];
-  const randomOffset = genre ? Math.floor(Math.random() * 25) : Math.floor(Math.random() * 150);
+  const randomOffset = (genre && genre !== 'all') ? Math.floor(Math.random() * 25) : Math.floor(Math.random() * 20);
 
   return {
     genre: genre || 'all',

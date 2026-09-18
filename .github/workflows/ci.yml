@@ -28,3 +28,6 @@ jobs:
 
       - name: Run automated test suite
         run: npm test
+
+      - name: Build frontend
+        run: npm run build

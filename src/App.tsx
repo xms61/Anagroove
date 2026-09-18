@@ -14,7 +14,8 @@ import { apiClient, getMultiplayerPlayerId } from './services/apiClient';
 import { socketService, MultiplayerRoom } from './services/socketService';
 import { useBlacklist } from './hooks/useBlacklist';
 import { dynamicMusicService } from './services/dynamicMusicService';
-import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle } from 'lucide-react';
+import { SettingsModal } from './components/SettingsModal';
+import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle, Settings } from 'lucide-react';
 
 const EMPTY_PUZZLE: Puzzle = {
   id: 'placeholder',
@@ -59,6 +60,53 @@ export default function App() {
   const [isBlacklistOpen, setIsBlacklistOpen] = useState(false);
   const [isMultiplayerOpen, setIsMultiplayerOpen] = useState(false);
   const [isLoungeDrawerOpen, setIsLoungeDrawerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Settings state with localStorage persistence
+  const [enableWordAnimations, setEnableWordAnimations] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('spotyspice_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.enableWordAnimations === 'boolean') return parsed.enableWordAnimations;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return true;
+  });
+  const [defaultVolume, setDefaultVolume] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('spotyspice_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.defaultVolume === 'number') return parsed.defaultVolume;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return 0.15;
+  });
+
+  const handleToggleWordAnimations = (enabled: boolean) => {
+    setEnableWordAnimations(enabled);
+    try {
+      const current = JSON.parse(localStorage.getItem('spotyspice_settings') || '{}');
+      localStorage.setItem('spotyspice_settings', JSON.stringify({ ...current, enableWordAnimations: enabled }));
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const handleChangeDefaultVolume = (vol: number) => {
+    setDefaultVolume(vol);
+    try {
+      const current = JSON.parse(localStorage.getItem('spotyspice_settings') || '{}');
+      localStorage.setItem('spotyspice_settings', JSON.stringify({ ...current, defaultVolume: vol }));
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState<MultiplayerRoom | null>(null);
@@ -351,6 +399,17 @@ export default function App() {
               <span>Check</span>
             </button>
 
+            {/* Settings Button */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm"
+              title="Open Lounge Settings"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
+
             {/* Lounge Menu Button */}
             <button
               type="button"
@@ -449,6 +508,7 @@ export default function App() {
               teammateCell={teammateCell}
               isPlaying={isAudioPlaying}
               celebratingCells={celebratingCells}
+              enableWordAnimations={enableWordAnimations}
             />
           </div>
 
@@ -479,6 +539,8 @@ export default function App() {
         onPrevClue={prevClue}
         onNextClue={nextClue}
         onPlaybackChange={setIsAudioPlaying}
+        volume={defaultVolume}
+        onVolumeChange={handleChangeDefaultVolume}
       />
 
       {/* On-The-Fly Live Generator Modal */}
@@ -537,6 +599,16 @@ export default function App() {
         />
       )}
 
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        enableWordAnimations={enableWordAnimations}
+        onToggleWordAnimations={handleToggleWordAnimations}
+        defaultVolume={defaultVolume}
+        onChangeDefaultVolume={handleChangeDefaultVolume}
+      />
+
       {/* Unified Lounge Slide-Over Menu */}
       <LoungeDrawer
         isOpen={isLoungeDrawerOpen}
@@ -549,6 +621,7 @@ export default function App() {
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
         onOpenBlacklist={() => setIsBlacklistOpen(true)}
         onOpenSolvedHistory={() => setShowEndScreen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         blacklistCount={blacklist.length}
         multiplayerCode={multiplayerRoom?.code}
         activePuzzleTitle={currentPuzzle?.title || 'Live Crossword'}

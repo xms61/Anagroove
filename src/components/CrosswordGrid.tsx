@@ -15,6 +15,7 @@ interface CrosswordGridProps {
   teammateCell?: { row: number; col: number; name: string; color: string } | null;
   isPlaying?: boolean;
   celebratingCells?: { row: number; col: number; delay: number }[];
+  enableWordAnimations?: boolean;
 }
 
 export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
@@ -31,6 +32,7 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   teammateCell,
   isPlaying = false,
   celebratingCells = [],
+  enableWordAnimations = true,
 }) => {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -231,8 +233,8 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
               borderStyle = 'border-2 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]';
             }
 
-            const celebrationClass = celebration ? 'animate-letter-correct-pop z-30' : '';
-            const celebrationDelay = celebration ? `${celebration.delay}ms` : undefined;
+            const celebrationClass = (enableWordAnimations && celebration) ? 'animate-letter-correct-pop z-30' : '';
+            const celebrationDelay = (enableWordAnimations && celebration) ? `${celebration.delay}ms` : undefined;
 
             return (
               <button

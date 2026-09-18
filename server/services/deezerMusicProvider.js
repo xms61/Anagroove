@@ -82,15 +82,15 @@ export const DEEZER_GENRE_TAXONOMY = {
   mixed: { chartId: 0, searches: [], minFans: 250000, minRank: 350000 },
   pop: { chartId: 132, searches: ['genre:"pop"'], minFans: 200000, minRank: 350000 },
   rock: { chartId: 152, searches: ['genre:"rock"'], minFans: 150000, minRank: 300000 },
-  hiphop: { chartId: 116, searches: ['genre:"rap"', 'genre:"hip hop"'], minFans: 150000, minRank: 300000 },
-  edm: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"'], minFans: 100000, minRank: 250000 },
-  electronic: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"'], minFans: 100000, minRank: 250000 },
+  hiphop: { chartId: 116, searches: ['genre:"rap"', 'genre:"hip hop"', 'hip hop classics'], minFans: 150000, minRank: 300000 },
+  edm: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"', 'electronic dance music'], minFans: 100000, minRank: 250000 },
+  electronic: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"', 'electronic dance music'], minFans: 100000, minRank: 250000 },
   latin: { chartId: 197, searches: ['genre:"latin"'], minFans: 150000, minRank: 300000 },
-  kpop: { chartId: null, searches: ['k-pop', 'kpop hits', 'korean pop'], minFans: 25000, minRank: 200000 },
+  kpop: { chartId: null, searches: ['k-pop', 'kpop', 'genre:"k-pop"'], minFans: 25000, minRank: 200000 },
   anime: { chartId: null, searches: ['anime ost', 'anime opening', 'japanese animation', 'j-rock anime'], minFans: 1000, minRank: 100000 },
-  gaming: { chartId: 173, searches: ['video game soundtrack', 'gaming ost'], minFans: 1000, minRank: 150000 },
-  cinematic: { chartId: 173, searches: ['soundtrack', 'movie ost', 'film score'], minFans: 1000, minRank: 150000 },
-  poppunk: { chartId: 85, searches: ['pop punk', 'emo rock'], minFans: 50000, minRank: 250000 },
+  gaming: { chartId: 173, searches: ['video game soundtrack', 'video game music', 'original video game score'], minFans: 1000, minRank: 150000 },
+  cinematic: { chartId: 173, searches: ['film score', 'motion picture soundtrack', 'cinematic score'], minFans: 1000, minRank: 150000 },
+  poppunk: { chartId: 85, searches: ['pop punk', 'midwest emo', 'emo punk'], minFans: 50000, minRank: 250000 },
 };
 
 /**

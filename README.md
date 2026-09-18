@@ -47,12 +47,17 @@
 - **💡 Multi-Tier Hint System & Hotkeys**:
   - **Interactive Hotkeys**: Press <kbd>Space</kbd> to instantly reveal and validate the letter at the active cursor cell, press <kbd>Tab</kbd> to solve and complete the entire active word, or press <kbd>Shift + Tab</kbd> to solve and reveal the whole puzzle.
   - **Modal Assistance**: Visual hints modal offering single letter reveal, active word reveal, or whole puzzle reveal with live co-op multiplayer synchronization.
-- **🎛️ Audio Sample Scrubber & Preamp Deck**:
+- **⚙️ Lounge Settings Screen & Playback Customization**:
+  - Direct settings modal accessible from both the toolbar gear button and slide-over menu.
+  - Optional toggle for word-correct spring bounce celebrations (`enableWordAnimations`).
+  - Master default volume slider (comfortably set to 15% by default) with local storage persistence.
+- **🎧 Audio Sample Scrubber & Preamp Deck**:
   - Full playback control with an interactive click-to-seek progress bar, timestamp displays (`0:14 / 0:30`), `-5s` / `+5s` quick skipping, and dual animated VU meters.
 - **🧩 Dense Interlocking Layout Engine & Varied Answer Lengths**:
   - Multi-crossing layout optimization creates compact, tightly woven puzzles maximizing interlocking letters.
   - Dynamic answer lengths (2 to 14 letters) with rotating short/medium/long buckets and strict collaborating artist isolation.
-  - Staggered spring bounce celebration animation when a typed word matches correctly.
+  - Staggered spring bounce celebration animation when a typed word matches correctly (with toggle switch in settings).
+  - Generation era parsing for K-Pop (*"new gen kpop"*, *"4th gen"*, *"3rd gen"*) and authentic soundalike/workout remix filtration.
 - **🏆 Victory Showcase**:
   - Confetti celebration, full song breakdown with album cover artwork, track titles, artist details, and direct preview playback.
 

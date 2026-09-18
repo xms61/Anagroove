@@ -25,9 +25,22 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const getSavedVolume = () => {
+    try {
+      const saved = localStorage.getItem('spotyspice_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.defaultVolume === 'number') return parsed.defaultVolume;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 0.15;
+  };
+
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = 0.25;
+      audioRef.current.volume = getSavedVolume();
     }
   }, [isOpen]);
 
@@ -44,7 +57,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
       audioRef.current.pause();
       setPlayingSongId(null);
     } else {
-      audioRef.current.volume = 0.25;
+      audioRef.current.volume = getSavedVolume();
       audioRef.current.src = audioUrl;
       audioRef.current.play().then(() => {
         setPlayingSongId(songId);

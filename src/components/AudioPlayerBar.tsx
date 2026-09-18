@@ -7,6 +7,8 @@ interface AudioPlayerBarProps {
   onPrevClue: () => void;
   onNextClue: () => void;
   onPlaybackChange?: (isPlaying: boolean) => void;
+  volume?: number;
+  onVolumeChange?: (volume: number) => void;
 }
 
 export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
@@ -14,10 +16,24 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   onPrevClue,
   onNextClue,
   onPlaybackChange,
+  volume: controlledVolume,
+  onVolumeChange,
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.25);
+  const [volume, setVolume] = useState(() => {
+    if (typeof controlledVolume === 'number') return controlledVolume;
+    try {
+      const saved = localStorage.getItem('spotyspice_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.defaultVolume === 'number') return parsed.defaultVolume;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 0.15;
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -29,10 +45,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     onPlaybackChange?.(playing);
   };
 
-  // Ensure default base volume of 25% on mount
+  // Sync controlled volume when passed
+  useEffect(() => {
+    if (typeof controlledVolume === 'number') {
+      setVolume(controlledVolume);
+      if (audioRef.current && !isMuted) {
+        audioRef.current.volume = controlledVolume;
+      }
+    }
+  }, [controlledVolume]);
+
+  // Ensure default base volume of 15% on mount
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = 0.25;
+      audioRef.current.volume = isMuted ? 0 : volume;
     }
   }, []);
 
@@ -133,6 +159,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     if (newVol > 0 && isMuted) {
       setIsMuted(false);
     }
+    onVolumeChange?.(newVol);
   };
 
   const toggleMute = () => {
