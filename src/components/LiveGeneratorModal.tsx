@@ -3,10 +3,19 @@ import { Puzzle } from '../types/crossword';
 import { dynamicMusicService } from '../services/dynamicMusicService';
 import { Zap, X, Disc3, Sparkles, CheckCircle2, Sliders, Dices } from 'lucide-react';
 
+export interface PuzzleGenerationConfig {
+  genre?: string;
+  targetWords?: number;
+  popularity?: 'pure' | 'obscure' | 'indie' | 'balanced' | 'mainstream';
+  prompt?: string;
+  artist?: string;
+  seed?: string;
+}
+
 interface LiveGeneratorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPuzzleGenerated: (puzzle: Puzzle) => void;
+  onPuzzleGenerated: (puzzle: Puzzle, config: PuzzleGenerationConfig) => void;
 }
 
 const GENERATOR_GENRES = [
@@ -71,7 +80,7 @@ export const LiveGeneratorModal: React.FC<LiveGeneratorModalProps> = ({
       };
 
       const { puzzle } = await dynamicMusicService.generateLivePuzzle(options);
-      onPuzzleGenerated(puzzle);
+      onPuzzleGenerated(puzzle, options);
       onClose();
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Unable to generate a live puzzle. Please try again.');

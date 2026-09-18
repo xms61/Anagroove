@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Puzzle } from '../types/crossword';
-import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban } from 'lucide-react';
+import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban, Loader2 } from 'lucide-react';
 import { Song } from '../types/crossword';
 
 interface EndScreenModalProps {
@@ -11,6 +11,7 @@ interface EndScreenModalProps {
   onRestartPuzzle?: () => void;
   onBlacklistArtist?: (song: Song) => void;
   onBlacklistSong?: (song: Song) => void;
+  isLoading?: boolean;
 }
 
 export const EndScreenModal: React.FC<EndScreenModalProps> = ({
@@ -21,6 +22,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   onRestartPuzzle,
   onBlacklistArtist,
   onBlacklistSong,
+  isLoading = false,
 }) => {
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -141,12 +143,12 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-bold text-sm text-slate-100 truncate">
+                  <div className="flex flex-col flex-1 min-w-0 pr-2">
+                    <span className="font-bold text-sm text-slate-100 break-words line-clamp-2">
                       {song.title}
                     </span>
-                    <span className="text-xs text-amber-200/80 truncate flex items-center gap-1.5 font-medium">
-                      <span>{song.artist}</span>
+                    <span className="text-xs text-amber-200/90 break-words font-medium mt-0.5">
+                      {song.artist}
                     </span>
                     <span className="text-[10.5px] text-slate-500 truncate mt-0.5 font-mono">
                       {song.album}
@@ -235,9 +237,17 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
               <button
                 type="button"
                 onClick={onNextPuzzle}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-sm font-black shadow-[0_0_15px_rgba(245,158,11,0.35)] transition cursor-pointer"
+                disabled={isLoading}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 text-sm font-black shadow-[0_0_15px_rgba(245,158,11,0.35)] transition cursor-pointer"
               >
-                Next Puzzle
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                    <span>Loading...</span>
+                  </>
+                ) : (
+                  <span>Next Puzzle</span>
+                )}
               </button>
             )}
           </div>

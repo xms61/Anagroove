@@ -10,6 +10,7 @@ interface AudioPlayerBarProps {
   volume?: number;
   onVolumeChange?: (volume: number) => void;
   isCompleted?: boolean;
+  playTrigger?: number;
 }
 
 export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
@@ -20,6 +21,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   volume: controlledVolume,
   onVolumeChange,
   isCompleted = false,
+  playTrigger = 0,
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -85,11 +87,31 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     setCurrentTime(0);
     setProgress(0);
 
-    // If was already playing and puzzle is not completed/revealed, continue playing the new clue snippet
-    if (isPlaying && !isCompleted) {
-      audioRef.current.play().catch(() => notifyPlayback(false));
+    // Play if already playing or clicked via word field
+    if (!isCompleted && (isPlaying || playTrigger > 0)) {
+      audioRef.current.play().then(() => {
+        notifyPlayback(true);
+      }).catch(() => notifyPlayback(false));
     }
   }, [activeClue?.id, isCompleted]);
+
+  // Play audio whenever user clicks a word field (even if previously paused or completed snippet)
+  useEffect(() => {
+    if (playTrigger === 0 || !audioRef.current || !activeClue?.song.audioUrl || isCompleted) return;
+
+    if (audioRef.current.ended || audioRef.current.currentTime >= (audioRef.current.duration || 30)) {
+      audioRef.current.currentTime = 0;
+      setCurrentTime(0);
+      setProgress(0);
+    }
+
+    audioRef.current.play().then(() => {
+      notifyPlayback(true);
+      setLoadError(false);
+    }).catch((err) => {
+      console.warn('Word field playback failed:', err);
+    });
+  }, [playTrigger]);
 
   // Handle Play/Pause
   const togglePlay = () => {

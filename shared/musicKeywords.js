@@ -165,32 +165,50 @@ export function extractAllAnswerCandidates(title, artist) {
 
   const primaryArtistCandidate = artistCandidates[0] || null;
 
-  // Single keywords from multi-word title (2 to 10 letters)
-  // Provides shorter 2-5 letter options and 6-8 letter options for rich length variety
+  // Common stopwords to exclude from standalone single-word crossword answers
+  const COMMON_STOPWORDS = new Set([
+    'THE', 'AND', 'FOR', 'WITH', 'FROM', 'INTO', 'THAT', 'THIS', 'WHAT', 'WHEN',
+    'WHERE', 'WHICH', 'YOUR', 'MINE', 'THEM', 'THEY', 'THEIR', 'SOME', 'HAVE',
+    'JUST', 'LIKE', 'OVER', 'DOWN', 'UNDER', 'AGAIN'
+  ]);
+
+  // Single keywords from multi-word title (2 to 12 letters)
+  // Provides rich length variety: 3-5 letters (short), 6-8 letters (medium), 9-12 letters (long)
   const normalizedWords = cleanTitle
     .normalize('NFKD')
     .replace(/\p{M}/gu, '')
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim()
     .split(/\s+/)
-    .map(w => toCrosswordAnswer(w, { minLength: 2, maxLength: 10 }))
+    .map(w => toCrosswordAnswer(w, { minLength: 2, maxLength: 12 }))
     .filter(Boolean);
 
+  const wordCandidates = [];
   let keywordCandidate = null;
   let shortKeywordCandidate = null;
+
   if (normalizedWords.length > 0) {
-    const sorted = [...normalizedWords].sort((a, b) => b.length - a.length);
-    const candidate = sorted[0];
-    if (candidate) {
-      keywordCandidate = {
-        answer: candidate,
+    const meaningfulWords = normalizedWords.filter(w => !COMMON_STOPWORDS.has(w));
+    const candidatePool = meaningfulWords.length > 0 ? meaningfulWords : normalizedWords;
+
+    for (const w of candidatePool) {
+      wordCandidates.push({
+        answer: w,
         clueType: 'Song title keyword',
-        clueText: `Key word in this track title (${candidate.length} letters)`
+        clueText: `Key word in this track title (${w.length} letters)`
+      });
+    }
+
+    const sorted = [...candidatePool].sort((a, b) => b.length - a.length);
+    if (sorted[0]) {
+      keywordCandidate = {
+        answer: sorted[0],
+        clueType: 'Song title keyword',
+        clueText: `Key word in this track title (${sorted[0].length} letters)`
       };
     }
-    // Find a shorter keyword candidate (2 to 5 letters) if available
-    const shortWord = normalizedWords.find(w => w.length >= 2 && w.length <= 5);
-    if (shortWord && (!candidate || shortWord !== candidate)) {
+    const shortWord = candidatePool.find(w => w.length >= 2 && w.length <= 5 && w !== sorted[0]);
+    if (shortWord) {
       shortKeywordCandidate = {
         answer: shortWord,
         clueType: 'Song title keyword',
@@ -205,6 +223,7 @@ export function extractAllAnswerCandidates(title, artist) {
     artistCandidates,
     keyword: keywordCandidate,
     shortKeyword: shortKeywordCandidate,
+    wordCandidates,
   };
 }
 
@@ -235,8 +254,21 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   if (candidates.title) allAvailable.push(candidates.title);
   if (candidates.keyword) allAvailable.push(candidates.keyword);
   if (candidates.shortKeyword) allAvailable.push(candidates.shortKeyword);
+  if (Array.isArray(candidates.wordCandidates)) {
+    allAvailable.push(...candidates.wordCandidates);
+  }
   if (allowArtist && candidates.artistCandidates) {
     allAvailable.push(...candidates.artistCandidates);
+  }
+
+  // Deduplicate candidates by answer
+  const uniqueAvailable = [];
+  const seenCandidateAnswers = new Set();
+  for (const c of allAvailable) {
+    if (c && c.answer && !seenCandidateAnswers.has(c.answer)) {
+      seenCandidateAnswers.add(c.answer);
+      uniqueAvailable.push(c);
+    }
   }
 
   // Helper to test if a candidate matches the requested length bucket
@@ -251,7 +283,7 @@ export function extractAnswerKeyword(title, artist, options = {}) {
 
   // If a specific target length bucket was requested, check if any eligible candidate matches it
   if (targetBucket) {
-    const bucketMatches = allAvailable.filter(c => (!seenAnswers || !seenAnswers.has(c.answer)) && inLengthBucket(c, targetBucket));
+    const bucketMatches = uniqueAvailable.filter(c => (!seenAnswers || !seenAnswers.has(c.answer)) && inLengthBucket(c, targetBucket));
     if (bucketMatches.length > 0) {
       // If preferred type matches within bucket, take it
       if (preferred === 'artist' && allowArtist) {

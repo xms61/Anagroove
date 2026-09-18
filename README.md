@@ -56,17 +56,20 @@
   - Full playback control with an interactive click-to-seek progress bar, timestamp displays (`0:14 / 0:30`), `-5s` / `+5s` quick skipping, and dual animated VU meters.
 - **🧩 Dense Interlocking Layout Engine & Varied Answer Lengths**:
   - Multi-crossing layout optimization creates compact, tightly woven puzzles maximizing interlocking letters.
-  - Dynamic answer lengths (2 to 14 letters) with rotating short/medium/long buckets and strict collaborating artist isolation.
+  - Dynamic answer lengths (2 to 14 letters) with rotating short (3–5), medium (6–8), and long (9–14) answer buckets.
   - Staggered spring bounce celebration animation when a typed word matches correctly (with toggle switch in settings).
   - Generation era parsing for K-Pop (*"new gen kpop"*, *"4th gen"*, *"3rd gen"*) and authentic soundalike/workout remix filtration.
-- **🧠 Gemini LLM Song Selection Judge**:
-  - Automatically audits candidate song selections against user criteria (preset themes or custom prompts with popularity profiles).
-  - **Cascade Fallback Ladder & Intra-Model Retries**: Queries `gemini-3.8-flash` primarily, retrying up to 4 times per model with backoff on temporary 503 spikes or rate limits before gracefully cascading to `gemini-3.7-flash`, `gemini-3.6-flash`, and `gemini-3.5-flash`.
-  - **Negotiated Replacement Query Contract**: When tracks are deemed off-topic or inappropriate, Gemini specifies structured replacement query fields (`artist`, `trackTitle`, `genre`, `searchTerms`, bounded `yearRange`, `targetStorefront`, `popularity`) mapped to catalog harvesting engines.
-  - **Iterative Refinement Loop**: Fetches replacements across Deezer and iTunes and loops evaluation until the judge is satisfied (up to 4 iterations).
-  - **Zero-Overhead Standby Mode**: When `GEMINI_API_KEY` is `'TODO'` or unset, the judge remains dormant without making API calls or adding generation latency.
-- **🏆 Victory Showcase & Auto-Silence**:
-  - Confetti celebration, full song breakdown with album cover artwork, track titles, artist details, and direct preview playback.
+- **🎵 Seamless Word Field Audio Integration**:
+  - Clicking any word field, cell, or clue instantly triggers audio playback for that track, automatically restarting playback even if the preview had finished or was previously paused.
+- **🎯 Non-Destructive Hint System & Dedicated Shortcut Field**:
+  - Revealing letters or words via hints now validates only the revealed cells without prematurely checking or revealing uninspected cells on the board.
+  - Hint modal separates keyboard shortcuts into a clear, unified dedicated cheat-sheet card (`Space` for Letter, `Tab` for Word, `Shift + Tab` for Puzzle).
+- **🔄 Input-Preserving Puzzle Progression**:
+  - Clicking "Next Puzzle" automatically generates a fresh puzzle retaining the exact current custom prompt, preset theme, target word count, and popularity tier, with a real-time loading spinner on the button.
+- **🛡️ Cross-Session Anti-Repetition Memory & Artist Throttling**:
+  - Persists recent song IDs and normalized artist keys across sessions in `localStorage`, throttling recently heard performers and deep-offsetting catalog search queries (0–175) to prevent repetitive tracks.
+- **🏆 Unclipped Victory Showcase & Auto-Silence**:
+  - Confetti celebration, full song breakdown with album cover artwork, track titles, full non-clipped multi-line artist names, and direct preview playback.
   - Automatically cuts off background preview music the moment the puzzle is solved or fully revealed (via hint modal or `Shift+Tab`).
 
 ---
@@ -77,7 +80,6 @@
 | :--- | :--- |
 | **Frontend** | React 19, TypeScript, Vite 6, TailwindCSS, Lucide React, Canvas Confetti |
 | **Backend** | Node.js, Express, WebSocket (`ws`), Native HTTP Fetch |
-| **AI / LLM Judge** | Google Gemini (`gemini-3.8-flash` cascade -> `3.7-flash`, `3.6-flash`, `3.5-flash`, with 4x retry) |
 | **Database** | Lightweight file-backed JSON database (`server/db.js`) |
 | **Audio Engine** | Deezer API & iTunes preview resolver with dynamic fallback self-healing |
 

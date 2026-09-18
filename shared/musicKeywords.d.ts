@@ -11,6 +11,7 @@ export interface ExtractKeywordOptions {
   allowArtist?: boolean;
   seenAnswers?: Set<string>;
   artistIndex?: number;
+  targetLengthBucket?: 'short' | 'medium' | 'long';
 }
 
 export declare function isSingleEntityArtist(artistName: string): boolean;

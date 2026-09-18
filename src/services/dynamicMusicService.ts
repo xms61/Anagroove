@@ -1,21 +1,30 @@
 import { Puzzle } from '../types/crossword';
 import { getAnonymousUserId } from './apiClient';
 
+function canonicalArtistKey(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function getRecentlyPlayedIds(): string[] {
   try {
-    const raw = sessionStorage.getItem('spotyspice_recent_songs');
+    const raw = localStorage.getItem('spotyspice_recent_songs');
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function recordRecentlyPlayed(ids: string[]) {
+function recordRecentlyPlayed(ids: string[], artists: string[] = []) {
   try {
-    const recent = new Set([...getRecentlyPlayedIds(), ...ids]);
-    sessionStorage.setItem('spotyspice_recent_songs', JSON.stringify([...recent].slice(-300)));
+    const artistKeys = artists.map(a => `artist:${canonicalArtistKey(a)}`).filter(k => k.length > 7);
+    const recent = new Set([...getRecentlyPlayedIds(), ...ids, ...artistKeys]);
+    localStorage.setItem('spotyspice_recent_songs', JSON.stringify([...recent].slice(-500)));
   } catch {
-    // Session storage is optional; live generation remains server-authoritative.
+    // Local storage is optional; live generation remains server-authoritative.
   }
 }
 
@@ -73,6 +82,9 @@ export const dynamicMusicService = {
     recordRecentlyPlayed(
       data.puzzle.clues
         .map((clue: Puzzle['clues'][number]) => clue.song.providerTrackId || clue.song.id)
+        .filter(Boolean),
+      data.puzzle.clues
+        .map((clue: Puzzle['clues'][number]) => clue.song.artist)
         .filter(Boolean),
     );
     return { puzzle: data.puzzle as Puzzle, livePuzzleToken: data.livePuzzleToken };

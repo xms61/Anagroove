@@ -5,9 +5,6 @@ import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
 import { buildQueryPlan } from './queryBuilder.js';
-import { evaluateSongSelection } from './geminiJudge.js';
-import { isGeminiJudgeConfigured } from '../config.js';
-import { detectStorefront } from './itunesMusicProvider.js';
 import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
@@ -54,8 +51,8 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '') {
     return false;
   }
 
-  // Reject tracks containing common non-English linguistic markers (Spanish/Portuguese/French/German/Italian stopwords)
-  const foreignMarkers = /\b(amor|vida|corazón|fiesta|feliz|navidad|noche|mi|su|tu|como|mais|pra|você|sen|ben|bir|del|los|las|por|para|una|uno|dans|avec|pour|des|une|und|nicht|ist|dass|les|le|aux?|sur|sans|nous|vous|sont|mon|ton|son|sa|ses|qui|que|der|die|das|dem|den|ein|eine|einem|einen|einer|eines|mit|auf|für|von|zu|con|sin|sobre|gli|della|delle|dello)\b/i;
+  // Reject tracks containing common non-English linguistic markers (Spanish/Portuguese/French/German/Italian/Dutch stopwords)
+  const foreignMarkers = /\b(despacito|bailando|danza|gasolina|fonsi|amor|vida|corazón|fiesta|feliz|navidad|noche|como|mais|pra|você|sen|ben|bir|del|los|las|por|para|una|uno|dans|avec|pour|des|une|und|nicht|ist|dass|les|le|la|el|aux?|sur|sans|nous|vous|sont|mon|ma|mes|ton|ta|tes|son|sa|ses|qui|que|quoi|dont|où|mais|ou|et|donc|der|die|das|dem|den|ein|eine|einem|einen|einer|eines|mit|auf|für|von|zu|aus|durch|nach|bei|seit|con|sin|sobre|gli|della|delle|dello|dei|degli|nel|nella|je|tu|il|elle|ils|elles|un'|non|più|tutto|tutti|tutta|se|yo|ella|ellos|ellas|pero|más|muy|está|están|hacer|tiempo|año|años)\b/i;
   if (foreignMarkers.test(title) || foreignMarkers.test(artist)) {
     return false;
   }
@@ -344,9 +341,17 @@ export function isTemporalPermitted(track, yearRange) {
     }
   }
 
+  // If still no year, inspect title and album for standalone 4-digit year or 2-digit apostrophe year
+  if (year === null) {
+    const standaloneMatch = titleAndAlbum.match(/\b(19\d{2}|20[0-2]\d)\b/);
+    if (standaloneMatch) {
+      year = parseInt(standaloneMatch[1], 10);
+    }
+  }
+
+  // If yearRange is active and no release year can be established, reject candidate
   if (year === null || isNaN(year)) {
-    // If provider did not report a release date, keep candidate
-    return true;
+    return false;
   }
 
   if (yearRange.start !== undefined && year < yearRange.start) {
@@ -399,6 +404,7 @@ export async function getRandomSongPool({
 
   function getTrackRecentCount(track) {
     const providerTrackId = String(track.providerTrackId);
+    const artistKey = canonicalArtistKey(track.artist);
     const keys = [
       String(track.id),
       providerTrackId,
@@ -411,6 +417,11 @@ export async function getRandomSongPool({
       if (recentFrequency.has(k)) {
         playCount = Math.max(playCount, recentFrequency.get(k));
       }
+    }
+    // Also penalize repeated artists from recent games to boost artist diversity
+    if (recentFrequency.has(artistKey) || recentFrequency.has(`artist:${artistKey}`)) {
+      const artCount = recentFrequency.get(artistKey) || recentFrequency.get(`artist:${artistKey}`) || 1;
+      playCount = Math.max(playCount, artCount);
     }
     return playCount;
   }
@@ -602,7 +613,11 @@ export async function getRandomSongPool({
           }
         }
       }
-      if (!keyword) {
+      if (!keyword || seenAnswers.has(keyword.answer)) {
+        // Fallback without strict length bucket
+        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers });
+      }
+      if (!keyword || seenAnswers.has(keyword.answer)) {
         rejections.noKeyword++;
         continue;
       }
@@ -659,137 +674,6 @@ export async function getRandomSongPool({
   // Pass 4: Last resort fallback to prevent complete failure on tiny catalogs
   if (songs.length < 6) {
     trySelectTracks(tier3Plus, Infinity);
-  }
-
-  // 4. Gemini LLM Judge Thematic & Prompt Evaluation Loop (if configured)
-  if (isGeminiJudgeConfigured() && songs.length >= 6) {
-    const sessionExcludedKeys = new Set();
-    const MAX_JUDGE_ROUNDS = 4;
-    let round = 0;
-
-    while (round < MAX_JUDGE_ROUNDS) {
-      round++;
-      const inputContract = {
-        mode: prompt ? 'custom_prompt' : 'theme',
-        theme: {
-          id: queryPlan.genre || 'all',
-          title: typeof queryPlan.genre === 'string' && queryPlan.genre !== 'all' ? queryPlan.genre : 'Mixed All-Time Hits',
-        },
-        customPrompt: prompt || '',
-        popularity: queryPlan.popularity || 'balanced',
-        targetWordCount: count,
-        candidateTracks: songs,
-      };
-
-      const evalResult = await evaluateSongSelection(inputContract);
-
-      if (!evalResult.evaluated || evalResult.judgment.isSatisfied || evalResult.judgment.rejectedTrackIndices.length === 0) {
-        logger.info('llm_judge', `LLM Judge approved selection on round ${round} (model: ${evalResult.modelUsed || 'standby'}).`);
-        break;
-      }
-
-      const rejectedIndices = new Set(evalResult.judgment.rejectedTrackIndices);
-      logger.info('llm_judge', `Round ${round}: Judge rejected ${rejectedIndices.size} track(s). Reasons: ${JSON.stringify(evalResult.judgment.rejectionReasons)}`);
-
-      // Filter out rejected tracks and clean up tracking sets
-      const remainingSongs = [];
-      for (let i = 0; i < songs.length; i++) {
-        const track = songs[i];
-        if (rejectedIndices.has(i)) {
-          const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
-          sessionExcludedKeys.add(trackIdentity);
-          seenTracks.delete(trackIdentity);
-          seenTitles.delete(canonicalTrackKey(track.title));
-          seenArtists.delete(canonicalArtistKey(track.artist));
-          const artistNames = splitArtistNames(track.artist);
-          artistNames.forEach(name => seenArtists.delete(canonicalArtistKey(name)));
-          seenAnswers.delete(track.answer);
-        } else {
-          remainingSongs.push(track);
-        }
-      }
-
-      songs.length = 0;
-      songs.push(...remainingSongs);
-
-      // Execute Negotiated Replacement Queries on music providers
-      const replacementQueries = evalResult.judgment.replacementQueries || [];
-      if (replacementQueries.length > 0) {
-        const replacementTasks = [];
-        const themeStorefront = detectStorefront(`${prompt || ''} ${queryPlan.genre || ''}`);
-
-        for (const q of replacementQueries) {
-          const deezerSearches = [];
-          const itunesSearches = [];
-
-          if (q.artist && q.trackTitle) {
-            // Compound query: search artist and track together to eliminate cross-genre title collisions
-            deezerSearches.push(`artist:"${q.artist}" track:"${q.trackTitle}"`);
-            itunesSearches.push(`${q.artist} ${q.trackTitle}`);
-          } else if (q.artist) {
-            deezerSearches.push(`artist:"${q.artist}"`);
-            itunesSearches.push(q.artist);
-          } else if (q.trackTitle) {
-            // If only track title is provided, anchor with theme/genre context if short or common
-            const isAnimeTheme = /anime/i.test(`${prompt || ''} ${queryPlan.genre || ''}`);
-            const contextualTitle = isAnimeTheme ? `${q.trackTitle} anime` : q.trackTitle;
-            deezerSearches.push(contextualTitle);
-            itunesSearches.push(contextualTitle);
-          }
-
-          // Add any explicit searchTerms provided that aren't already included
-          if (Array.isArray(q.searchTerms)) {
-            for (const term of q.searchTerms) {
-              if (term && !deezerSearches.includes(term)) {
-                deezerSearches.push(term);
-              }
-              if (term && !itunesSearches.includes(term)) {
-                itunesSearches.push(term);
-              }
-            }
-          }
-
-          if (deezerSearches.length > 0) {
-            replacementTasks.push(
-              musicProvider.getCandidateTracks({
-                genre: q.genre || queryPlan.genre,
-                searches: deezerSearches.slice(0, 3),
-                limit: 30,
-                popularity: q.popularity || queryPlan.popularity,
-              }).catch(() => [])
-            );
-          }
-
-          const effectiveStorefront = q.targetStorefront || themeStorefront || 'US';
-          for (const term of itunesSearches.slice(0, 2)) {
-            replacementTasks.push(
-              itunesMusicProvider.getCandidateTracks({
-                query: term,
-                country: effectiveStorefront,
-                limit: 30,
-              }).catch(() => [])
-            );
-          }
-        }
-
-        const repResults = await Promise.all(replacementTasks);
-        const replacementCandidates = repResults.flat();
-        if (replacementCandidates.length > 0) {
-          trySelectTracks(replacementCandidates, Infinity, songs, sessionExcludedKeys);
-        }
-      }
-
-      // Backfill remaining openings from catalog tiers if still below target count
-      if (songs.length < count) {
-        trySelectTracks(tier0, 0, songs, sessionExcludedKeys);
-      }
-      if (songs.length < count) {
-        trySelectTracks(tier1, 1, songs, sessionExcludedKeys);
-      }
-      if (songs.length < count) {
-        trySelectTracks(tier2, 2, songs, sessionExcludedKeys);
-      }
-    }
   }
 
   logger.sampling(orderedCandidates.length, songs.length, clueStats, rejections);
