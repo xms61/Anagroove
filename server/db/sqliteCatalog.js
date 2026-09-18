@@ -32,6 +32,48 @@ export function normalizeDedupeArtist(artist = '') {
   return canonicalArtistKey(artist);
 }
 
+/**
+ * Detects language code ('en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh', 'ru', 'ar')
+ * from script analysis and prominent linguistic markers.
+ */
+export function detectTrackLanguage(title = '', artist = '') {
+  const text = `${title} ${artist}`.toLowerCase();
+  // Korean Hangul
+  if (/[\uac00-\ud7af]/.test(text)) return 'ko';
+  // Japanese Hiragana / Katakana
+  if (/[\u3040-\u30ff]/.test(text)) return 'ja';
+  // Chinese Hanzi
+  if (/[\u4e00-\u9fff]/.test(text)) return 'zh';
+  // Cyrillic
+  if (/[\u0400-\u04ff]/.test(text)) return 'ru';
+  // Arabic
+  if (/[\u0600-\u06ff]/.test(text)) return 'ar';
+  // Spanish markers
+  if (/\b(amor|coraz[oó]n|vida|noche|fiesta|bailando|despacito|feliz|navidad|se[nñ]orita|mujer|beso|adi[oó]s|para|por|los|las|una|uno|conmigo|quiero)\b/i.test(text)) return 'es';
+  // French markers
+  if (/\b(amour|chanson|avec|dans|pour|une|les|ton|mon|nous|vous|c[eé]|est|vie|femme|soleil|nuit|monde|toujours)\b/i.test(text)) return 'fr';
+  // German markers
+  if (/\b(und|nicht|ist|der|die|das|mit|auf|f[uü]r|von|nacht|liebe|herz|welt|zeit|leben|atemlos)\b/i.test(text)) return 'de';
+  // Italian markers
+  if (/\b(amore|bella|notte|tutto|tutti|della|degli|mondo|vita|cuore|felicit[aà])\b/i.test(text)) return 'it';
+  // Portuguese markers
+  if (/\b(mais|voc[eê]|n[aã]o|pra|tudo|amor|vida|cora[cç][aã]o|saudade)\b/i.test(text)) return 'pt';
+  // Default to English for standard Western/Latin titles
+  return 'en';
+}
+
+/**
+ * Extracts 2-letter ISO country code from a standard 12-character ISRC.
+ */
+export function extractIsrcCountryCode(isrc = '') {
+  if (typeof isrc !== 'string') return null;
+  const clean = isrc.trim().toUpperCase();
+  if (clean.length === 12 && /^[A-Z]{2}/.test(clean)) {
+    return clean.slice(0, 2);
+  }
+  return null;
+}
+
 export class SqliteCatalog {
   constructor(dbPath = DEFAULT_DB_PATH) {
     this.dbPath = dbPath;
@@ -86,6 +128,8 @@ export class SqliteCatalog {
         duration_ms INTEGER NOT NULL,
         release_year INTEGER,
         release_date TEXT,
+        country_code TEXT,
+        language TEXT DEFAULT 'en',
         popularity INTEGER DEFAULT 0,
         is_explicit INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now')),
@@ -145,6 +189,37 @@ export class SqliteCatalog {
       CREATE INDEX IF NOT EXISTS idx_samples_track ON track_samples(track_id);
       CREATE INDEX IF NOT EXISTS idx_queue_poll ON crawl_queue(status, next_run_at, priority DESC);
     `);
+
+    // Safe backward compatibility migrations for existing database files
+    try {
+      this.db.exec('ALTER TABLE tracks ADD COLUMN country_code TEXT;');
+    } catch { /* already exists */ }
+    try {
+      this.db.exec("ALTER TABLE tracks ADD COLUMN language TEXT DEFAULT 'en';");
+    } catch { /* already exists */ }
+
+    // Indexes for new columns
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_country ON tracks(country_code);');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_lang ON tracks(language);');
+    } catch { /* non-fatal */ }
+
+    // One-time fast backfill for existing tracks
+    try {
+      this.db.exec(`
+        UPDATE tracks
+        SET country_code = SUBSTR(isrc, 1, 2)
+        WHERE country_code IS NULL
+          AND isrc IS NOT NULL
+          AND LENGTH(isrc) = 12
+          AND SUBSTR(isrc, 1, 2) GLOB '[A-Z][A-Z]';
+      `);
+      this.db.exec(`
+        UPDATE tracks
+        SET language = 'en'
+        WHERE language IS NULL;
+      `);
+    } catch { /* non-fatal backfill */ }
   }
 
   _prepareStatements() {
@@ -196,8 +271,8 @@ export class SqliteCatalog {
     `);
 
     this.stmtInsertTrack = this.db.prepare(`
-      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date, popularity, is_explicit)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date, country_code, language, popularity, is_explicit)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     this.stmtUpdateTrack = this.db.prepare(`
@@ -207,6 +282,8 @@ export class SqliteCatalog {
           release_year = COALESCE(release_year, ?),
           release_date = COALESCE(release_date, ?),
           album_name = COALESCE(album_name, ?),
+          country_code = COALESCE(country_code, ?),
+          language = COALESCE(language, ?),
           updated_at = datetime('now')
       WHERE id = ?
     `);
@@ -349,6 +426,8 @@ export class SqliteCatalog {
 
     let trackId;
     let isNew = false;
+    const countryCode = extractIsrcCountryCode(isrc);
+    const language = detectTrackLanguage(title, artist);
 
     if (existingTrack) {
       trackId = existingTrack.id;
@@ -359,6 +438,8 @@ export class SqliteCatalog {
         releaseYear || null,
         releaseDate || null,
         album || null,
+        countryCode,
+        language,
         trackId
       );
     } else {
@@ -372,6 +453,8 @@ export class SqliteCatalog {
         durationMs || 0,
         releaseYear || null,
         releaseDate || null,
+        countryCode,
+        language,
         popularity || 0,
         isExplicit ? 1 : 0
       );
@@ -500,6 +583,8 @@ export class SqliteCatalog {
         SELECT track_id FROM track_providers GROUP BY track_id HAVING COUNT(provider) > 1
       )
     `).get().count;
+    const languageCount = this.db.prepare('SELECT COUNT(DISTINCT language) as count FROM tracks WHERE language IS NOT NULL').get().count;
+    const countryCount = this.db.prepare('SELECT COUNT(DISTINCT country_code) as count FROM tracks WHERE country_code IS NOT NULL').get().count;
 
     return {
       artists: Number(artistCount),
@@ -507,6 +592,8 @@ export class SqliteCatalog {
       audioSamples: Number(sampleCount),
       providerLinks: Number(providerCount),
       crossReferencedTracks: Number(crossReferenced),
+      languages: Number(languageCount),
+      countryCodes: Number(countryCount),
     };
   }
 

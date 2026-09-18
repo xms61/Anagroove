@@ -9,10 +9,10 @@ const playlistsArg = args.find(a => a.startsWith('--playlists='));
 const artistsArg = args.find(a => a.startsWith('--artists='));
 const lexiconArg = args.find(a => a.startsWith('--lexicon='));
 
-const targetTracks = targetArg ? parseInt(targetArg.split('=')[1], 10) : 100000;
+const targetTracks = targetArg ? parseInt(targetArg.split('=')[1], 10) : 500000;
 const playlistsLimit = playlistsArg ? parseInt(playlistsArg.split('=')[1], 10) : 100;
 const artistsLimit = artistsArg ? parseInt(artistsArg.split('=')[1], 10) : 250;
-const lexiconLimit = lexiconArg ? parseInt(lexiconArg.split('=')[1], 10) : 350;
+const lexiconLimit = lexiconArg ? parseInt(lexiconArg.split('=')[1], 10) : 1500;
 
 function printStats(stats) {
   console.log('\n======================================================');
@@ -21,6 +21,8 @@ function printStats(stats) {
   console.log(`  🎵 Total Unique Artists:       ${stats.artists.toLocaleString()}`);
   console.log(`  💿 Total Canonical Tracks:     ${stats.tracks.toLocaleString()}`);
   console.log(`  🔊 Verified Audio Samples:     ${stats.audioSamples.toLocaleString()}`);
+  console.log(`  🌐 Country Codes (ISRC):       ${(stats.countryCodes || 0).toLocaleString()}`);
+  console.log(`  🗣️  Detected Languages:        ${(stats.languages || 0).toLocaleString()}`);
   console.log(`  🔗 Provider Identifiers:       ${stats.providerLinks.toLocaleString()}`);
   console.log(`  ✨ Cross-Referenced Tracks:    ${stats.crossReferencedTracks.toLocaleString()}`);
   console.log('======================================================\n');

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.3] - 2026-09-19
+
+### Added
+- **Country Code & Language Tracking (`server/db/sqliteCatalog.js`)**:
+  - Added `country_code TEXT` and `language TEXT` columns with dedicated B-tree indexes (`idx_tracks_country`, `idx_tracks_lang`) to the `tracks` schema.
+  - Implemented `extractIsrcCountryCode` to automatically extract the ISO 3166-1 2-letter country code from the standard 12-character ISRC registration prefix.
+  - Implemented `detectTrackLanguage` to detect language tags (`en`, `es`, `fr`, `de`, `it`, `pt`, `ja`, `ko`, `zh`, `ru`, `ar`) via Unicode script analysis and linguistic markers.
+  - Added automated non-blocking migration and fast backfill across all existing catalog tracks.
+- **500,000 Tracks Discovery Vectors (`server/crawler/harvester.js`, `scripts/crawl_catalog.js`)**:
+  - Added **Vector 5: Fine-Grained Year (1960–2026) $\times$ Genre Matrix (`YEAR_GENRE_SEEDS`)** generating over 1,600 highly targeted historical and contemporary discography queries.
+  - Added **Vector 6: High-Yield Bigram Sweeper (`BIGRAM_SEEDS`)** covering 60+ top musical n-grams.
+  - Expanded `MUSIC_LEXICON_SEEDS` with 500+ rich musical, emotional, atmospheric, and multilingual vocabulary seeds.
+  - Updated default `--target` to `500000` and added Country Code and Language counts to `crawl:status` output.
+
+---
+
 ## [1.9.2] - 2026-09-18
 
 ### Changed
