@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2026-09-18
+
+### Added
+- **Multi-Prompt Crossword Generation Suite Expansion (`scripts/test_prompts_crossword_suite.js`)**:
+  - Expanded automated crossword generation suite to 14 comprehensive test prompts.
+  - Added dedicated test scenarios for:
+    - **Single Artist**: `songs by Daft Punk` (asserts 0% artist name clues, 100% title/keyword clues, and multi-track selection).
+    - **Temporal Range**: `anime from the years 2020-2026` (asserts 100% temporal fidelity within 2020-2026 and homonym protection).
+    - **Temporal Upper Bound**: `grunge before 1994` (asserts 100% temporal fidelity strictly $\le 1993$).
+    - **Temporal Range Bounds**: `rock between 1970 and 1976` (asserts 100% temporal fidelity within 1970-1976).
+  - Achieved **100% suite pass rate (14/14)** with 10/10 words placed on every grid.
+
+---
+
 ## [1.4.0] - 2026-09-18
 
 ### Added

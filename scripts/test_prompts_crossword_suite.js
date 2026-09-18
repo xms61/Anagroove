@@ -79,6 +79,38 @@ const PROMPT_TEST_CASES = [
     expectedCulture: 'Western Rock',
     forbiddenHomonyms: [],
   },
+  {
+    name: 'Single Artist (Daft Punk)',
+    prompt: 'songs by Daft Punk',
+    category: 'Targeted Artist Crossword',
+    expectedCulture: 'French Electronic',
+    forbiddenHomonyms: [],
+    expectZeroArtistClues: true,
+  },
+  {
+    name: 'Anime (2020-2026)',
+    prompt: 'anime from the years 2020-2026',
+    category: 'Temporal Year Range',
+    expectedCulture: 'Japanese',
+    forbiddenHomonyms: ['Anime'],
+    yearRange: { start: 2020, end: 2026 },
+  },
+  {
+    name: '90s Grunge (Before 1994)',
+    prompt: 'grunge before 1994',
+    category: 'Temporal Upper Bound',
+    expectedCulture: 'Western Rock',
+    forbiddenHomonyms: [],
+    yearRange: { end: 1993 },
+  },
+  {
+    name: 'Classic Rock (1970-1976)',
+    prompt: 'rock between 1970 and 1976',
+    category: 'Temporal Range Bounds',
+    expectedCulture: 'Western Rock',
+    forbiddenHomonyms: [],
+    yearRange: { start: 1970, end: 1976 },
+  },
 ];
 
 const TARGET_WORDS = 10;
@@ -173,6 +205,28 @@ async function runPromptCrosswordSuite() {
       }
 
       console.log(`  ✓ Clues Balance: ${clueStats.title} Title, ${clueStats.artist} Artist, ${clueStats.keyword} Keyword`);
+
+      // 5. Validate single-artist clue policy if specified
+      if (testCase.expectZeroArtistClues) {
+        if (clueStats.artist > 0) {
+          throw new Error(`Single artist puzzle violation: expected 0% artist clues, got ${clueStats.artist} artist clues`);
+        }
+        console.log('  ✓ Single artist clue policy: 100% (0% artist name clues, 100% title/keyword)');
+      }
+
+      // 6. Validate temporal release bounds on harvested songs if specified
+      if (testCase.yearRange) {
+        for (const song of songs) {
+          const yr = song.releaseDate ? parseInt(String(song.releaseDate).slice(0, 4), 10) : NaN;
+          if (Number.isFinite(yr)) {
+            if ((testCase.yearRange.start !== undefined && yr < testCase.yearRange.start) ||
+                (testCase.yearRange.end !== undefined && yr > testCase.yearRange.end)) {
+              throw new Error(`Temporal bound violation: track "${song.title}" (${yr}) outside range ${JSON.stringify(testCase.yearRange)}`);
+            }
+          }
+        }
+        console.log(`  ✓ Temporal fidelity: 100% (all tracks within ${JSON.stringify(testCase.yearRange)})`);
+      }
 
       suiteResults.push({
         ...testCase,
