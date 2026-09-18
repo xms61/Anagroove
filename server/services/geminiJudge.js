@@ -192,7 +192,10 @@ ${JSON.stringify(tracksSnippet, null, 2)}
    - "mainstream": Flag obscure or amateur tracks that casual listeners wouldn't recognize.
    - "balanced" / "pure": Organic catalog representation fitting the theme.
 3. NEGOTIATED REPLACEMENT QUERY CONTRACT:
-   If any track(s) are rejected, you MUST formulate targeted replacement queries conforming strictly to this JSON schema:
+   If any track(s) are rejected, you MUST formulate targeted replacement queries conforming strictly to this JSON schema.
+   CRITICAL FOR REPLACEMENT ACCURACY:
+   - When recommending specific songs, ALWAYS specify BOTH "artist" AND "trackTitle" (e.g. artist: "YOASOBI", trackTitle: "IDOL") so the catalog search does not match unrelated cross-genre title collisions.
+   - Set "targetStorefront" appropriately for regional music (e.g. "jp" for anime/J-Pop, "kr" for Korean, "fr" for French, "br" for Brazilian).
    {
      "isSatisfied": boolean,
      "verdictSummary": string,

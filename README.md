@@ -140,7 +140,7 @@ SpotySpice/
 │   ├── build_recognized_artists.js
 │   ├── fetch_all_previews.js
 │   ├── generate_all_themes.js
-│   ├── run_tests.js            # Automated test suite (272 tests)
+│   ├── run_tests.js            # Automated test suite (290 tests)
 │   ├── test_features.js        # Core API & persistence tests
 │   ├── test_multiplayer_live_sync.js # E2E two-player live sync test
 │   └── test_randomizer.js      # Recognizable pool entropy test
