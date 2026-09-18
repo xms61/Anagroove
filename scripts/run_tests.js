@@ -39,6 +39,13 @@ import { db } from '../server/db.js';
 import { SqliteCatalog, normalizeDedupeTitle, normalizeDedupeArtist } from '../server/db/sqliteCatalog.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
 import { TokenBucketRateLimiter } from '../server/crawler/rateLimiter.js';
+import {
+  MusicHarvester,
+  CURATED_PLAYLIST_SEEDS,
+  DECADE_GENRE_SEEDS,
+  MUSIC_LEXICON_SEEDS,
+  FOUNDATION_ARTISTS,
+} from '../server/crawler/harvester.js';
 
 let passedCount = 0;
 let failedCount = 0;
@@ -1232,10 +1239,20 @@ async function runSqliteCatalogTests() {
   // 3. Normalization Key Tests
   assert(normalizeDedupeTitle('Bohemian Rhapsody (Remastered 2011)') === 'bohemianrhapsody', 'Normalizes title stripping remaster parenthetical');
   assert(normalizeDedupeTitle('Under Pressure (feat. David Bowie) [Deluxe Version]') === 'underpressure', 'Normalizes title stripping feature and deluxe version');
+  assert(normalizeDedupeTitle('Stayin Alive (Radio Edit)') === 'stayinalive', 'Normalizes title stripping radio edit suffix');
   assert(normalizeDedupeArtist('The Beatles') === 'the beatles', 'Normalizes artist canonical identity');
 
-  // 4. In-Memory SQLite Catalog Tests
+  // 4. Multi-Vector Catalog Harvester Seeds Tests
+  assert(CURATED_PLAYLIST_SEEDS.length >= 35, 'Curated playlist seeds catalog contains >= 35 high-yield queries');
+  assert(DECADE_GENRE_SEEDS.length === 105, 'Decade x Genre matrix contains exactly 105 combinations (7 decades x 15 genres)');
+  assert(MUSIC_LEXICON_SEEDS.length >= 250, 'Music lexicon contains >= 250 high-frequency seeds');
+  assert(FOUNDATION_ARTISTS.length >= 150, 'Foundation artists roster contains >= 150 foundational artists');
+
+  // 5. In-Memory SQLite Catalog Tests
   const memCatalog = new SqliteCatalog(':memory:');
+  const harvester = new MusicHarvester(memCatalog);
+  assert(typeof harvester.harvestCuratedPlaylists === 'function', 'Harvester defines harvestCuratedPlaylists method');
+  assert(typeof harvester.runFullHarvest === 'function', 'Harvester defines runFullHarvest method');
   const initialStats = memCatalog.getStats();
   assert(initialStats.tracks === 0 && initialStats.artists === 0, 'Initializes empty in-memory catalog');
 
