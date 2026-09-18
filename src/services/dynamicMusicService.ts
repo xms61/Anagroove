@@ -13,7 +13,7 @@ function getRecentlyPlayedIds(): string[] {
 function recordRecentlyPlayed(ids: string[]) {
   try {
     const recent = new Set([...getRecentlyPlayedIds(), ...ids]);
-    sessionStorage.setItem('spotyspice_recent_songs', JSON.stringify([...recent].slice(-150)));
+    sessionStorage.setItem('spotyspice_recent_songs', JSON.stringify([...recent].slice(-300)));
   } catch {
     // Session storage is optional; live generation remains server-authoritative.
   }
@@ -54,7 +54,7 @@ export const dynamicMusicService = {
       decade: opts.decade || undefined,
       popularity: opts.popularity || undefined,
       seed: opts.seed || undefined,
-      recentIds: getRecentlyPlayedIds().slice(-50),
+      recentIds: getRecentlyPlayedIds().slice(-300),
     };
 
     const response = await fetch('/api/puzzles/live', {

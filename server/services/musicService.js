@@ -79,12 +79,37 @@ export async function getRandomSongPool({
 
   logger.info('query', `Plan: genre="${queryPlan.genre}" searches=${JSON.stringify(queryPlan.deezerSearches)} offset=${queryPlan.randomOffset}`);
 
-  const recent = new Set(recentIds.map(String));
+  const recentFrequency = new Map();
+  const allRecentList = Array.isArray(recentIds) ? recentIds : [];
+  for (const item of allRecentList) {
+    if (!item) continue;
+    const key = String(item);
+    recentFrequency.set(key, (recentFrequency.get(key) || 0) + 1);
+  }
+
+  function getTrackRecentCount(track) {
+    const providerTrackId = String(track.providerTrackId);
+    const keys = [
+      String(track.id),
+      providerTrackId,
+      `deezer:${providerTrackId}`,
+      `itunes:${providerTrackId}`,
+      `hit-${providerTrackId}`,
+    ];
+    let playCount = 0;
+    for (const k of keys) {
+      if (recentFrequency.has(k)) {
+        playCount = Math.max(playCount, recentFrequency.get(k));
+      }
+    }
+    return playCount;
+  }
+
   const seenTracks = new Set();
   const seenArtists = new Set();
   const seenTitles = new Set();
   const seenAnswers = new Set();
-  const limit = Math.min(100, count * 3);
+  const limit = Math.min(250, Math.max(120, count * 10));
 
   // 1. Candidate harvesting across providers
   const candidateTasks = [
@@ -103,9 +128,9 @@ export async function getRandomSongPool({
 
   // If using live default provider (not a unit test mock), fetch iTunes candidates too
   if (musicProvider === deezerMusicProvider && queryPlan.itunesSearches.length > 0) {
-    for (const term of queryPlan.itunesSearches.slice(0, 2)) {
+    for (const term of queryPlan.itunesSearches.slice(0, 4)) {
       candidateTasks.push(
-        itunesMusicProvider.getCandidateTracks({ query: term, limit: Math.min(50, count * 2) })
+        itunesMusicProvider.getCandidateTracks({ query: term, limit: 100 })
           .catch(err => {
             console.warn('[MusicService] iTunes harvesting error:', err.message);
             return [];
@@ -132,6 +157,21 @@ export async function getRandomSongPool({
     orderedCandidates = shuffleArray(rawCandidates);
   }
 
+  // 2b. Partition into play-frequency tiers to enforce strict round-robin catalog rotation
+  const tier0 = []; // unplayed
+  const tier1 = []; // played 1x
+  const tier2 = []; // played 2x
+  const tier3Plus = []; // played 3x or more
+
+  for (const track of orderedCandidates) {
+    const playCount = getTrackRecentCount(track);
+    if (playCount === 0) tier0.push(track);
+    else if (playCount === 1) tier1.push(track);
+    else if (playCount === 2) tier2.push(track);
+    else tier3Plus.push(track);
+  }
+
+
   // 3. Variety Rejection Sampling & Language Filtering
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const songs = [];
@@ -147,74 +187,90 @@ export async function getRandomSongPool({
     noKeyword: 0,
   };
 
-  for (const track of orderedCandidates) {
-    const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
-    const artistIdentity = canonicalArtistKey(track.artist);
-    const titleIdentity = canonicalTrackKey(track.title);
-    const providerTrackId = String(track.providerTrackId);
-    const isRecent = recent.has(track.id) ||
-      recent.has(providerTrackId) ||
-      recent.has(`deezer:${providerTrackId}`) ||
-      recent.has(`itunes:${providerTrackId}`) ||
-      recent.has(`hit-${providerTrackId}`);
+  function trySelectTracks(candidateList, maxPlays) {
+    for (const track of candidateList) {
+      if (songs.length >= count) break;
 
-    if (isRecent) {
-      rejections.recent++;
-      continue;
-    }
-    if (seenTracks.has(trackIdentity)) {
-      rejections.duplicateTrack++;
-      continue;
-    }
-    if (seenTitles.has(titleIdentity)) {
-      rejections.duplicateTitle++;
-      continue;
-    }
-    if (blacklistMatchesTrack(blacklist, track)) {
-      rejections.blacklist++;
-      continue;
-    }
+      const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
+      const artistIdentity = canonicalArtistKey(track.artist);
+      const titleIdentity = canonicalTrackKey(track.title);
+      const playCount = getTrackRecentCount(track);
 
-    // Language constraint: enforce English for all categories except anime, kpop, and international themes
-    if (!isLanguagePermitted(track, queryPlan.genre, prompt || queryPlan.prompt)) {
-      rejections.language++;
-      continue;
+      if (playCount > maxPlays) {
+        rejections.recent++;
+        continue;
+      }
+      if (seenTracks.has(trackIdentity)) {
+        rejections.duplicateTrack++;
+        continue;
+      }
+      if (seenTitles.has(titleIdentity)) {
+        rejections.duplicateTitle++;
+        continue;
+      }
+      if (blacklistMatchesTrack(blacklist, track)) {
+        rejections.blacklist++;
+        continue;
+      }
+
+      // Language constraint: enforce English for all categories except anime, kpop, and international themes
+      if (!isLanguagePermitted(track, queryPlan.genre, prompt || queryPlan.prompt)) {
+        rejections.language++;
+        continue;
+      }
+
+      // Unless the user explicitly asked for a single artist, enforce max 1 track per artist
+      if (!isTargetingSingleArtist && seenArtists.has(artistIdentity)) {
+        rejections.duplicateArtist++;
+        continue;
+      }
+
+      // Cycle preferred clue type across the crossword to guarantee clue variance
+      const preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
+      const keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
+      if (!keyword) {
+        rejections.noKeyword++;
+        continue;
+      }
+      if (seenAnswers.has(keyword.answer)) {
+        rejections.duplicateAnswer++;
+        continue;
+      }
+
+      seenTracks.add(trackIdentity);
+      seenArtists.add(artistIdentity);
+      seenTitles.add(titleIdentity);
+      seenAnswers.add(keyword.answer);
+
+      if (keyword.clueType === 'Song title') clueStats.title++;
+      else if (keyword.clueType === 'Artist name') clueStats.artist++;
+      else clueStats.keyword++;
+
+      songs.push({
+        ...track,
+        answer: keyword.answer,
+        clueType: keyword.clueType,
+        clueText: keyword.clueText,
+      });
     }
+  }
 
-    // Unless the user explicitly asked for a single artist, enforce max 1 track per artist
-    if (!isTargetingSingleArtist && seenArtists.has(artistIdentity)) {
-      rejections.duplicateArtist++;
-      continue;
-    }
+  // Pass 1: Try fresh unplayed candidates (playCount === 0)
+  trySelectTracks(tier0, 0);
 
-    // Cycle preferred clue type across the crossword to guarantee clue variance
-    const preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
-    const keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
-    if (!keyword) {
-      rejections.noKeyword++;
-      continue;
-    }
-    if (seenAnswers.has(keyword.answer)) {
-      rejections.duplicateAnswer++;
-      continue;
-    }
+  // Pass 2: If fresh unplayed catalog is exhausted or insufficient, admit candidates with 1 play
+  if (songs.length < count && (tier0.length === 0 || songs.length < 3)) {
+    trySelectTracks(tier1, 1);
+  }
 
-    seenTracks.add(trackIdentity);
-    seenArtists.add(artistIdentity);
-    seenTitles.add(titleIdentity);
-    seenAnswers.add(keyword.answer);
+  // Pass 3: If still insufficient, admit candidates with 2 plays
+  if (songs.length < count && (tier0.length === 0 && tier1.length === 0)) {
+    trySelectTracks(tier2, 2);
+  }
 
-    if (keyword.clueType === 'Song title') clueStats.title++;
-    else if (keyword.clueType === 'Artist name') clueStats.artist++;
-    else clueStats.keyword++;
-
-    songs.push({
-      ...track,
-      answer: keyword.answer,
-      clueType: keyword.clueType,
-      clueText: keyword.clueText,
-    });
-    if (songs.length >= count) break;
+  // Pass 4: Last resort fallback to prevent complete failure on tiny catalogs
+  if (songs.length < 6) {
+    trySelectTracks(tier3Plus, Infinity);
   }
 
   logger.sampling(orderedCandidates.length, songs.length, clueStats, rejections);

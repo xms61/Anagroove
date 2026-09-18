@@ -84,6 +84,51 @@ export function parsePrompt(prompt = '') {
 }
 
 /**
+ * Generates complementary search variations for any theme or genre.
+ * Universally applicable to any query prompt (e.g. "Japanese City Pop", "90s Grunge Rock", "French House").
+ */
+export function generateThemeVariations(genre = '', decade = '') {
+  const variations = new Set();
+  const trimmed = typeof genre === 'string' ? genre.trim() : '';
+  if (!trimmed) return [];
+
+  variations.add(trimmed);
+
+  if (decade) {
+    variations.add(`${trimmed} ${decade}`);
+  }
+
+  // De-spaced compound variants (e.g. "city pop" -> "citypop", "synth wave" -> "synthwave", "hip hop" -> "hiphop")
+  const compact = trimmed.replace(/\b(city\s+pop|synth\s+wave|chill\s+wave|vapor\s+wave|hip\s+hop|lo\s+fi|post\s+punk|neo\s+soul)\b/gi, match => match.replace(/\s+/g, ''));
+  if (compact !== trimmed) {
+    variations.add(compact);
+    if (decade) {
+      variations.add(`${compact} ${decade}`);
+    }
+  }
+
+  // If there's a cultural/language prefix (e.g. "Japanese", "French", "Korean"), retain it
+  const words = trimmed.split(/\s+/);
+  const isCultural = /^(japanese|korean|french|german|spanish|italian|brazilian|latin|african|chinese|swedish|anime)\b/i.test(words[0]);
+
+  if (words.length >= 3) {
+    if (isCultural) {
+      // Keep cultural prefix + last word (e.g. "Japanese Pop")
+      variations.add(`${words[0]} ${words[words.length - 1]}`);
+    } else {
+      // For non-cultural phrases (e.g. "alternative indie rock" -> "indie rock")
+      const coreSubGenre = words.slice(-2).join(' ');
+      variations.add(coreSubGenre);
+      if (decade) {
+        variations.add(`${coreSubGenre} ${decade}`);
+      }
+    }
+  }
+
+  return Array.from(variations).slice(0, 4);
+}
+
+/**
  * Builds a query plan with search terms and filtering thresholds for Deezer and iTunes.
  */
 export function buildQueryPlan(userOptions = {}) {
@@ -157,13 +202,10 @@ export function buildQueryPlan(userOptions = {}) {
   }
 
   if (genre) {
-    deezerSearches.push(genre);
-    itunesSearches.push(genre);
-
-    // Compound search with decade for higher match rates (e.g. "japanese city pop 80s")
-    if (decade) {
-      deezerSearches.push(`${genre} ${decade}`);
-      itunesSearches.push(`${genre} ${decade}`);
+    const variations = generateThemeVariations(genre, decade);
+    for (const term of variations) {
+      deezerSearches.push(term);
+      itunesSearches.push(term);
     }
   } else if (decade) {
     const yearBase = parseInt(decade);
@@ -208,7 +250,7 @@ export function buildQueryPlan(userOptions = {}) {
     maxRank,
     deezerSearches,
     itunesSearches,
-    randomOffset: Math.floor(Math.random() * 150),
+    randomOffset: genre ? Math.floor(Math.random() * 25) : Math.floor(Math.random() * 150),
     sortOrder: randomOrder,
   };
 }

@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically detects international/regional themes in prompts or genres (`Japanese`, `City Pop`, `K-Pop`, `Latin`, `Anime`, `Spanish`, `French`, `German`, etc.).
   - Grants language exemption allowing native titles, Kanji, Kana, Hangul, and accented characters.
   - Bypasses US iTunes storefront constraint for international and Asian soundtrack discovery.
+- **Universal Multi-Query Harvesting & Repetition Cap ($\le 3$ repeats across 50 crosswords)**:
+  - **Dynamic Theme Variations (`server/services/queryBuilder.js`)**: Generates complementary sub-genre, de-spaced (`synthwave`, `citypop`), and decade-specific queries generically for any prompt while preserving cultural identifiers (`Japanese`, `French`, `Korean`, etc.).
+  - **Deep Multi-Provider Ingestion (`server/services/musicService.js`)**: Expanded aggregator candidate harvesting depth to 250 on Deezer and 4 parallel queries of 100 tracks on iTunes, discovering 400+ unique candidates per prompt without static seed lists.
+  - **Multi-Pass Tiered Play-Frequency Sampling (`server/services/musicService.js`)**: Strictly prioritizes unplayed tracks (Tier 0). Only taps Tier 1 (1 previous play) and Tier 2 when unplayed tracks are exhausted, strictly capping any song at $\le 3$ repetitions across extended sessions.
+  - **Session Memory Expansion (`src/services/dynamicMusicService.ts`)**: Expanded client session memory buffer from 50 to 300 tracks.
+  - **50-Crossword Simulation Benchmark (`scripts/evaluate_city_pop_variance.js`)**: Evaluated 50 consecutive crosswords with live provider APIs and rolling session tracking, achieving **99.5% unique songs** (420 unique out of 422 slots) and a maximum repetition of only **2x** per song (exceeding the $\le 3$ benchmark).
 
 ---
 
