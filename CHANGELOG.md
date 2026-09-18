@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.7] - 2026-09-18
+
+### Fixed
+- **Crossword UI Responsive Cell Geometry & Overlap Elimination (`src/components/CrosswordGrid.tsx`)**:
+  - Replaced flexible grid track minmax sizing (`minmax(0, 1fr)`) with dynamically calculated pixel track dimensions (`repeat(${cols}, ${cellSize}px)` and `repeat(${rows}, ${cellSize}px)`).
+  - Eliminated tile squishing, overlapping borders, and shadow distortion that occurred when puzzles generated with wider column counts (e.g. 10–15 columns) on constrained viewport widths.
+  - Implemented automatic responsive cell calculation via `ResizeObserver` bounded between 24px (compact mobile layout) and 42px (spacious desktop display).
+  - Explicitly sized tile buttons and empty block cells to match grid tracks, guaranteeing vertical alignment for intersecting words across all rows.
+  - Dynamically scaled letter fonts (`12px` to `20px`) and clue number indicators (`7.5px` to `10.5px`) based on cell size.
+  - Relocated selected tile corner studio tape marker to top-right to prevent obscuring top-left clue numbers.
+  - Scaled vinyl turntable backdrop responsively (`360px` mobile, `460px` tablet, `560px` desktop) for a clean visual presentation across all device viewports.
+
+---
+
 ## [1.4.6] - 2026-09-18
 
 ### Maintenance & CI/CD
