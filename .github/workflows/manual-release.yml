@@ -45,7 +45,7 @@ jobs:
       - name: Run linter
         run: npm run lint
 
-      - name: Run automated test suite (272 tests)
+      - name: Run automated test suite (276 tests)
         run: npm test
 
       - name: Run multi-prompt crossword test suite (14 prompts)

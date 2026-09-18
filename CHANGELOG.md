@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Gemini LLM Judge Song Selection Enhancement (`server/services/geminiJudge.js`, `server/services/musicService.js`)**:
   - Leverages Google Gemini to evaluate candidate song pools after initial sampling and filter out off-topic, novelty, or theme-inappropriate tracks.
-  - **Model Priority & Fallback Cascade**: Evaluates with `gemini-3.8-flash` primarily, gracefully falling back to `gemini-3.7-flash`, `gemini-3.6-flash`, and `gemini-3.5-flash` if earlier models return HTTP 404, 429, 500, 503, or network errors.
+  - **Model Priority & Fallback Cascade**: Evaluates with `gemini-3.8-flash` primarily, cascading sequentially to `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, and active production fallbacks `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`, and `gemini-1.5-flash-8b` if earlier models return HTTP 404, 429, 500, 503, or network errors.
   - **Full Input Context Contract**: Injects the exact user configuration into the evaluation prompt—including mode (`preset theme` or `custom free-text prompt`), specific theme title or prompt string, popularity profile (`mainstream`, `balanced`, `obscure`, `pure`), and target word count.
   - **Negotiated Contract for Replacements**: When tracks are rejected, Gemini provides structured replacement query parameters (`artist`, `trackTitle`, `genre`, `searchTerms`, bounded `yearRange`, `targetStorefront`, `popularity`) that directly map to catalog query engines.
   - **Iterative Refinement Loop**: Dispatches replenishment queries across music providers (Deezer and iTunes), cleans tracking sets, and loops evaluation up to 4 iterations until the LLM Judge is satisfied or the pool is finalized.
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Centralized environment loader reading `.env` (guarded by `.gitignore`).
   - Set default `GEMINI_API_KEY=TODO` in `.env.example` ensuring secrets are never committed to the repository.
 - **Automated LLM Judge Test Suite (`scripts/run_tests.js`)**:
-  - 42 new automated test cases covering standby mode bypass, negotiated contract normalization, prompt context synthesis, cascade fallback ladder (`3.8 -> 3.7 -> 3.6 -> 3.5`), and multi-round iterative replenishment (272 total automated tests).
+  - 46 new automated test cases covering standby mode bypass, negotiated contract normalization, prompt context synthesis, cascade fallback ladder (`3.8 -> 3.7 -> 3.6 -> 3.5 -> 2.5-flash ...`), and multi-round iterative replenishment (276 total automated tests).
 
 ---
 
