@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---\n
+## [1.5.1] - 2026-09-18
+
+### Added
+- **Multi-Crossing Variety Engine (`shared/liveCrossword.js`)**:
+  - Engineered dynamic intersection management ensuring crossword words cross each other **1 to 3 times** in an organic, distributed lattice.
+  - Eliminated "starburst/telephone pole" patterns where single backbone words monopolized crossings leaving other words with only 1 intersection.
+  - Placements enforce a strict maximum of 3 crossings per word and evaluate crossed words to prevent exceeding the 3-crossing ceiling.
+  - Added variety distribution scoring in puzzle trials: awards bonuses for achieving a balanced combination of 1-crossing, 2-crossing, and 3-crossing words while penalizing over-concentrated single-crossing leaf branches.
+  - Attached clue-level `crossings` metadata in `Clue` and `Puzzle` outputs.
+  - Added unit test suite assertions verifying 1–3 crossing bounds and multi-crossing frequency diversity across puzzle generations (230 total automated tests).
+
+---
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

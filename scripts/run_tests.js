@@ -90,6 +90,9 @@ async function runUnitTests() {
   assert(testPuzzle && testPuzzle.grid.length === testPuzzle.rows, 'Grid rows match computed bounds');
   assert(testPuzzle && testPuzzle.grid[0].length === testPuzzle.cols, 'Grid cols match computed bounds');
   assert(testPuzzle && testPuzzle.clues.every(c => c.row >= 0 && c.col >= 0), 'All clue coordinates are non-negative');
+  assert(testPuzzle && testPuzzle.clues.every(c => (c.crossings || 1) >= 1 && (c.crossings || 1) <= 3), 'All words cross between 1 and 3 times');
+  const distinctCrossings = new Set(testPuzzle.clues.map(c => c.crossings || 1));
+  assert(distinctCrossings.size >= 2, 'Words feature varied crossing frequencies (e.g. 1, 2, or 3 crossings)');
 
   console.log('\n--- 2. Testing Canonical Keyword Extraction ---');
   const singleWord = extractAnswerKeyword('Hello', 'Adele');

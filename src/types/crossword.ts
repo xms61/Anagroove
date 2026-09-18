@@ -27,6 +27,7 @@ export interface Clue {
   col: number;
   length: number;
   answer: string;
+  crossings?: number;
   clueType: string;
   clueText: string;
   song: Song;
