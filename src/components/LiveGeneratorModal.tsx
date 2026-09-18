@@ -31,11 +31,11 @@ const POPULARITY_TIERS = [
 ] as const;
 
 const EXAMPLE_PROMPTS = [
-  '80s Japanese City Pop',
-  '90s French House bangers',
-  'Classic 70s rock ballads',
-  'Underrated indie rock gems',
   'Songs by Daft Punk',
+  'Anime from the years 2020-2026',
+  '80s Japanese City Pop',
+  '90s Grunge before 1994',
+  'Classic 70s rock ballads',
   'Pure random anything goes',
 ];
 
@@ -127,7 +127,7 @@ export const LiveGeneratorModal: React.FC<LiveGeneratorModalProps> = ({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Steered Prompt & AI</span>
+            <span>Steered Prompt</span>
           </button>
         </div>
 

@@ -98,6 +98,39 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
     }
   }
 
+  // E.g. "Anime": reject tracks where the artist or title is literally just the word "Anime"
+  if (/\banime\b/i.test(context)) {
+    if (/^anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Detects whether a candidate track's release year falls within the requested yearRange.
+ */
+export function isTemporalPermitted(track, yearRange) {
+  if (!yearRange || (yearRange.start === undefined && yearRange.end === undefined)) {
+    return true;
+  }
+  const dateStr = track?.releaseDate || track?.selection?.releaseDate || '';
+  if (!dateStr) {
+    // If provider did not report a release date, keep candidate
+    return true;
+  }
+  const match = String(dateStr).match(/\b(\d{4})\b/);
+  if (!match) return true;
+  const year = parseInt(match[1], 10);
+  if (isNaN(year)) return true;
+
+  if (yearRange.start !== undefined && year < yearRange.start) {
+    return false;
+  }
+  if (yearRange.end !== undefined && year > yearRange.end) {
+    return false;
+  }
   return true;
 }
 
@@ -238,6 +271,7 @@ export async function getRandomSongPool({
     blacklist: 0,
     language: 0,
     thematic: 0,
+    temporal: 0,
     noKeyword: 0,
   };
 
@@ -279,21 +313,45 @@ export async function getRandomSongPool({
         continue;
       }
 
+      // Temporal constraint: enforce release year range if requested
+      if (!isTemporalPermitted(track, queryPlan.yearRange)) {
+        rejections.temporal++;
+        continue;
+      }
+
       // Unless the user explicitly asked for a single artist, enforce max 1 track per artist
-      if (!isTargetingSingleArtist && seenArtists.has(artistIdentity)) {
+      const targetArtistKey = queryPlan.artist ? canonicalArtistKey(queryPlan.artist) : '';
+      const isTargetArtist = isTargetingSingleArtist && (
+        artistIdentity.includes(targetArtistKey) ||
+        targetArtistKey.includes(artistIdentity)
+      );
+
+      if (!isTargetArtist && seenArtists.has(artistIdentity)) {
         rejections.duplicateArtist++;
         continue;
       }
 
-      // Cycle preferred clue type across the crossword to guarantee clue variance
-      let preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
-      if (seenArtists.has(artistIdentity) && preferredType === 'artist') {
-        preferredType = 'title';
+      // Clue type selection:
+      // When targeting a single artist, NEVER use 'Artist name' clues (every clue must be Song title or Keyword)
+      const allowArtist = !isTargetingSingleArtist;
+      let preferredType;
+      if (isTargetingSingleArtist) {
+        preferredType = (songs.length % 2 === 0) ? 'title' : 'keyword';
+      } else {
+        preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
+        if (seenArtists.has(artistIdentity) && preferredType === 'artist') {
+          preferredType = 'title';
+        }
       }
-      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
-      // If answer already exists on the grid, fallback to song title
+
+      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist });
+
+      // If answer already exists on the grid, fallback to song title or keyword
       if (keyword && seenAnswers.has(keyword.answer)) {
-        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title' });
+        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist });
+        if (keyword && seenAnswers.has(keyword.answer)) {
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist });
+        }
       }
       if (!keyword) {
         rejections.noKeyword++;

@@ -16,7 +16,13 @@ import {
 } from '../server/services/deezerMusicProvider.js';
 import { mapItunesTrack, detectStorefront } from '../server/services/itunesMusicProvider.js';
 import { parsePrompt, buildQueryPlan, generateThemeVariations } from '../server/services/queryBuilder.js';
-import { getRandomSongPool, setMusicProviderForTesting, isLanguagePermitted, isThematicallyPermitted } from '../server/services/musicService.js';
+import {
+  getRandomSongPool,
+  setMusicProviderForTesting,
+  isLanguagePermitted,
+  isThematicallyPermitted,
+  isTemporalPermitted,
+} from '../server/services/musicService.js';
 import {
   validateUserId,
   validateProgressPayload,
@@ -246,6 +252,68 @@ async function runUnitTests() {
   assert(mappedItunes?.id === 'itunes:12345' && mappedItunes?.provider === 'itunes', 'Maps iTunes track format');
   assert(mappedItunes?.albumArt?.includes('600x600bb'), 'Scales iTunes artwork to 600x600');
   assert(mapItunesTrack({ trackId: 999 }) === null, 'Rejects iTunes track missing preview or title');
+
+  // Multi-dimensional prompt parsing & temporal bounds
+  const animeRange = parsePrompt('anime from the years 2020-2026');
+  assert(
+    animeRange.genre === 'anime' &&
+    !animeRange.artist &&
+    animeRange.yearRange?.start === 2020 &&
+    animeRange.yearRange?.end === 2026,
+    'Parses year range "2020-2026" without misidentifying as artist'
+  );
+
+  const rockBetween = parsePrompt('rock between 1970 and 1976');
+  assert(
+    rockBetween.genre === 'rock' &&
+    rockBetween.yearRange?.start === 1970 &&
+    rockBetween.yearRange?.end === 1976,
+    'Parses "between 1970 and 1976" range'
+  );
+
+  const grungeBefore = parsePrompt('90s grunge before 1994');
+  assert(
+    grungeBefore.genre === 'grunge' &&
+    grungeBefore.yearRange?.end === 1993,
+    'Parses upper bound "before 1994"'
+  );
+
+  const kpopAfter = parsePrompt('k-pop after 2018');
+  assert(
+    kpopAfter.genre === 'k-pop' &&
+    kpopAfter.yearRange?.start === 2019,
+    'Parses lower bound "after 2018"'
+  );
+
+  const soundtrackYear = parsePrompt('soundtracks in 1999');
+  assert(
+    soundtrackYear.genre === 'soundtracks' &&
+    soundtrackYear.yearRange?.start === 1999 &&
+    soundtrackYear.yearRange?.end === 1999,
+    'Parses single year "in 1999"'
+  );
+
+  // Single artist prompt parsing & noise word scrubbing
+  const daftPrompt = parsePrompt('songs by Daft Punk');
+  assert(
+    daftPrompt.artist?.toLowerCase() === 'daft punk' &&
+    !daftPrompt.genre,
+    'Parses "songs by Daft Punk" without residual "songs" genre'
+  );
+
+  const queenPrompt = parsePrompt('Queen');
+  assert(
+    queenPrompt.artist === 'Queen' &&
+    !queenPrompt.genre,
+    'Identifies standalone recognized artist "Queen"'
+  );
+
+  // Temporal candidate filtering validation
+  assert(isTemporalPermitted({ releaseDate: '2022-04-06T00:00:00Z' }, { start: 2020, end: 2026 }) === true, 'Permits release year within range');
+  assert(isTemporalPermitted({ releaseDate: '2019-12-31T00:00:00Z' }, { start: 2020, end: 2026 }) === false, 'Rejects release year before range start');
+  assert(isTemporalPermitted({ releaseDate: '2027-01-01T00:00:00Z' }, { start: 2020, end: 2026 }) === false, 'Rejects release year after range end');
+  assert(isTemporalPermitted({ releaseDate: '1993-09-21T00:00:00Z' }, { end: 1993 }) === true, 'Permits release year meeting upper bound');
+  assert(isTemporalPermitted({ releaseDate: '1994-03-08T00:00:00Z' }, { end: 1993 }) === false, 'Rejects release year exceeding upper bound');
 
   console.log('\n--- 4. Testing Deezer Provider Resilience and Cache Bounds ---');
   const originalFetch = globalThis.fetch;
@@ -585,6 +653,29 @@ async function runIntegrationTests() {
     // Steered artist check: when artist is steered, multiple tracks by that artist are permitted
     const steeredBandARun = await getRandomSongPool({ artist: 'Band A', count: 4 });
     assert(steeredBandARun.filter(t => t.artist === 'Band A').length === 2, 'Steering single artist permits multiple tracks by that artist');
+
+    // Single artist prompt check: verify prompt parsing, multi-track allowance, and 0% artist clue policy
+    const singleArtistCatalog = [
+      { id: 'deezer:201', providerTrackId: '201', title: 'One More Time', artist: 'Daft Punk', fans: 500000, rank: 500000 },
+      { id: 'deezer:202', providerTrackId: '202', title: 'Harder Better Faster', artist: 'Daft Punk', fans: 500000, rank: 500000 },
+      { id: 'deezer:203', providerTrackId: '203', title: 'Get Lucky', artist: 'Daft Punk', fans: 500000, rank: 500000 },
+      { id: 'deezer:204', providerTrackId: '204', title: 'Around The World', artist: 'Daft Punk', fans: 500000, rank: 500000 },
+    ];
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => singleArtistCatalog });
+    const singleArtistPool = await getRandomSongPool({ prompt: 'songs by Daft Punk', count: 4 });
+    assert(
+      singleArtistPool.length === 4 &&
+      singleArtistPool.every(t => t.artist === 'Daft Punk'),
+      'Single artist prompt "songs by Daft Punk" selects multiple tracks by target artist'
+    );
+    assert(
+      singleArtistPool.every(t => t.clueType !== 'Artist name'),
+      'Single artist crossword enforces 0% "Artist name" clues'
+    );
+    assert(
+      singleArtistPool.every(t => t.clueType === 'Song title' || t.clueType === 'Song title keyword'),
+      'Single artist crossword produces 100% Song title or Keyword clues'
+    );
 
     setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
 

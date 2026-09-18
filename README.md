@@ -22,7 +22,9 @@
   - 🎷 **R&B, Soul & Motown** (Stevie Wonder, Aretha Franklin, Alicia Keys)
 - **⚡ Pure & Steered Live Crossword Generator**:
   - **Pure Random Catalog Universe**: Synthesize unique, unplayed crosswords without popularity bias—from underground indies to global chart-toppers.
-  - **Steered Prompt & AI Discovery**: Type natural prompts like *"obscure 80s synth-pop"*, *"classic 70s rock ballads"*, or target specific artists (*"by Daft Punk"*).
+  - **Steered Prompt Generator**: Type natural prompts with complex constraints like *"anime from the years 2020-2026"*, *"90s grunge before 1994"*, *"k-pop after 2018"*, *"classic 70s rock ballads"*, or target specific artists (*"songs by Daft Punk"*, *"Queen"*).
+  - **Temporal Range & Bound Parsing**: Automatically parses release windows (`from 2020 to 2026`, `between 1970 and 1976`), upper bounds (`before 1994`), lower bounds (`after 2018`), and single release years (`in 1999`), validating candidate tracks with release date verification.
+  - **Single-Artist Dedicated Puzzles**: For single-artist crosswords (*"songs by Daft Punk"*, *"Queen"*), clues asking for the artist name are strictly eliminated (0% Artist clues, 100% Song Title or Keyword clues), and multiple tracks by the artist are allowed across the puzzle.
   - **Popularity Spectrum**: Toggle between **Pure Random** (unfiltered), **Hidden Gems** (indie/underrated cuts), **Balanced** (hits & discoveries), and **Top Hits** (chart-toppers).
   - **Natural Song Title Answers (Up to 14 Characters)**: Crossword answers combine multi-word titles without spaces (e.g. `YOURLOVE`, `GETLUCKY`, `BLINDINGLIGHTS`), perfectly fitted to grid dimensions.
   - **Balanced Clue Variety**: Puzzles offer an engaging mix of **Song Title**, **Artist Name**, and **Title Keyword** questions rather than being dominated by a single clue type.

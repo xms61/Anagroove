@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-09-18
+
+### Added
+- **Temporal Prompt Parsing & Release Date Validation (`server/services/queryBuilder.js`, `server/services/musicService.js`)**:
+  - **Multi-Dimensional Temporal Parsing**: Full support for date spans (`from the years 2020-2026`, `between 1970 and 1976`, `2020-2026`), upper bounds (`before 1994`, `pre-2000`, `prior to 1990`), lower bounds (`after 2018`, `since 2020`, `post-2010`), single release years (`in 1999`, `released in 2022`), and decades (`80s`, `1990s`).
+  - **Order-Dependent Extraction Pipeline**: Temporal parsing extracts date bounds before artist directive matching, preventing phrases like `from the years 2020-2026` or `from 1980` from misidentifying temporal ranges as artist names.
+  - **Temporal Candidate Verification (`isTemporalPermitted`)**: Rejection sampling validates track release years against the parsed temporal window, tracking `rejections.temporal` in server diagnostics.
+  - **Anchor-Year Provider Queries**: Automatically injects year-anchored search queries (start year, midpoint, end year) into Deezer and iTunes harvesting.
+- **Single-Artist Dedicated Crosswords & Clue Policy (`server/services/musicService.js`, `shared/musicKeywords.js`, `server/services/queryBuilder.js`)**:
+  - **Zero "Artist Name" Clue Policy**: For single-artist puzzles (e.g. `songs by Daft Punk`, `Queen`), clues asking for the artist name are strictly eliminated (0% Artist clues). 100% of clues resolve to Song Title or Song Title Keyword (`allowArtist: false`).
+  - **Target Artist Multi-Track Exemption**: Allows multiple distinct songs by the queried artist while preserving strict duplicate title and duplicate answer protection on the puzzle grid. Non-target collaborating artists remain capped at 1 track.
+  - **Noise & Filler Word Scrubbing**: Strips non-genre terms (`songs`, `tracks`, `music`, `discography`, `singles`) so queries like `songs by Daft Punk` do not contaminate the residual genre.
+  - **Standalone Artist Recognition**: Direct artist prompts without `by` (e.g. `Queen`, `Daft Punk`) automatically map to target artists using the curated artist registry.
+- **Anime Theme Homonym Guardrail (`server/services/musicService.js`)**:
+  - Rejects tracks where the artist or song title is literally the word `"Anime"`, preventing non-soundtrack Western rap/pop collisions.
+- **UI Clarifications (`src/components/LiveGeneratorModal.tsx`)**:
+  - Renamed `"Steered Prompt & AI"` to `"Steered Prompt"`.
+  - Updated example prompts to demonstrate temporal and single-artist steering (`Songs by Daft Punk`, `Anime from the years 2020-2026`, `90s Grunge before 1994`).
+
+---
+
 ## [1.3.0] - 2026-09-18
 
 ### Added

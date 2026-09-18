@@ -72,10 +72,19 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   if (!candidates) return null;
 
   const preferred = typeof options === 'string' ? options : options?.preferredType;
+  const allowArtist = options?.allowArtist !== false;
+
   if (preferred && candidates[preferred]) {
-    return candidates[preferred];
+    if (preferred !== 'artist' || allowArtist) {
+      return candidates[preferred];
+    }
   }
 
-  // Fallback priority order if no preferred type specified or not available
-  return candidates.title || candidates.artist || candidates.keyword || null;
+  // Fallback priority order:
+  // Standard mode: title -> artist -> keyword
+  // Single-artist mode (allowArtist = false): title -> keyword
+  if (candidates.title) return candidates.title;
+  if (allowArtist && candidates.artist) return candidates.artist;
+  if (candidates.keyword) return candidates.keyword;
+  return null;
 }

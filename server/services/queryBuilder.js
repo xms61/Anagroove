@@ -1,3 +1,28 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Preload recognized artists for standalone artist prompt recognition (e.g. "Queen", "Daft Punk")
+let recognizedArtistsSet = new Set();
+try {
+  const artistsPath = path.resolve(__dirname, '../data/recognized_artists.json');
+  if (fs.existsSync(artistsPath)) {
+    const raw = JSON.parse(fs.readFileSync(artistsPath, 'utf-8'));
+    if (Array.isArray(raw)) {
+      for (const a of raw) {
+        if (a?.name) {
+          recognizedArtistsSet.add(a.name.toLowerCase().trim());
+        }
+      }
+    }
+  }
+} catch {
+  // Graceful fallback if file is missing in certain test harnesses
+}
+
 /**
  * Parses user prompts and settings into actionable multi-provider query plans.
  * Follows KISS and DRY principles: pure functions, transparent regexes, zero external dependencies.
@@ -16,7 +41,8 @@ function generateDynamicSeed() {
 
 /**
  * Parses a free-text prompt into structured steering parameters.
- * e.g. "obscure 80s japanese city pop by tatsuro yamashita"
+ * Handles single artists, compound genres, popularity modifiers, and temporal bounds/ranges.
+ * e.g. "anime from the years 2020-2026", "songs by Daft Punk", "Queen", "rock before 1990"
  */
 export function parsePrompt(prompt = '') {
   if (typeof prompt !== 'string' || !prompt.trim()) {
@@ -33,21 +59,46 @@ export function parsePrompt(prompt = '') {
     text = text.replace(quoteMatch[0], ' ');
   }
 
-  // 2. Artist directive: "by <Artist>" or "from <Artist>"
-  const byArtistMatch = text.match(/\b(?:by|from)\s+([a-zA-Z0-9\s&'-]+?)(?:\s+(?:in|during|from album|album)|$)/i);
-  if (byArtistMatch && !options.artist) {
-    options.artist = byArtistMatch[1].trim();
-    text = text.replace(byArtistMatch[0], ' ');
+  // 2. Temporal Extraction (RANGES, BOUNDS, YEARS, DECADES)
+  // MUST RUN BEFORE ARTIST EXTRACTION so "from the years 2020-2026" or "from 1980" does not trigger "from <Artist>"
+
+  // 2a. Year Ranges: e.g. "from the years 2020-2026", "between 1970 and 1976", "2020 - 2026", "from 1980 to 1985"
+  const rangeMatch = text.match(/(?:\b(?:from|between|in)\s+)?(?:the\s+years?\s+)?\b(19\d{2}|20\d{2})\b\s*(?:-|–|—|to|until|through|and)\s*(?:the\s+year\s+)?\b(19\d{2}|20\d{2})\b/i);
+  if (rangeMatch) {
+    const y1 = parseInt(rangeMatch[1], 10);
+    const y2 = parseInt(rangeMatch[2], 10);
+    options.yearRange = {
+      start: Math.min(y1, y2),
+      end: Math.max(y1, y2),
+    };
+    text = text.replace(rangeMatch[0], ' ');
   }
 
-  // 3. Album directive: "album <Album>"
-  const albumMatch = text.match(/\b(?:album)\s+([a-zA-Z0-9\s&'-]+?)(?:\s+(?:by|from)|$)/i);
-  if (albumMatch && !options.album) {
-    options.album = albumMatch[1].trim();
-    text = text.replace(albumMatch[0], ' ');
+  // 2b. Upper Bounds (Before): e.g. "before 1994", "prior to 1990", "earlier than 1985", "up to 1995", "until 2000", "pre-2000"
+  const beforeMatch = text.match(/\b(?:before|prior\s+to|earlier\s+than|up\s+to|until|pre-?)\s*(?:the\s+year\s+)?\b(19\d{2}|20\d{2})\b/i);
+  if (beforeMatch && !options.yearRange) {
+    const endYear = parseInt(beforeMatch[1], 10) - 1;
+    options.yearRange = { end: endYear };
+    text = text.replace(beforeMatch[0], ' ');
   }
 
-  // 4. Decade / Era: "80s", "1990s", "70s", "2000s"
+  // 2c. Lower Bounds (After): e.g. "after 2018", "since 2020", "post-2010", "from 2015 onwards", "from 2020 and later"
+  const afterMatch = text.match(/\b(?:after|since|post-?|from\s+(?:the\s+year\s+)?\b(19\d{2}|20\d{2})\b\s*(?:onwards?|and\s+later))\s*(?:the\s+year\s+)?\b(19\d{2}|20\d{2})?\b/i);
+  if (afterMatch && !options.yearRange) {
+    const startYear = parseInt(afterMatch[1] || afterMatch[2], 10) + (afterMatch[0].toLowerCase().includes('after') ? 1 : 0);
+    options.yearRange = { start: startYear };
+    text = text.replace(afterMatch[0], ' ');
+  }
+
+  // 2d. Single Specific Year: e.g. "in 1999", "during 2004", "released in 2022", "year 2015"
+  const singleYearMatch = text.match(/\b(?:in|during|year|released\s+in)\s*\b(19\d{2}|20\d{2})\b/i);
+  if (singleYearMatch && !options.yearRange) {
+    const yr = parseInt(singleYearMatch[1], 10);
+    options.yearRange = { start: yr, end: yr };
+    text = text.replace(singleYearMatch[0], ' ');
+  }
+
+  // 2e. Decades: e.g. "80s", "1990s", "70s", "2000s"
   const decadeMatch = text.match(/\b(19[5-9]0|[5-9]0|20[0-2]0)s?\b/i);
   if (decadeMatch) {
     let decade = decadeMatch[1];
@@ -55,10 +106,31 @@ export function parsePrompt(prompt = '') {
       decade = Number(decade) >= 50 ? `19${decade}` : `20${decade}`;
     }
     options.decade = `${decade}s`;
+    if (!options.yearRange) {
+      const start = parseInt(decade, 10);
+      options.yearRange = { start, end: start + 9 };
+    }
     text = text.replace(decadeMatch[0], ' ');
   }
 
-  // 5. Popularity modifiers
+  // 3. Artist Directive: e.g. "by <Artist>", "from <Artist>", "artist: <Artist>", "feat <Artist>"
+  const byArtistMatch = text.match(/\b(?:by|from|artist:\s*|feat\.?\s+|featuring\s+)([a-zA-Z0-9\s&'.-]+?)(?:\s+(?:in|during|from album|album|with)|$)/i);
+  if (byArtistMatch && !options.artist) {
+    const candidateArtist = byArtistMatch[1].trim();
+    if (!/^\d+$/.test(candidateArtist)) {
+      options.artist = candidateArtist;
+      text = text.replace(byArtistMatch[0], ' ');
+    }
+  }
+
+  // 4. Album Directive: "album <Album>"
+  const albumMatch = text.match(/\b(?:album)\s+([a-zA-Z0-9\s&'.-]+?)(?:\s+(?:by|from)|$)/i);
+  if (albumMatch && !options.album) {
+    options.album = albumMatch[1].trim();
+    text = text.replace(albumMatch[0], ' ');
+  }
+
+  // 5. Popularity Modifiers
   // Note: "classic rock", "classic soul", etc. are musical genres, not popularity filters
   const hasClassicGenre = /\bclassic(al)?\s+(rock|soul|jazz|country|hip\s*hop|r&b|disco|metal|pop|blues|funk)\b/i.test(text);
 
@@ -76,14 +148,26 @@ export function parsePrompt(prompt = '') {
     text = text.replace(/\b(pure|any|anything|random)\b/gi, ' ');
   }
 
-  // Remaining cleaned text is treated as custom genre / theme keywords
+  // 6. Noise / Filler Word Scrubbing (words like "songs", "tracks", "music", "discography")
+  text = text.replace(/\b(songs?|tracks?|music|discography|singles?|recordings?|tunes?)\b/gi, ' ');
+
+  // 7. Remaining cleaned text
   const cleanedGenre = text
     .replace(/[^\w\s-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
+  // 8. Standalone Artist Detection vs Residual Genre
   if (cleanedGenre) {
-    options.genre = cleanedGenre;
+    if (!options.artist && recognizedArtistsSet.has(cleanedGenre.toLowerCase())) {
+      options.artist = cleanedGenre;
+    } else if (!options.artist && recognizedArtistsSet.has(prompt.trim().toLowerCase())) {
+      options.artist = prompt.trim();
+    } else {
+      options.genre = cleanedGenre;
+    }
+  } else if (!options.artist && recognizedArtistsSet.has(prompt.trim().toLowerCase())) {
+    options.artist = prompt.trim();
   }
 
   return options;
@@ -170,12 +254,19 @@ export function buildQueryPlan(userOptions = {}) {
     effectiveGenre = userOptions.genre;
   }
 
-  // Merge options with resolved genre taking precedence over 'all'
+  // Merge options with promptOptions taking precedence when userOptions fields are empty
   const options = {
     ...promptOptions,
     ...userOptions,
+    artist: userOptions.artist || promptOptions.artist || '',
+    album: userOptions.album || promptOptions.album || '',
+    decade: userOptions.decade || promptOptions.decade || '',
+    popularity: userOptions.popularity || promptOptions.popularity,
     genre: effectiveGenre || 'all',
   };
+  if (promptOptions.yearRange) {
+    options.yearRange = promptOptions.yearRange;
+  }
 
   const popularity = options.popularity || (options.genre === 'all' && !options.artist ? 'pure' : 'balanced');
   const artist = typeof options.artist === 'string' ? options.artist.trim() : '';
@@ -231,10 +322,39 @@ export function buildQueryPlan(userOptions = {}) {
       itunesSearches.push(term);
     }
   } else if (decade) {
-    const yearBase = parseInt(decade);
+    const yearBase = parseInt(decade, 10);
     if (!isNaN(yearBase)) {
       deezerSearches.push(`release_date:"${yearBase}"`);
       itunesSearches.push(decade);
+    }
+  }
+
+  // Targeted year queries when a temporal filter is present
+  if (options.yearRange) {
+    const { start, end } = options.yearRange;
+    const baseSubject = genre || artist || '';
+    if (baseSubject) {
+      if (start !== undefined && end !== undefined) {
+        if (start === end) {
+          deezerSearches.push(`${baseSubject} ${start}`);
+          itunesSearches.push(`${baseSubject} ${start}`);
+        } else {
+          deezerSearches.push(`${baseSubject} ${start}`);
+          deezerSearches.push(`${baseSubject} ${end}`);
+          itunesSearches.push(`${baseSubject} ${start}`);
+          itunesSearches.push(`${baseSubject} ${end}`);
+          const mid = Math.floor((start + end) / 2);
+          if (mid !== start && mid !== end) {
+            itunesSearches.push(`${baseSubject} ${mid}`);
+          }
+        }
+      } else if (start !== undefined) {
+        deezerSearches.push(`${baseSubject} ${start}`);
+        itunesSearches.push(`${baseSubject} ${start}`);
+      } else if (end !== undefined) {
+        deezerSearches.push(`${baseSubject} ${end}`);
+        itunesSearches.push(`${baseSubject} ${end}`);
+      }
     }
   }
 
@@ -259,21 +379,23 @@ export function buildQueryPlan(userOptions = {}) {
   // Dynamic sorting order to explore varied catalog depths on repeated calls
   const SORT_ORDERS = ['RANKING', 'TRACK_ASC', 'RATING_ASC', 'DURATION_ASC'];
   const randomOrder = SORT_ORDERS[Math.floor(Math.random() * SORT_ORDERS.length)];
+  const randomOffset = genre ? Math.floor(Math.random() * 25) : Math.floor(Math.random() * 150);
 
   return {
+    genre: genre || 'all',
     popularity,
     artist,
     album,
-    genre: genre || 'all',
     decade,
+    yearRange: options.yearRange,
     prompt,
     minFans,
     maxFans,
     minRank,
     maxRank,
-    deezerSearches,
-    itunesSearches,
-    randomOffset: genre ? Math.floor(Math.random() * 25) : Math.floor(Math.random() * 150),
+    deezerSearches: Array.from(new Set(deezerSearches)),
+    itunesSearches: Array.from(new Set(itunesSearches)),
+    randomOffset,
     sortOrder: randomOrder,
   };
 }

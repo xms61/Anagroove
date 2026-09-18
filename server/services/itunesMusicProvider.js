@@ -90,6 +90,7 @@ export function mapItunesTrack(track, storefront = '') {
     providerUrl: track.trackViewUrl || '',
     rank: 0,
     fans: 0,
+    releaseDate: track.releaseDate || '',
     selection: {
       source: 'itunes',
       genre: track.primaryGenreName || '',
