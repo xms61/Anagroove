@@ -17,6 +17,7 @@ export interface MultiplayerRoom {
   players: RoomPlayer[];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SocketEventCallback = (payload: any) => void;
 
 class SocketService {
@@ -98,6 +99,7 @@ class SocketService {
     return () => this.listeners.get(type)?.delete(cb);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public async send(action: string, payload: Record<string, any> = {}) {
     try {
       const socket = await this.connect();

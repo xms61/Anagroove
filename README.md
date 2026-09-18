@@ -192,7 +192,7 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 Run automated CI-friendly test suites and linters:
 
 ```bash
-# Run the complete automated test suite (30 unit & integration tests)
+# Run the complete automated test suite (100 unit & integration tests)
 npm test
 
 # Run ESLint across TypeScript, server, scripts, and shared modules
@@ -209,6 +209,21 @@ node scripts/test_multiplayer_live_sync.js
 node scripts/test_features.js
 npx tsx scripts/test_randomizer.js
 ```
+
+---
+
+## 🚀 Manual CI/CD Release Workflow
+
+SpotySpice provides a manual GitHub Actions release pipeline (`.github/workflows/manual-release.yml`) triggered on-demand via **Workflow Dispatch**:
+
+1. **Validation**: Executes `npm run lint` and all 100 tests via `npm test`.
+2. **Containerization**: Sets up Docker Buildx and builds a production-optimized container (`spotyspice:<tag>`).
+3. **Automated Tagging**: Creates and pushes the semantic version git tag (e.g. `v1.1.0` or custom).
+4. **Release Notes & Publishing**: Automatically extracts version-specific notes from `CHANGELOG.md` and publishes the GitHub Release.
+
+To run it:
+- Navigate to **Actions** $\rightarrow$ **Manual Test, Lint, Build & Release** on GitHub.
+- Click **Run workflow**, optionally specify a version tag, and launch.
 
 ---
 

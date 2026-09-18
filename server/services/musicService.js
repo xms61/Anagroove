@@ -28,8 +28,8 @@ export function isLanguagePermitted(track, genre = 'all') {
   const artist = String(track?.artist || '');
 
   // Reject non-Latin alphabets (Cyrillic, Greek, Arabic, Kanji, Hiragana, Hangul, Thai, etc.)
-  // \u0000-\u024F encompasses Basic Latin and Latin Extended (common Western European accents)
-  if (/[^\u0000-\u024F\s\d.,!?'"&()/-]/u.test(title) || /[^\u0000-\u024F\s\d.,!?'"&()/-]/u.test(artist)) {
+  // \u0020-\u024F encompasses standard printable characters and Latin Extended (common Western European accents)
+  if (/[^\u0020-\u024F\s\d.,!?'"&()/-]/u.test(title) || /[^\u0020-\u024F\s\d.,!?'"&()/-]/u.test(artist)) {
     return false;
   }
 

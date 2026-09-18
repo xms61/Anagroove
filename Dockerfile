@@ -29,8 +29,9 @@ ENV PORT=3000
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy server application and runtime data
+# Copy server application, shared logic, and runtime data
 COPY server/ ./server/
+COPY shared/ ./shared/
 COPY data/ ./data/
 
 # Copy compiled frontend from builder stage

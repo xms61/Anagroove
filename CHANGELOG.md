@@ -31,10 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Free-text prompt parser (`server/services/queryBuilder.js`) extracting decades, artist directives, and popularity spectrums.
   - iTunes search provider integration (`server/services/itunesMusicProvider.js`) with 600×600 album artwork and preview verification.
   - Deterministic SHA-256 seed hashing for reproducible puzzle sharing.
+- **Manual CI/CD Release Pipeline (`.github/workflows/manual-release.yml`)**:
+  - Added on-demand GitHub Actions workflow (`workflow_dispatch`) that runs ESLint, executes all 100 tests, builds the production Docker image, tags the git commit, extracts changelog notes, and generates the GitHub release.
 - **Automated Test Coverage**:
   - Expanded automated test suite in `scripts/run_tests.js` to 100 passing tests covering 14-char limits, clue variance, language permission checks, anime genre isolation, and duplicate title exclusions.
 
 ### Changed
+- `Dockerfile`: Added `COPY shared/ ./shared/` in runner stage to ensure shared modules are available at runtime.
+- `package.json`: Bumped version to `1.1.0`.
 - `shared/musicKeywords.js`: Updated combined song title answer cap to 14 letters; added candidate extraction supporting preferred clue types (`extractAllAnswerCandidates`, `extractAnswerKeyword`).
 - `server/services/queryBuilder.js`: Replaced hardcoded seed words with dynamic entropy; ensured genre queries are never contaminated with unrelated search terms.
 - `server/services/deezerMusicProvider.js`: Removed generic Asian pop chart 16 for anime; configured targeted anime and soundtrack searches.
