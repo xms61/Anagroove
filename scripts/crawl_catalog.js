@@ -4,11 +4,15 @@ import { musicHarvester } from '../server/crawler/harvester.js';
 
 const args = process.argv.slice(2);
 const isStatusOnly = args.includes('--status');
+const targetArg = args.find(a => a.startsWith('--target='));
+const playlistsArg = args.find(a => a.startsWith('--playlists='));
 const artistsArg = args.find(a => a.startsWith('--artists='));
 const lexiconArg = args.find(a => a.startsWith('--lexicon='));
 
-const artistsLimit = artistsArg ? parseInt(artistsArg.split('=')[1], 10) : 25;
-const lexiconLimit = lexiconArg ? parseInt(lexiconArg.split('=')[1], 10) : 35;
+const targetTracks = targetArg ? parseInt(targetArg.split('=')[1], 10) : 100000;
+const playlistsLimit = playlistsArg ? parseInt(playlistsArg.split('=')[1], 10) : 100;
+const artistsLimit = artistsArg ? parseInt(artistsArg.split('=')[1], 10) : 250;
+const lexiconLimit = lexiconArg ? parseInt(lexiconArg.split('=')[1], 10) : 350;
 
 function printStats(stats) {
   console.log('\n======================================================');
@@ -28,8 +32,10 @@ async function main() {
     process.exit(0);
   }
 
+  const initialStats = sqliteCatalog.getStats();
   console.log('🚀 Starting SpotySpice Massive Catalog Crawler...');
-  console.log(`🎯 Targets: ${artistsLimit} Artist Discographies | ${lexiconLimit} Lexicon Sweeps`);
+  console.log(`🎯 Target Goal: ${targetTracks.toLocaleString()} Tracks (Current: ${initialStats.tracks.toLocaleString()})`);
+  console.log(`📡 Config: Playlists: ${playlistsLimit} | Artists: ${artistsLimit} | Lexicon: ${lexiconLimit}`);
   console.log('🛡️  Rate Limiting: Active token bucket (Deezer 5/s, iTunes 15/min)');
   console.log('🚫 Filter: Excludes covers, karaoke, tributes, and non-official uploads\n');
 
@@ -41,18 +47,24 @@ async function main() {
   });
 
   const harvestStats = await musicHarvester.runFullHarvest({
+    targetTracks,
+    playlistsLimit,
     artistsLimit,
     lexiconLimit,
     onProgress: (prog) => {
-      const { artists, tracks, audioSamples, crossReferencedTracks } = prog.currentStats;
+      const { artists, tracks, audioSamples } = prog.currentStats;
+      const pct = Math.min(100, (tracks / targetTracks) * 100).toFixed(1);
+      const action = (prog.currentAction || '').slice(0, 32).padEnd(32);
       process.stdout.write(
-        `\r[CRAWLING] ${prog.currentAction.padEnd(35)} | Artists: ${artists} | Tracks: ${tracks} | Samples: ${audioSamples} | X-Ref: ${crossReferencedTracks}`
+        `\r[${pct}%] ${action} | Artists: ${artists.toLocaleString()} | Tracks: ${tracks.toLocaleString()} | Samples: ${audioSamples.toLocaleString()}`
       );
     }
   });
 
   const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`\n\n🎉 Crawl completed in ${elapsedSec}s!`);
+  console.log(`\n\n🎉 Crawl batch completed in ${elapsedSec}s!`);
+  console.log(`   Playlists crawled: ${harvestStats.playlistsCrawled}`);
+  console.log(`   Decade queries crawled: ${harvestStats.decadeQueriesCrawled}`);
   console.log(`   Artists crawled: ${harvestStats.artistsCrawled}`);
   console.log(`   Lexicon seeds crawled: ${harvestStats.lexiconWordsCrawled}`);
   console.log(`   Newly inserted tracks: ${harvestStats.totalInserted}`);

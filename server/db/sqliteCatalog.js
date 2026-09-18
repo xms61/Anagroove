@@ -275,13 +275,17 @@ export class SqliteCatalog {
       }
     } else {
       // Update any newly discovered provider links or higher fan count
-      this.stmtUpdateArtistProviderIds.run(
-        spotifyId,
-        deezerId,
-        itunesArtistId,
-        fansCount || 0,
-        artist.id
-      );
+      try {
+        this.stmtUpdateArtistProviderIds.run(
+          spotifyId,
+          deezerId,
+          itunesArtistId,
+          fansCount || 0,
+          artist.id
+        );
+      } catch {
+        // Safe guard against provider ID collisions across alias rows
+      }
     }
 
     return artist;

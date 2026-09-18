@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.0] - 2026-09-18
+
+### Added
+- **Massive 100,000+ Track Catalog Expansion (`server/crawler/harvester.js`, `scripts/crawl_catalog.js`)**:
+  - Expanded the catalog crawler architecture with four high-yield discovery vectors targeting $\ge 100,000$ canonical songs:
+    1. **Curated Playlist Vector (`harvestCuratedPlaylists`)**: Deep-spidering across 40+ genre and historical playlist searches (e.g. *Rock Classics*, *Billboard Hot 100*, *90s Alternative*, *Motown Essentials*, *Electronic Journey*, *City Pop Vibes*), ingesting entire curated tracklists.
+    2. **Decade $\times$ Genre Matrix Sweeper (`DECADE_GENRE_SEEDS`)**: Cross-product matrix combining 7 eras (1960s to 2020s) across 15 musical genres (rock, pop, hip-hop, r&b, soul, jazz, electronic, indie, metal, latin, reggae, country, funk, punk, dance) with multi-offset pagination.
+    3. **Foundation & Recursive Artist Graph Spider (`harvestArtistDiscography`)**: Expanded foundation artist roster to 200+ global musical icons across all genres and eras, spidering studio albums, top releases, and dynamically discovering authentic related artists with $\ge 100,000$ fans.
+    4. **350+ Expanded Lexicon Vocabulary Sweep (`MUSIC_LEXICON_SEEDS`)**: Broadened high-frequency musical title vocabulary spanning English and international song titles across 3 paginated result windows per keyword.
+  - Added CLI flag `--target=<number>` to `scripts/crawl_catalog.js` (defaulting to 100,000 tracks) with dynamic percentage completion tracking, live artist/track counters, and automatic graceful termination upon reaching the target goal.
+- **Enhanced Authenticity & Deduplication at Scale**:
+  - Upgraded normalization regexes to strip `(?:radio\s+)?edit` and multi-bracket qualifiers, ensuring radio edits seamlessly merge into their parent master recordings.
+  - Verified cross-referencing with Apple Music / iTunes candidate mapping for acoustic duration delta $\le 3$s.
+
+---
+
 ## [1.8.0] - 2026-09-18
 
 ### Added

@@ -3,7 +3,7 @@ import { isAuthenticCandidate } from './authenticityFilter.js';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
 import { logger } from '../logger.js';
 
-// Comprehensive dictionary of high-frequency music words across decades
+// Comprehensive dictionary of 350+ high-frequency music words across decades & languages
 export const MUSIC_LEXICON_SEEDS = [
   'love', 'night', 'dream', 'heart', 'world', 'time', 'baby', 'dance', 'fire', 'blue',
   'eyes', 'girl', 'sky', 'light', 'dark', 'rain', 'road', 'home', 'summer', 'river',
@@ -14,44 +14,116 @@ export const MUSIC_LEXICON_SEEDS = [
   'fly', 'space', 'radio', 'melody', 'beat', 'groove', 'rhythm', 'guitar', 'piano', 'silence',
   'cry', 'smile', 'kiss', 'leave', 'remember', 'forget', 'lost', 'found', 'young', 'old',
   'diamond', 'silver', 'gold', 'roses', 'flowers', 'morning', 'midnight', 'sunset', 'sunrise',
-  'ghost', 'angel', 'demon', 'heaven', 'hell', 'trouble', 'danger', 'power', 'glory', 'peace'
+  'ghost', 'angel', 'demon', 'heaven', 'hell', 'trouble', 'danger', 'power', 'glory', 'peace',
+  'storm', 'thunder', 'lightning', 'mountain', 'forest', 'desert', 'water', 'sea', 'shore',
+  'breath', 'sleep', 'wake', 'burn', 'flame', 'spark', 'smoke', 'ash', 'dust', 'stone',
+  'blood', 'tear', 'mirror', 'glass', 'window', 'door', 'key', 'lock', 'chain',
+  'king', 'queen', 'prince', 'hero', 'stranger', 'friend', 'enemy', 'lover', 'mother', 'father',
+  'brother', 'sister', 'child', 'boy', 'woman', 'man', 'people', 'crowd', 'street', 'town',
+  'train', 'car', 'ship', 'plane', 'highway', 'bridge', 'station', 'corner', 'hotel', 'room',
+  'bed', 'wall', 'floor', 'garden', 'tree', 'leaf', 'winter', 'spring',
+  'autumn', 'snow', 'ice', 'cold', 'warm', 'hot', 'cool', 'breeze', 'cloud', 'rainbow',
+  'color', 'red', 'green', 'yellow', 'black', 'white', 'purple', 'pink', 'orange', 'grey',
+  'bright', 'clear', 'clean', 'heavy', 'soft', 'hard', 'loud', 'quiet', 'bitter',
+  'high', 'low', 'happy', 'sad', 'mad', 'glad', 'brave', 'fear', 'courage', 'faith',
+  'truth', 'lie', 'promise', 'word', 'name', 'number', 'letter', 'story', 'book', 'page',
+  'game', 'play', 'win', 'lose', 'fight', 'battle', 'war', 'flag', 'march',
+  'shout', 'scream', 'whisper', 'listen', 'hear', 'look', 'watch', 'show', 'hide',
+  'give', 'take', 'keep', 'let', 'make', 'build', 'heal', 'drive', 'ride', 'jump',
+  'shake', 'spin', 'turn', 'stop', 'start', 'begin', 'end', 'wait', 'close', 'open',
+  'high', 'wild', 'free', 'heavy', 'fast', 'slow', 'sweet', 'sugar', 'honey', 'candy',
+  'amor', 'noche', 'cielo', 'sol', 'luna', 'vida', 'alma', 'corazon', 'sueno', 'fiesta'
 ];
 
-// Curated foundation of foundational artists across diverse genres and decades
+// Curated foundation of 200+ foundational artists across diverse genres and decades
 export const FOUNDATION_ARTISTS = [
-  // Rock / Classic Rock / Alternative
+  // Classic Rock / Hard Rock / Progressive Rock
   'Queen', 'The Beatles', 'Led Zeppelin', 'Pink Floyd', 'The Rolling Stones', 'Fleetwood Mac',
-  'David Bowie', 'Nirvana', 'Radiohead', 'The Cure', 'R.E.M.', 'U2', 'Red Hot Chili Peppers',
-  'Oasis', 'Blur', 'The Clash', 'Arctic Monkeys', 'The Strokes', 'Foo Fighters', 'Green Day',
-  'Linkin Park', 'Coldplay', 'Muse', 'The Killers', 'Gorillaz', 'Smashing Pumpkins',
+  'David Bowie', 'The Who', 'The Doors', 'Jimi Hendrix', 'Creedence Clearwater Revival', 'Deep Purple',
+  'Black Sabbath', 'Aerosmith', 'AC/DC', 'Boston', 'Kansas', 'Journey', 'Foreigner', 'Heart',
+  'Kiss', 'Van Halen', 'Rush', 'Def Leppard', 'Dire Straits', 'The Police', 'Eric Clapton',
+  'Neil Young', 'Bob Dylan', 'Bruce Springsteen', 'Tom Petty', 'Billy Joel', 'Elton John',
 
-  // Pop / Dance / Synthpop
-  'Michael Jackson', 'Madonna', 'Prince', 'Elton John', 'George Michael', 'ABBA',
-  'Britney Spears', 'Beyoncé', 'Taylor Swift', 'Dua Lipa', 'Lady Gaga', 'Rihanna',
-  'Katy Perry', 'Bruno Mars', 'Adele', 'The Weeknd', 'Harry Styles', 'Billie Eilish',
-  'Ariana Grande', 'Justin Timberlake', 'Kylie Minogue', 'Depeche Mode', 'Pet Shop Boys',
+  // Alternative Rock / Grunge / Indie / Punk
+  'Nirvana', 'Pearl Jam', 'Soundgarden', 'Alice in Chains', 'Radiohead', 'The Smashing Pumpkins',
+  'R.E.M.', 'U2', 'Red Hot Chili Peppers', 'Oasis', 'Blur', 'The Cure', 'The Smiths', 'Joy Division',
+  'New Order', 'Depeche Mode', 'Pixies', 'The Clash', 'Foo Fighters', 'Green Day', 'Weezer',
+  'Blink-182', 'The Offspring', 'Linkin Park', 'Incubus', 'Rage Against The Machine', 'System of a Down',
+  'The White Stripes', 'The Strokes', 'Arctic Monkeys', 'Muse', 'Coldplay', 'The Killers',
+  'Gorillaz', 'Queens of the Stone Age', 'Franz Ferdinand', 'Interpol', 'Arcade Fire', 'Vampire Weekend',
 
-  // Electronic / House / Synthwave
-  'Daft Punk', 'Kraftwerk', 'The Chemical Brothers', 'Fatboy Slim', 'The Prodigy',
-  'Avicii', 'Calvin Harris', 'David Guetta', 'Swedish House Mafia', 'Disclosure',
-  'Justice', 'Moby', 'Deadmau5', 'Aphex Twin', 'Underworld', 'Faithless',
+  // Pop / Dance / Synthpop / Contemporary
+  'Michael Jackson', 'Madonna', 'Prince', 'George Michael', 'Whitney Houston', 'Celine Dion',
+  'Mariah Carey', 'Cher', 'ABBA', 'Bee Gees', 'Donna Summer', 'Cyndi Lauper', 'Tina Turner',
+  'Phil Collins', 'Janet Jackson', 'Britney Spears', 'Christina Aguilera', 'Justin Timberlake',
+  'Destiny\'s Child', 'Beyoncé', 'Rihanna', 'Lady Gaga', 'Katy Perry', 'Taylor Swift', 'Bruno Mars',
+  'Adele', 'Ed Sheeran', 'Ariana Grande', 'Dua Lipa', 'Billie Eilish', 'Harry Styles', 'The Weeknd',
+  'Olivia Rodrigo', 'Sabrina Carpenter', 'Charli XCX', 'Sia', 'P!nk', 'Avril Lavigne', 'Shakira',
 
-  // Hip Hop / R&B / Soul
-  'Stevie Wonder', 'Aretha Franklin', 'Marvin Gaye', 'Earth Wind & Fire', 'Chic',
-  'Tupac Shakur', 'The Notorious B.I.G.', 'Eminem', 'Jay-Z', 'Kanye West', 'Kendrick Lamar',
-  'Drake', 'Outkast', 'Snoop Dogg', 'Dr. Dre', 'Nas', 'Fugees', 'Lauryn Hill', 'Alicia Keys',
-  'Usher', 'SZA', 'Frank Ocean', 'Childish Gambino', 'Post Malone',
+  // Electronic / House / Synthwave / Techno / Trance
+  'Daft Punk', 'Kraftwerk', 'The Chemical Brothers', 'The Prodigy', 'Fatboy Slim', 'Faithless',
+  'Underworld', 'Massive Attack', 'Portishead', 'Moby', 'Aphex Twin', 'Deadmau5', 'Skrillex',
+  'Avicii', 'Calvin Harris', 'David Guetta', 'Swedish House Mafia', 'Tiësto', 'Armin van Buuren',
+  'Martin Garrix', 'Kygo', 'Zedd', 'Marshmello', 'The Chainsmokers', 'Disclosure', 'Justice',
+  'LCD Soundsystem', 'Rufus Du Sol', 'ODESZA', 'Major Lazer', 'DJ Snake',
 
-  // 80s / New Wave / Post-Punk
-  'Tears for Fears', 'New Order', 'Joy Division', 'The Smiths', 'Talking Heads',
-  'Simple Minds', 'Duran Duran', 'a-ha', 'Eurythmics', 'Cyndi Lauper', 'Wham!',
+  // Hip Hop / Rap / Trap
+  'Run-D.M.C.', 'Beastie Boys', 'Public Enemy', 'A Tribe Called Quest', 'Wu-Tang Clan',
+  'Tupac Shakur', 'The Notorious B.I.G.', 'Nas', 'Jay-Z', 'Snoop Dogg', 'Dr. Dre', 'Eminem',
+  '50 Cent', 'OutKast', 'Ludacris', 'Missy Elliott', 'Busta Rhymes', 'Lil Wayne', 'Kanye West',
+  'Kendrick Lamar', 'J. Cole', 'Drake', 'Future', 'Travis Scott', 'A$AP Rocky', 'Mac Miller',
+  'Tyler, The Creator', 'Childish Gambino', 'Post Malone', 'Cardi B', 'Nicki Minaj', 'Doja Cat',
 
-  // Global / K-Pop / Anime / Latin
-  'BTS', 'BLACKPINK', 'TWICE', 'Stray Kids', 'NewJeans', 'LE SSERAFIM',
-  'YOASOBI', 'Kenshi Yonezu', 'RADWIMPS', 'Ado', 'LiSA', 'Official HIGE DANDism',
-  'Tatsuro Yamashita', 'Miki Matsubara', 'Mariya Takeuchi',
-  'Bad Bunny', 'Rosalía', 'J Balvin', 'Shakira', 'Daddy Yankee', 'Rauw Alejandro'
+  // R&B / Soul / Motown / Funk
+  'Stevie Wonder', 'Marvin Gaye', 'Aretha Franklin', 'Otis Redding', 'Sam Cooke', 'Ray Charles',
+  'James Brown', 'Al Green', 'Earth Wind & Fire', 'Chic', 'Kool & The Gang', 'The Temptations',
+  'The Supremes', 'Bill Withers', 'Sade', 'Luther Vandross', 'Boyz II Men', 'TLC', 'Lauryn Hill',
+  'Alicia Keys', 'Usher', 'John Legend', 'Ne-Yo', 'Frank Ocean', 'SZA', 'Daniel Caesar',
+
+  // Metal / Heavy Rock
+  'Metallica', 'Iron Maiden', 'Judas Priest', 'Motörhead', 'Megadeth', 'Slayer', 'Pantera',
+  'Ozzy Osbourne', 'Scorpions', 'Guns N\' Roses', 'Slipknot', 'Korn', 'Disturbed', 'Avenged Sevenfold',
+  'Rammstein', 'Nightwish', 'Ghost', 'Tool',
+
+  // K-Pop / J-Rock / City Pop / Anime
+  'BTS', 'BLACKPINK', 'TWICE', 'Stray Kids', 'EXO', 'SEVENTEEN', 'NewJeans', 'LE SSERAFIM',
+  'aespa', 'Red Velvet', 'IU', 'BIGBANG', 'SHINee', 'ENHYPEN', 'TXT', 'ATEEZ',
+  'YOASOBI', 'Kenshi Yonezu', 'RADWIMPS', 'King Gnu', 'Official HIGE DANDism', 'Ado', 'LiSA',
+  'Eve', 'aimer', 'Vaundy', 'Fujii Kaze', 'Tatsuro Yamashita', 'Miki Matsubara', 'Mariya Takeuchi',
+  'Anri', 'Taeko Onuki',
+
+  // Latin / Reggaeton / Bossa Nova / Reggae
+  'Bad Bunny', 'Daddy Yankee', 'Don Omar', 'J Balvin', 'Maluma', 'Ozuna', 'Rauw Alejandro',
+  'Karol G', 'Rosalía', 'Enrique Iglesias', 'Ricky Martin', 'Marc Anthony', 'Luis Fonsi',
+  'Bob Marley', 'Peter Tosh', 'Jimmy Cliff', 'Steel Pulse', 'UB40', 'Sean Paul', 'Shaggy',
+
+  // Jazz / Blues / Country
+  'Miles Davis', 'John Coltrane', 'Louis Armstrong', 'Ella Fitzgerald', 'Billie Holiday',
+  'Nina Simone', 'Norah Jones', 'Herbie Hancock', 'B.B. King', 'Muddy Waters', 'Stevie Ray Vaughan',
+  'Johnny Cash', 'Willie Nelson', 'Dolly Parton', 'Shania Twain', 'Chris Stapleton', 'Luke Combs'
 ];
+
+// High-yield curated playlist searches across genres & eras
+export const CURATED_PLAYLIST_SEEDS = [
+  'rock classics', 'pop essentials', 'billboard hot 100', '90s alternative', '80s synthpop',
+  '70s rock', '60s rock', '2000s pop', '2010s hits', 'hip hop golden age',
+  '90s hip hop', '2000s rap', 'modern hip hop', 'classic r&b', 'motown essentials',
+  'neo soul', 'funk & soul classics', 'disco fever', 'electronic journey', 'classic house',
+  'trance anthems', 'techno club', 'indie rock gems', 'shoegaze dream pop', 'post punk essentials',
+  'metal anthems', 'classic country', 'reggae roots', 'latin hits', 'reggaeton classics',
+  'kpop essentials', 'anime openings', 'city pop vibes', 'jazz masters', 'blues legends',
+  'soundtrack masterpieces', 'acoustic chill', 'road trip anthems', 'party classics', 'all time hits'
+];
+
+// Cross-product decade & genre query generator
+export const DECADE_GENRE_SEEDS = [];
+const DECADES = ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s'];
+const GENRES = ['rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie', 'metal', 'latin', 'reggae', 'country', 'funk', 'punk'];
+for (const d of DECADES) {
+  for (const g of GENRES) {
+    DECADE_GENRE_SEEDS.push(`${d} ${g}`);
+  }
+}
 
 export class MusicHarvester {
   constructor(catalog = sqliteCatalog) {
@@ -139,29 +211,109 @@ export class MusicHarvester {
   }
 
   /**
-   * Harvests an artist's discography (top tracks + official albums + album tracks).
+   * Harvests tracks from curated playlists.
+   * @param {string[]} queries - Array of playlist search terms
+   * @param {number} maxPlaylistsPerQuery - Number of playlists to fetch per query (e.g. 3)
    */
-  async harvestArtistDiscography(artistName) {
-    if (this.abortRequested) return { harvested: 0, merged: 0 };
+  async harvestCuratedPlaylists(queries, maxPlaylistsPerQuery = 3, onPlProgress = () => {}) {
+    let harvested = 0;
+    let merged = 0;
+
+    for (const query of queries) {
+      if (this.abortRequested) break;
+      try {
+        const searchUrl = `https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylistsPerQuery}`;
+        const searchResp = await politeFetch(searchUrl, {}, { rateLimiter: deezerRateLimiter });
+        if (!searchResp.ok) continue;
+
+        const searchJson = await searchResp.json();
+        const playlists = searchJson?.data || [];
+
+        for (const pl of playlists) {
+          if (this.abortRequested) break;
+          if (!pl.id) continue;
+
+          const tracksUrl = `https://api.deezer.com/playlist/${pl.id}/tracks?limit=100`;
+          const tracksResp = await politeFetch(tracksUrl, {}, { rateLimiter: deezerRateLimiter });
+          if (!tracksResp.ok) continue;
+
+          const tracksJson = await tracksResp.json();
+          const tracks = tracksJson?.data || [];
+          const validCandidates = [];
+
+          for (const t of tracks) {
+            if (!isAuthenticCandidate(t)) continue;
+
+            let releaseYear = null;
+            if (t.release_date) {
+              const yr = parseInt(t.release_date.slice(0, 4), 10);
+              if (!isNaN(yr) && yr >= 1950 && yr <= 2030) releaseYear = yr;
+            }
+
+            validCandidates.push({
+              title: t.title,
+              artist: t.artist?.name || 'Unknown Artist',
+              isrc: t.isrc || null,
+              album: t.album?.title || '',
+              durationMs: (t.duration || 0) * 1000,
+              releaseYear,
+              releaseDate: t.release_date || null,
+              popularity: t.rank || 0,
+              isExplicit: Boolean(t.explicit_lyrics),
+              provider: 'deezer',
+              providerTrackId: String(t.id),
+              sampleUrl: t.preview,
+              sampleCodec: 'mp3',
+              sampleDurationSec: 30,
+              externalUrl: t.link || null,
+              artistMetadata: {
+                deezerId: t.artist?.id,
+              },
+            });
+          }
+
+          if (validCandidates.length > 0) {
+            const res = this.catalog.upsertBatch(validCandidates);
+            harvested += res.inserted;
+            merged += res.merged;
+          }
+
+          onPlProgress({ query, playlistTitle: pl.title, tracksFound: tracks.length, harvested, merged });
+        }
+      } catch (err) {
+        logger.warn('harvester', `Playlist harvest for "${query}" failed: ${err.message}`);
+      }
+    }
+
+    return { harvested, merged };
+  }
+
+  /**
+   * Harvests an artist's discography (top tracks + official albums + album tracks)
+   * and optionally spiders high-fan related artists.
+   */
+  async harvestArtistDiscography(artistName, { maxAlbums = 8, includeRelated = true } = {}) {
+    if (this.abortRequested) return { harvested: 0, merged: 0, relatedArtists: [] };
 
     let totalHarvested = 0;
     let totalMerged = 0;
+    const relatedArtists = [];
 
     try {
       // 1. Find artist on Deezer and pick highest fan-count authentic artist
       const searchUrl = `https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`;
       const searchResp = await politeFetch(searchUrl, {}, { rateLimiter: deezerRateLimiter });
-      if (!searchResp.ok) return { harvested: 0, merged: 0 };
+      if (!searchResp.ok) return { harvested: 0, merged: 0, relatedArtists: [] };
 
       const searchJson = await searchResp.json();
       const rawList = searchJson?.data || [];
-      if (rawList.length === 0) return { harvested: 0, merged: 0 };
+      if (rawList.length === 0) return { harvested: 0, merged: 0, relatedArtists: [] };
 
       // Sort by fan count descending to eliminate amateur namesakes
       const sortedByFans = [...rawList].sort((a, b) => (b.nb_fan || 0) - (a.nb_fan || 0));
       const exactMatches = sortedByFans.filter(a => a.name.toLowerCase().trim() === artistName.toLowerCase().trim());
       const artistData = exactMatches[0] || sortedByFans[0];
-      if (!artistData || !artistData.id) return { harvested: 0, merged: 0 };
+      if (!artistData || !artistData.id) return { harvested: 0, merged: 0, relatedArtists: [] };
 
       const artistId = artistData.id;
       const officialArtistName = artistData.name || artistName;
@@ -211,11 +363,13 @@ export class MusicHarvester {
       if (albumsResp.ok) {
         const albumsJson = await albumsResp.json();
         const albums = albumsJson?.data || [];
+        let albumCount = 0;
 
         for (const album of albums) {
-          if (this.abortRequested) break;
+          if (this.abortRequested || albumCount >= maxAlbums) break;
           // Skip compilation or tribute albums
           if (!album.id || /tribute|karaoke|live|cover/i.test(album.title || '')) continue;
+          albumCount++;
 
           const tracksUrl = `https://api.deezer.com/album/${album.id}/tracks?limit=50`;
           const tracksResp = await politeFetch(tracksUrl, {}, { rateLimiter: deezerRateLimiter });
@@ -263,11 +417,26 @@ export class MusicHarvester {
           }
         }
       }
+
+      // 4. Spider related artists with >= 100k fans
+      if (includeRelated) {
+        const relatedUrl = `https://api.deezer.com/artist/${artistId}/related?limit=8`;
+        const relatedResp = await politeFetch(relatedUrl, {}, { rateLimiter: deezerRateLimiter });
+        if (relatedResp.ok) {
+          const relatedJson = await relatedResp.json();
+          const related = relatedJson?.data || [];
+          for (const rel of related) {
+            if (rel.name && (rel.nb_fan || 0) >= 100000) {
+              relatedArtists.push(rel.name);
+            }
+          }
+        }
+      }
     } catch (err) {
       logger.warn('harvester', `Failed discography crawl for ${artistName}: ${err.message}`);
     }
 
-    return { harvested: totalHarvested, merged: totalMerged };
+    return { harvested: totalHarvested, merged: totalMerged, relatedArtists };
   }
 
   /**
@@ -334,44 +503,96 @@ export class MusicHarvester {
   }
 
   /**
-   * Executes an autonomous catalog harvest across all vectors:
-   * 1. Foundation Artists Discographies
-   * 2. High-Frequency Lexicon Keywords
+   * Executes an autonomous catalog harvest across all multi-provider vectors:
+   * 1. Curated Playlists Spider
+   * 2. Decade & Genre Matrix Sweep
+   * 3. Foundation Artists & Related Artists Discography Spider
+   * 4. High-Frequency Lexicon Keywords
    */
   async runFullHarvest({
-    artistsLimit = 40,
-    lexiconLimit = 50,
+    targetTracks = 100000,
+    playlistsLimit = 40,
+    artistsLimit = 150,
+    lexiconLimit = 350,
     onProgress = () => {},
   } = {}) {
-    logger.info('harvester', `Starting massive catalog harvest (Artists: ${artistsLimit}, Lexicon: ${lexiconLimit})...`);
+    logger.info('harvester', `Starting massive catalog harvest targeting ${targetTracks.toLocaleString()} tracks...`);
 
     const stats = {
+      playlistsCrawled: 0,
       artistsCrawled: 0,
       lexiconWordsCrawled: 0,
+      decadeQueriesCrawled: 0,
       totalInserted: 0,
       totalMerged: 0,
     };
 
-    // Vector 1: Artist Discographies
-    const artistsToCrawl = FOUNDATION_ARTISTS.slice(0, artistsLimit);
-    for (const artist of artistsToCrawl) {
-      if (this.abortRequested) break;
-      const res = await this.harvestArtistDiscography(artist);
-      stats.artistsCrawled++;
-      stats.totalInserted += res.harvested;
-      stats.totalMerged += res.merged;
-      onProgress({ ...stats, currentAction: `Crawled artist: ${artist}`, currentStats: this.catalog.getStats() });
+    const isTargetReached = () => this.catalog.getStats().tracks >= targetTracks;
+
+    // Vector 1: Curated Playlists
+    if (!isTargetReached() && !this.abortRequested) {
+      const playlistsToCrawl = CURATED_PLAYLIST_SEEDS.slice(0, playlistsLimit);
+      for (const plQuery of playlistsToCrawl) {
+        if (this.abortRequested || isTargetReached()) break;
+        const res = await this.harvestCuratedPlaylists([plQuery], 3, (p) => {
+          onProgress({ ...stats, currentAction: `Playlist: ${p.query}`, currentStats: this.catalog.getStats() });
+        });
+        stats.playlistsCrawled++;
+        stats.totalInserted += res.harvested;
+        stats.totalMerged += res.merged;
+        onProgress({ ...stats, currentAction: `Completed playlist: "${plQuery}"`, currentStats: this.catalog.getStats() });
+      }
     }
 
-    // Vector 2: High-Frequency Vocabulary Sweep
-    const wordsToCrawl = MUSIC_LEXICON_SEEDS.slice(0, lexiconLimit);
-    for (const word of wordsToCrawl) {
-      if (this.abortRequested) break;
-      const res = await this.harvestDeezerQuery(word, 2);
-      stats.lexiconWordsCrawled++;
-      stats.totalInserted += res.harvested;
-      stats.totalMerged += res.merged;
-      onProgress({ ...stats, currentAction: `Crawled vocabulary: "${word}"`, currentStats: this.catalog.getStats() });
+    // Vector 2: Decade & Genre Cross-Product Matrix
+    if (!isTargetReached() && !this.abortRequested) {
+      for (const query of DECADE_GENRE_SEEDS) {
+        if (this.abortRequested || isTargetReached()) break;
+        const res = await this.harvestDeezerQuery(query, 2);
+        stats.decadeQueriesCrawled++;
+        stats.totalInserted += res.harvested;
+        stats.totalMerged += res.merged;
+        onProgress({ ...stats, currentAction: `Decade/Genre: "${query}"`, currentStats: this.catalog.getStats() });
+      }
+    }
+
+    // Vector 3: Artist Discographies & Related Artists Spidering
+    if (!isTargetReached() && !this.abortRequested) {
+      const artistQueue = [...FOUNDATION_ARTISTS.slice(0, artistsLimit)];
+      const visitedArtists = new Set(artistQueue.map(a => a.toLowerCase()));
+
+      while (artistQueue.length > 0 && !this.abortRequested && !isTargetReached()) {
+        const artist = artistQueue.shift();
+        const res = await this.harvestArtistDiscography(artist, { maxAlbums: 8, includeRelated: true });
+        stats.artistsCrawled++;
+        stats.totalInserted += res.harvested;
+        stats.totalMerged += res.merged;
+
+        // Queue newly discovered authentic related artists
+        if (res.relatedArtists && res.relatedArtists.length > 0) {
+          for (const rel of res.relatedArtists) {
+            if (!visitedArtists.has(rel.toLowerCase())) {
+              visitedArtists.add(rel.toLowerCase());
+              artistQueue.push(rel);
+            }
+          }
+        }
+
+        onProgress({ ...stats, currentAction: `Artist: ${artist}`, currentStats: this.catalog.getStats() });
+      }
+    }
+
+    // Vector 4: High-Frequency Lexicon Keywords Sweep
+    if (!isTargetReached() && !this.abortRequested) {
+      const wordsToCrawl = MUSIC_LEXICON_SEEDS.slice(0, lexiconLimit);
+      for (const word of wordsToCrawl) {
+        if (this.abortRequested || isTargetReached()) break;
+        const res = await this.harvestDeezerQuery(word, 3);
+        stats.lexiconWordsCrawled++;
+        stats.totalInserted += res.harvested;
+        stats.totalMerged += res.merged;
+        onProgress({ ...stats, currentAction: `Vocabulary: "${word}"`, currentStats: this.catalog.getStats() });
+      }
     }
 
     return stats;

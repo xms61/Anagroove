@@ -135,16 +135,19 @@ npm run build
 ```
 Production assets are output to the `dist/` directory.
 
-### 6. Crawling & Managing the SQLite Music Catalog
-To crawl thousands of authentic songs and build the local SQLite database:
+### 6. Crawling & Managing the Massive SQLite Music Catalog (100k+ Tracks)
+To populate or expand the local SQLite database with over 100,000 canonical songs:
 ```bash
-npm run crawl                 # Autonomous crawl across foundation artists & music lexicon
-npm run crawl:status          # Display high-level stats: total artists, tracks, samples & merges
+npm run crawl                 # Autonomous crawl across playlists, decades, artists & lexicon (target: 100,000)
+npm run crawl:status          # Display catalog status: artists, tracks, samples, provider links & merges
 ```
-You can also tune limits via CLI flags:
+You can also customize target counts and discovery vectors via CLI flags:
 ```bash
-node scripts/crawl_catalog.js --artists=50 --lexicon=50
+# Target custom track thresholds or specific vector depths
+node scripts/crawl_catalog.js --target=100000 --playlists=40 --artists=200 --lexicon=350
+node scripts/crawl_catalog.js --status
 ```
+The crawler automatically checkpoints and manages SQLite WAL journals (`catalog.sqlite-wal`), guaranteeing zero database bloat and rock-solid deterministic deduplication.
 
 ---
 
