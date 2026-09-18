@@ -36,6 +36,9 @@ import {
 } from '../server/validators.js';
 import { createLivePuzzleStore, server } from '../server/server.js';
 import { db } from '../server/db.js';
+import { SqliteCatalog, normalizeDedupeTitle, normalizeDedupeArtist } from '../server/db/sqliteCatalog.js';
+import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
+import { TokenBucketRateLimiter } from '../server/crawler/rateLimiter.js';
 
 let passedCount = 0;
 let failedCount = 0;
@@ -1204,6 +1207,127 @@ async function runIntegrationTests() {
   }
 }
 
+async function runSqliteCatalogTests() {
+  console.log('\n--- 6. Testing SQLite Music Catalog, Authenticity Filter & Rate Limiter ---');
+
+  // 1. Authenticity Filter Tests
+  assert(!isAuthenticCandidate({ title: 'Bohemian Rhapsody (Cover)', artist: 'Some Cover Band', preview: 'http://example.com/audio.mp3', duration: 200 }), 'Rejects title containing (Cover)');
+  assert(!isAuthenticCandidate({ title: 'Smells Like Teen Spirit', artist: 'Karaoke All Stars', preview: 'http://example.com/audio.mp3', duration: 210 }), 'Rejects artist with Karaoke in name');
+  assert(!isAuthenticCandidate({ title: 'Wonderwall', artist: 'Oasis Tribute Band', preview: 'http://example.com/audio.mp3', duration: 250 }), 'Rejects tribute band artist');
+  assert(!isAuthenticCandidate({ title: 'Hotel California', artist: 'The Eagles', album: 'Lullaby Renditions of Eagles', preview: 'http://example.com/audio.mp3', duration: 180 }), 'Rejects lullaby album renditions');
+  assert(!isAuthenticCandidate({ title: 'Billie Jean', artist: 'Michael Jackson', preview: '', duration: 290 }), 'Rejects track missing preview URL');
+  assert(!isAuthenticCandidate({ title: 'Short Clip', artist: 'Quick Artist', preview: 'http://example.com/audio.mp3', duration: 20 }), 'Rejects track shorter than 45 seconds');
+  assert(isAuthenticCandidate({ title: 'Around the World', artist: 'Daft Punk', album: 'Homework', preview: 'https://cdnt-preview.dzcdn.net/sample.mp3', duration: 429 }), 'Permits authentic studio track with preview');
+  assert(isAuthenticCandidate({ trackName: 'Bohemian Rhapsody', artistName: 'Queen', collectionName: 'A Night At The Opera', previewUrl: 'https://audio-ssl.itunes.apple.com/preview.m4a', trackTimeMillis: 355000 }), 'Permits authentic iTunes track mapping');
+
+  // 2. Token Bucket Rate Limiter Tests
+  const limiter = new TokenBucketRateLimiter({ refillRatePerSec: 50, maxTokens: 2 });
+  await limiter.acquireToken();
+  await limiter.acquireToken();
+  assert(limiter.tokens < 1, 'Token bucket correctly consumes tokens');
+  await new Promise(r => setTimeout(r, 40));
+  await limiter.acquireToken();
+  assert(true, 'Token bucket refills and permits acquisition');
+
+  // 3. Normalization Key Tests
+  assert(normalizeDedupeTitle('Bohemian Rhapsody (Remastered 2011)') === 'bohemianrhapsody', 'Normalizes title stripping remaster parenthetical');
+  assert(normalizeDedupeTitle('Under Pressure (feat. David Bowie) [Deluxe Version]') === 'underpressure', 'Normalizes title stripping feature and deluxe version');
+  assert(normalizeDedupeArtist('The Beatles') === 'the beatles', 'Normalizes artist canonical identity');
+
+  // 4. In-Memory SQLite Catalog Tests
+  const memCatalog = new SqliteCatalog(':memory:');
+  const initialStats = memCatalog.getStats();
+  assert(initialStats.tracks === 0 && initialStats.artists === 0, 'Initializes empty in-memory catalog');
+
+  // Ingest Deezer Track with ISRC
+  const res1 = memCatalog.upsertTrack({
+    title: 'Get Lucky (feat. Pharrell Williams)',
+    artist: 'Daft Punk',
+    isrc: 'USQX91300105',
+    album: 'Random Access Memories',
+    durationMs: 369000,
+    releaseYear: 2013,
+    popularity: 88,
+    provider: 'deezer',
+    providerTrackId: '67238732',
+    sampleUrl: 'https://cdnt-preview.dzcdn.net/getlucky.mp3',
+    sampleCodec: 'mp3',
+    sampleDurationSec: 30,
+    artistMetadata: { deezerId: 27, fansCount: 4000000 },
+  });
+  assert(res1 && res1.isNew === true && res1.isMerged === false, 'First track inserted as new canonical track');
+
+  // Ingest Spotify Track with identical ISRC (Tier 1 100% Master Match)
+  const res2 = memCatalog.upsertTrack({
+    title: 'Get Lucky',
+    artist: 'Daft Punk',
+    isrc: 'USQX91300105',
+    album: 'Random Access Memories (Deluxe)',
+    durationMs: 369640,
+    releaseYear: 2013,
+    popularity: 92,
+    provider: 'spotify',
+    providerTrackId: '2Foc5Q5nqNiosCNqttzHof',
+    sampleUrl: null,
+    artistMetadata: { spotifyId: '4tZwfgrHOc3mvqYxwDoOD1' },
+  });
+  assert(res2 && res2.isNew === false && res2.isMerged === true && res2.trackId === res1.trackId, 'Tier 1 ISRC match merges Spotify track into canonical record');
+
+  // Ingest iTunes Track without ISRC using Compound Key (Tier 2 Normalized Artist + Title + Duration delta <= 3s)
+  const res3 = memCatalog.upsertTrack({
+    title: 'Get Lucky (Radio Edit)',
+    artist: 'Daft Punk',
+    album: 'Random Access Memories',
+    durationMs: 370500, // Delta is 1.5s from original 369000ms
+    provider: 'itunes',
+    providerTrackId: '636988899',
+    sampleUrl: 'https://audio-ssl.itunes.apple.com/getlucky.m4a',
+    sampleCodec: 'aac',
+    sampleDurationSec: 30,
+    artistMetadata: { itunesArtistId: 546829 },
+  });
+  assert(res3 && res3.isNew === false && res3.isMerged === true && res3.trackId === res1.trackId, 'Tier 2 Compound key merges iTunes track within 3s delta');
+
+  // Verify Samples & Providers Attached
+  const postMergeStats = memCatalog.getStats();
+  assert(postMergeStats.tracks === 1, 'Total canonical tracks remains 1 after multi-provider merge');
+  assert(postMergeStats.audioSamples === 2, 'Stores 2 audio samples (Deezer MP3 and iTunes AAC)');
+  assert(postMergeStats.providerLinks === 3, 'Stores 3 provider links (Deezer, Spotify, iTunes)');
+  assert(postMergeStats.crossReferencedTracks === 1, 'Identifies track as successfully cross-referenced');
+
+  // Batch Ingestion Test
+  const batchRes = memCatalog.upsertBatch([
+    {
+      title: 'One More Time',
+      artist: 'Daft Punk',
+      album: 'Discovery',
+      durationMs: 320000,
+      releaseYear: 2001,
+      provider: 'deezer',
+      providerTrackId: '3135556',
+      sampleUrl: 'https://cdnt-preview.dzcdn.net/onemoretime.mp3',
+    },
+    {
+      title: 'Harder, Better, Faster, Stronger',
+      artist: 'Daft Punk',
+      album: 'Discovery',
+      durationMs: 224000,
+      releaseYear: 2001,
+      provider: 'deezer',
+      providerTrackId: '3135557',
+      sampleUrl: 'https://cdnt-preview.dzcdn.net/harder.mp3',
+    },
+  ]);
+  assert(batchRes.inserted === 2 && batchRes.total === 2, 'Batch transaction cleanly inserts multiple tracks');
+
+  // Random Playable Track Query Test
+  const randomPlayable = memCatalog.getRandomPlayableTracks({ count: 5, yearRange: { start: 2000, end: 2015 } });
+  assert(randomPlayable.length >= 2, 'Queries random playable tracks within release year range');
+  assert(randomPlayable.every(t => t.sample_url && t.release_year >= 2000 && t.release_year <= 2015), 'All returned tracks have verified samples and match year bounds');
+
+  memCatalog.close();
+}
+
 async function main() {
   console.log('🚀 Starting SpotySpice CI-Friendly Automated Test Suite...');
   const startTime = Date.now();
@@ -1211,6 +1335,7 @@ async function main() {
   try {
     await runUnitTests();
     await runIntegrationTests();
+    await runSqliteCatalogTests();
   } catch (err) {
     console.error('Fatal test execution error:', err);
     failedCount++;
