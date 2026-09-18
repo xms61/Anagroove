@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.2] - 2026-09-18
+
+### Changed
+- **Gitignore Local SQLite Databases (`.gitignore`)**:
+  - Added `*.sqlite` and `server/data/catalog.sqlite*` to `.gitignore` to keep the Git repository lightweight and free of binary database blobs.
+  - Untracked `server/data/catalog.sqlite` from Git index while preserving local database files.
+- **Documentation for SQLite Initialization & Population (`README.md`)**:
+  - Documented automatic schema initialization via Node.js 24 native `node:sqlite` (`DatabaseSync`).
+  - Added comprehensive step-by-step instructions and CLI options table for populating the database at various scales (quick seed, standard catalog, massive 100k catalog).
+
+---
+
 ## [1.9.1] - 2026-09-18
 
 ### Changed
