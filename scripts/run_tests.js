@@ -34,6 +34,15 @@ import {
   validateLivePuzzlePayload,
   validateWsMessage
 } from '../server/validators.js';
+import {
+  GEMINI_MODEL_CASCADE,
+  normalizeReplacementQuery,
+  validateLLMJudgeResponse,
+  buildJudgePrompt,
+  evaluateSongSelection,
+  setGeminiFetchForTesting,
+} from '../server/services/geminiJudge.js';
+import { getGeminiApiKey, isGeminiJudgeConfigured } from '../server/config.js';
 import { createLivePuzzleStore, server } from '../server/server.js';
 import { db } from '../server/db.js';
 
@@ -547,6 +556,319 @@ async function runUnitTests() {
     isThematicallyPermitted({ title: 'CASE 143', artist: 'Stray Kids', selection: { genre: 'K-Pop' } }, 'kpop', 'new gen kpop') === true,
     'Permits authentic K-Pop group Stray Kids'
   );
+
+  console.log('\n--- 3d. Testing Gemini LLM Judge, Negotiated Contract & Fallback Ladder ---');
+
+  // 1. Standby Mode & Key Protection
+  assert(getGeminiApiKey() === 'TODO' || !process.env.GEMINI_API_KEY, 'Default GEMINI_API_KEY is TODO or unset');
+  assert(isGeminiJudgeConfigured() === false, 'isGeminiJudgeConfigured returns false when key is TODO');
+  const standbyEval = await evaluateSongSelection({
+    candidateTracks: [{ title: 'Track 1', artist: 'Artist 1', answer: 'WORD' }],
+  });
+  assert(standbyEval.evaluated === false, 'LLM Judge does not evaluate when key is TODO');
+  assert(standbyEval.reason === 'STANDBY_MODE', 'Reports STANDBY_MODE when unconfigured');
+  assert(standbyEval.judgment?.isSatisfied === true, 'Standby mode approves candidate tracks by default');
+
+  // 2. Negotiated Contract Validation & Normalization
+  assert(normalizeReplacementQuery(null) === null, 'Rejects null replacement query');
+  assert(normalizeReplacementQuery({}) === null, 'Rejects empty replacement query without search terms');
+
+  const normalizedQ = normalizeReplacementQuery({
+    artist: ' LE SSERAFIM ',
+    trackTitle: ' Antifragile ',
+    genre: ' kpop ',
+    searchTerms: [' LE SSERAFIM Antifragile ', '  ', 'aespa Drama'],
+    yearRange: { start: '2020', end: '2026' },
+    targetStorefront: 'KR',
+    popularity: 'BALANCED',
+  });
+  assert(normalizedQ.artist === 'LE SSERAFIM', 'Trims artist in replacement query');
+  assert(normalizedQ.trackTitle === 'Antifragile', 'Trims trackTitle in replacement query');
+  assert(normalizedQ.genre === 'kpop', 'Trims genre in replacement query');
+  assert(normalizedQ.searchTerms.length === 2 && normalizedQ.searchTerms[0] === 'LE SSERAFIM Antifragile', 'Normalizes searchTerms array and removes empty entries');
+  assert(normalizedQ.yearRange.start === 2020 && normalizedQ.yearRange.end === 2026, 'Parses numeric yearRange bounds');
+  assert(normalizedQ.targetStorefront === 'kr', 'Normalizes valid storefront code to lowercase');
+  assert(normalizedQ.popularity === 'balanced', 'Normalizes valid popularity tier to lowercase');
+
+  const synthesizedQ = normalizeReplacementQuery({
+    artist: 'Nirvana',
+    trackTitle: 'Smells Like Teen Spirit',
+  });
+  assert(synthesizedQ.searchTerms[0] === 'Nirvana Smells Like Teen Spirit', 'Synthesizes searchTerms when omitted');
+
+  // Full response validation
+  const validResponse = validateLLMJudgeResponse({
+    isSatisfied: true,
+    verdictSummary: 'All tracks fit',
+    rejectedTrackIndices: [1, 99, -5],
+    rejectionReasons: { '1': 'Off topic' },
+    replacementQueries: [{ searchTerms: ['NewJeans'] }],
+  }, 5);
+  assert(validResponse.isSatisfied === false, 'Overrides isSatisfied=true when tracks are rejected');
+  assert(validResponse.rejectedTrackIndices.length === 1 && validResponse.rejectedTrackIndices[0] === 1, 'Filters out of bounds rejected indices (99 and -5 ignored)');
+  assert(validResponse.rejectionReasons['1'] === 'Off topic', 'Extracts rejection reason for index 1');
+  assert(validResponse.replacementQueries.length === 1, 'Validates replacementQueries array');
+
+  // 3. Input Context Formatting in Prompt
+  const themePrompt = buildJudgePrompt({
+    mode: 'theme',
+    theme: { id: 'kpop', title: 'K-Pop & Asian Pop' },
+    popularity: 'mainstream',
+    targetWordCount: 8,
+    candidateTracks: [{ title: 'Track', artist: 'Artist', answer: 'ANS', clueType: 'Song title' }],
+  });
+  assert(themePrompt.includes('MODE: Preset Theme'), 'Prompt formats Preset Theme mode');
+  assert(themePrompt.includes('THEME: "K-Pop & Asian Pop"'), 'Prompt includes theme title');
+  assert(themePrompt.includes('POPULARITY PROFILE: mainstream'), 'Prompt includes popularity tier');
+
+  const customPromptText = buildJudgePrompt({
+    mode: 'custom_prompt',
+    customPrompt: 'new gen kpop',
+    popularity: 'obscure',
+    targetWordCount: 10,
+    candidateTracks: [],
+  });
+  assert(customPromptText.includes('MODE: Custom Free-Text Prompt'), 'Prompt formats Custom Prompt mode');
+  assert(customPromptText.includes('CUSTOM PROMPT: "new gen kpop"'), 'Prompt includes custom prompt string');
+  assert(customPromptText.includes('POPULARITY PROFILE: obscure'), 'Prompt includes obscure popularity tier');
+
+  // 4. Model Priority & Fallback Ladder
+  assert(GEMINI_MODEL_CASCADE[0] === 'gemini-3.8-flash', 'Model cascade priority 1 is gemini-3.8-flash');
+  assert(GEMINI_MODEL_CASCADE[1] === 'gemini-3.7-flash', 'Model cascade fallback 1 is gemini-3.7-flash');
+  assert(GEMINI_MODEL_CASCADE[2] === 'gemini-3.6-flash', 'Model cascade fallback 2 is gemini-3.6-flash');
+  assert(GEMINI_MODEL_CASCADE[3] === 'gemini-3.5-flash', 'Model cascade fallback 3 is gemini-3.5-flash');
+
+  // Simulate model fallback execution with mock API
+  const requestedModels = [];
+  process.env.GEMINI_API_KEY = 'mock_test_key_abc123';
+
+  // Test 4a: gemini-3.8-flash succeeds
+  setGeminiFetchForTesting(async (url) => {
+    const match = url.match(/models\/([^:]+):generateContent/);
+    if (match) requestedModels.push(match[1]);
+    return new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              isSatisfied: true,
+              verdictSummary: 'All good',
+              rejectedTrackIndices: [],
+              replacementQueries: [],
+            }),
+          }],
+        },
+      }],
+    }), { status: 200 });
+  });
+
+  const res38 = await evaluateSongSelection({
+    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
+  });
+  assert(res38.evaluated === true && res38.modelUsed === 'gemini-3.8-flash', 'Primary model gemini-3.8-flash used when available');
+  assert(requestedModels.length === 1 && requestedModels[0] === 'gemini-3.8-flash', 'Only requested 3.8 when it succeeded');
+
+  // Test 4b: gemini-3.8-flash fails with 404, gemini-3.7-flash succeeds
+  requestedModels.length = 0;
+  setGeminiFetchForTesting(async (url) => {
+    const match = url.match(/models\/([^:]+):generateContent/);
+    const model = match ? match[1] : '';
+    requestedModels.push(model);
+    if (model === 'gemini-3.8-flash') {
+      return new Response('Model Not Found', { status: 404 });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              isSatisfied: true,
+              verdictSummary: 'Approved on 3.7',
+              rejectedTrackIndices: [],
+              replacementQueries: [],
+            }),
+          }],
+        },
+      }],
+    }), { status: 200 });
+  });
+
+  const res37 = await evaluateSongSelection({
+    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
+  });
+  assert(res37.evaluated === true && res37.modelUsed === 'gemini-3.7-flash', 'Falls back to gemini-3.7-flash on 3.8 failure');
+  assert(requestedModels[0] === 'gemini-3.8-flash' && requestedModels[1] === 'gemini-3.7-flash', 'Tried 3.8 first, then fell back to 3.7');
+
+  // Test 4c: 3.8 and 3.7 fail, 3.6 succeeds
+  requestedModels.length = 0;
+  setGeminiFetchForTesting(async (url) => {
+    const match = url.match(/models\/([^:]+):generateContent/);
+    const model = match ? match[1] : '';
+    requestedModels.push(model);
+    if (model === 'gemini-3.8-flash' || model === 'gemini-3.7-flash') {
+      return new Response('Rate limited', { status: 429 });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              isSatisfied: true,
+              verdictSummary: 'Approved on 3.6',
+              rejectedTrackIndices: [],
+              replacementQueries: [],
+            }),
+          }],
+        },
+      }],
+    }), { status: 200 });
+  });
+
+  const res36 = await evaluateSongSelection({
+    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
+  });
+  assert(res36.evaluated === true && res36.modelUsed === 'gemini-3.6-flash', 'Falls back to gemini-3.6-flash when 3.8 and 3.7 fail');
+
+  // Test 4d: 3.8, 3.7, 3.6 fail, 3.5 succeeds
+  requestedModels.length = 0;
+  setGeminiFetchForTesting(async (url) => {
+    const match = url.match(/models\/([^:]+):generateContent/);
+    const model = match ? match[1] : '';
+    requestedModels.push(model);
+    if (model !== 'gemini-3.5-flash') {
+      return new Response('Unavailable', { status: 503 });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              isSatisfied: true,
+              verdictSummary: 'Approved on 3.5',
+              rejectedTrackIndices: [],
+              replacementQueries: [],
+            }),
+          }],
+        },
+      }],
+    }), { status: 200 });
+  });
+
+  const res35 = await evaluateSongSelection({
+    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
+  });
+  assert(res35.evaluated === true && res35.modelUsed === 'gemini-3.5-flash', 'Falls back to gemini-3.5-flash when 3.8, 3.7, 3.6 fail');
+
+  // Test 4e: All models fail -> graceful fallback without breaking
+  requestedModels.length = 0;
+  setGeminiFetchForTesting(async (url) => {
+    const match = url.match(/models\/([^:]+):generateContent/);
+    if (match) requestedModels.push(match[1]);
+    return new Response('All models down', { status: 500 });
+  });
+
+  const resFail = await evaluateSongSelection({
+    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
+  });
+  assert(resFail.evaluated === false, 'Gracefully handles total cascade failure without crashing');
+  assert(resFail.judgment.isSatisfied === true, 'Provides safe bypass judgment when all models fail');
+  assert(requestedModels.length === 4, 'Attempted all 4 models in cascade before giving up');
+
+  // 5. Iterative Refinement Loop in getRandomSongPool
+  const mockInitialCandidates = [
+    { id: 'track-1', title: 'Country Road Home', artist: 'Acoustic Cowboy', preview: 'https://cdn.test/1.mp3', rank: 500000, fans: 300000 },
+    { id: 'track-2', title: 'Highway To Hell', artist: 'AC DC', preview: 'https://cdn.test/2.mp3', rank: 500000, fans: 300000 },
+    { id: 'track-3', title: 'Smells Like Teen Spirit', artist: 'Nirvana', preview: 'https://cdn.test/3.mp3', rank: 500000, fans: 300000 },
+    { id: 'track-4', title: 'Sweet Child O Mine', artist: 'Guns N Roses', preview: 'https://cdn.test/4.mp3', rank: 500000, fans: 300000 },
+    { id: 'track-5', title: 'Smoke On The Water', artist: 'Deep Purple', preview: 'https://cdn.test/5.mp3', rank: 500000, fans: 300000 },
+    { id: 'track-6', title: 'Dream On', artist: 'Aerosmith', preview: 'https://cdn.test/6.mp3', rank: 500000, fans: 300000 },
+    { id: 'track-7', title: 'Paranoid', artist: 'Black Sabbath', preview: 'https://cdn.test/7.mp3', rank: 500000, fans: 300000 },
+  ];
+
+  const mockReplacementCandidates = [
+    { id: 'track-8', title: 'Immigrant Song', artist: 'Led Zeppelin', preview: 'https://cdn.test/8.mp3', rank: 500000, fans: 300000 },
+  ];
+
+  let judgeRound = 0;
+  process.env.GEMINI_API_KEY = 'mock_key_test_iterative';
+  setGeminiFetchForTesting(async (url, opts) => {
+    judgeRound++;
+    const body = JSON.parse(opts?.body || '{}');
+    const promptText = body?.contents?.[0]?.parts?.[0]?.text || '';
+    if (judgeRound === 1) {
+      // Find the dynamic index of the off-topic track in candidate snippet
+      const match = promptText.match(/"index":\s*(\d+)[^}]*"artist":\s*"Acoustic Cowboy"/);
+      const rejectedIndex = match ? parseInt(match[1], 10) : 0;
+
+      return new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                isSatisfied: false,
+                verdictSummary: 'Country Road Home is acoustic country, not rock.',
+                rejectedTrackIndices: [rejectedIndex],
+                rejectionReasons: { [rejectedIndex]: 'Country track in rock puzzle' },
+                replacementQueries: [
+                  {
+                    artist: 'Led Zeppelin',
+                    trackTitle: 'Immigrant Song',
+                    genre: 'rock',
+                    searchTerms: ['Led Zeppelin Immigrant Song'],
+                  },
+                ],
+              }),
+            }],
+          },
+        }],
+      }), { status: 200 });
+    } else {
+      // Round 2: Satisfied!
+      return new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                isSatisfied: true,
+                verdictSummary: 'All tracks are authentic rock classics.',
+                rejectedTrackIndices: [],
+                rejectionReasons: {},
+                replacementQueries: [],
+              }),
+            }],
+          },
+        }],
+      }), { status: 200 });
+    }
+  });
+
+  const mockProvider = {
+    async getCandidateTracks({ searches = [] } = {}) {
+      if (searches.some(s => typeof s === 'string' && s.toLowerCase().includes('led zeppelin'))) {
+        return mockReplacementCandidates;
+      }
+      return mockInitialCandidates;
+    },
+  };
+
+  setMusicProviderForTesting(mockProvider);
+  const refinedPool = await getRandomSongPool({
+    genre: 'rock',
+    count: 6,
+    seed: 'rock-iterative-test',
+  });
+  setMusicProviderForTesting(null);
+  setGeminiFetchForTesting(null);
+  process.env.GEMINI_API_KEY = 'TODO';
+
+  assert(judgeRound === 2, 'LLM Judge iterated through 2 rounds until satisfied');
+  assert(!refinedPool.some(s => s.artist === 'Acoustic Cowboy'), 'Rejected track Acoustic Cowboy was removed from final song pool');
+  assert(refinedPool.some(s => s.artist === 'Led Zeppelin'), 'Harvested replacement track Led Zeppelin was admitted');
+  assert(refinedPool.length >= 6, 'Final refined song pool satisfies requested word count');
+
+  // Reset test environment
+  setGeminiFetchForTesting(null);
+  process.env.GEMINI_API_KEY = 'TODO';
 
   console.log('\n--- 4. Testing Deezer Provider Resilience and Cache Bounds ---');
   const originalFetch = globalThis.fetch;
