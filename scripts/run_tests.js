@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
 import { generateLiveCrossword } from '../shared/liveCrossword.js';
-import { extractAnswerKeyword } from '../shared/musicKeywords.js';
+import { extractAnswerKeyword, isSingleEntityArtist, splitArtistNames } from '../shared/musicKeywords.js';
 import {
   blacklistIdentityKey,
   blacklistMatchesTrack,
@@ -119,6 +119,51 @@ async function runUnitTests() {
   assert(toCrosswordAnswer('Beyoncé') === 'BEYONCE', 'Artist answers remove diacritics without truncation');
   assert(toCrosswordAnswer('21 pilots') === '21PILOTS', 'Artist answers retain every numeric and word token');
   assert(toCrosswordAnswer('東京') === null, 'Rejects unsupported crossword answers instead of corrupting them');
+
+  // Single entity and ampersand expansion tests
+  assert(toCrosswordAnswer('Above & Beyond') === 'ABOVEANDBEYOND', 'Replaces ampersand with AND for single-entity band');
+  assert(toCrosswordAnswer('Mumford & Sons') === 'MUMFORDANDSONS', 'Replaces ampersand with AND for family band');
+  assert(toCrosswordAnswer('Rock & Roll') === 'ROCKANDROLL', 'Replaces ampersand with AND in song titles');
+  assert(toCrosswordAnswer('Simon & Garfunkel') === 'SIMONANDGARFUNKEL', 'Replaces ampersand with AND in iconic duo name');
+
+  // Single entity identification vs collaboration
+  assert(isSingleEntityArtist('Above & Beyond') === true, 'Identifies Above & Beyond as single entity');
+  assert(isSingleEntityArtist('Mumford & Sons') === true, 'Identifies Mumford & Sons as single entity');
+  assert(isSingleEntityArtist('Bob Marley & The Wailers') === true, 'Identifies Bob Marley & The Wailers as single entity');
+  assert(isSingleEntityArtist('Ski Aggu & Sira') === false, 'Identifies Ski Aggu & Sira as collaboration');
+  assert(isSingleEntityArtist('Drake & 21 Savage') === false, 'Identifies Drake & 21 Savage as collaboration');
+
+  // Multi-artist splitting
+  const splitCollab = splitArtistNames('Ski Aggu & Sira');
+  assert(splitCollab.length === 2 && splitCollab[0] === 'Ski Aggu' && splitCollab[1] === 'Sira', 'Splits "Ski Aggu & Sira" into individual artists');
+  const splitCase = splitArtistNames('Ski aggu & Sira');
+  assert(splitCase.length === 2 && splitCase[0] === 'Ski aggu' && splitCase[1] === 'Sira', 'Splits case-varied "Ski aggu & Sira"');
+  const splitSingle = splitArtistNames('Above & Beyond');
+  assert(splitSingle.length === 1 && splitSingle[0] === 'Above & Beyond', 'Preserves single-entity band with ampersand');
+  const splitFeat = splitArtistNames('The Kid LAROI feat. Justin Bieber');
+  assert(splitFeat.length === 2 && splitFeat[0] === 'The Kid LAROI' && splitFeat[1] === 'Justin Bieber', 'Splits feat. artist collaboration');
+  const splitComma = splitArtistNames('David Guetta, Bebe Rexha');
+  assert(splitComma.length === 2 && splitComma[0] === 'David Guetta' && splitComma[1] === 'Bebe Rexha', 'Splits comma-separated artist collaboration');
+
+  // Multi-artist answer extraction does not combine like a title
+  const skiAgguCollab = extractAnswerKeyword('mietfrei', 'Ski Aggu & Sira', { preferredType: 'artist' });
+  assert(skiAgguCollab?.answer === 'SKIAGGU', 'Extracts lead artist answer SKIAGGU instead of combining as SKIAGGUSIRA');
+  assert(skiAgguCollab?.answer !== 'SKIAGGUSIRA', 'Never combines collaborating artists like a title');
+
+  const siraCollab = extractAnswerKeyword('mietfrei', 'Ski Aggu & Sira', { preferredType: 'artist', artistIndex: 1 });
+  assert(siraCollab?.answer === 'SIRA', 'Extracts co-performer answer SIRA on demand');
+
+  const fallbackCollab = extractAnswerKeyword('mietfrei', 'Ski Aggu & Sira', {
+    preferredType: 'artist',
+    seenAnswers: new Set(['SKIAGGU']),
+  });
+  assert(fallbackCollab?.answer === 'SIRA', 'Falls back to co-performer SIRA if lead artist answer already exists on grid');
+
+  const singleEntityKeyword = extractAnswerKeyword('Sun & Moon', 'Above & Beyond', { preferredType: 'artist' });
+  assert(singleEntityKeyword?.answer === 'ABOVEANDBEYOND', 'Extracts single-entity artist with ampersand expanded to AND');
+
+  const titleAmpersandKeyword = extractAnswerKeyword('Rock & Roll', 'Led Zeppelin', { preferredType: 'title' });
+  assert(titleAmpersandKeyword?.answer === 'ROCKANDROLL', 'Extracts song title with ampersand expanded to AND');
 
   const migrationIdentityKeys = new Set([
     { type: 'song', name: 'Same Title' },

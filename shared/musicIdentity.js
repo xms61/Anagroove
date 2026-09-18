@@ -22,6 +22,8 @@ export function canonicalMusicKey(value) {
   if (!input) return '';
 
   return transliterate(input)
+    .replace(/&/g, ' and ')
+    .replace(/\+/g, ' and ')
     .normalize('NFKD')
     .replace(/\p{M}/gu, '')
     .toLocaleLowerCase()
@@ -52,6 +54,8 @@ export function blacklistIdentityKey(item) {
 /**
  * Converts a complete display name into a grid-safe answer. It intentionally
  * does not choose a word from the name: "21 pilots" becomes "21PILOTS".
+ * Ampersands ('&') and '+' in single entities or titles are replaced with 'AND'
+ * (e.g. "Above & Beyond" -> "ABOVEANDBEYOND", "Rock & Roll" -> "ROCKANDROLL").
  * Unsupported scripts, empty values, and answers outside the grid limits are
  * rejected instead of being silently mangled.
  */
@@ -59,7 +63,11 @@ export function toCrosswordAnswer(displayName, { minLength = 3, maxLength = 20 }
   const input = asString(displayName);
   if (!input) return null;
 
-  const normalized = transliterate(input)
+  const expanded = input
+    .replace(/&/g, ' and ')
+    .replace(/\+/g, ' and ');
+
+  const normalized = transliterate(expanded)
     .normalize('NFKD')
     .replace(/\p{M}/gu, '');
 

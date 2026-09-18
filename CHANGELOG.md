@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.5] - 2026-09-18
+
+### Fixed
+- **Multi-Artist Collaboration Separation & Title Concatenation Prevention (`shared/musicKeywords.js`, `shared/musicIdentity.js`, `server/services/musicService.js`)**:
+  - Prevented collaborating artists from being combined into a single concatenated crossword answer like a title (e.g. `Ski Aggu & Sira` is no longer combined into `SKIAGGUSIRA`).
+  - Added intelligent multi-artist parser (`splitArtistNames`, `isSingleEntityArtist`) recognizing distinct collaborators (`Ski Aggu` or `Sira`, `Drake` or `21 Savage`, `David Guetta` or `Bebe Rexha`).
+  - Generated distinct candidate clues for each artist (`Lead performer` vs `Co-performer`), allowing graceful fallback between collaborators on the grid before falling back to song titles or keywords.
+  - Tracked all individual collaborating artist identities in `seenArtists` to guarantee variety and prevent duplicate artist appearances across the crossword.
+- **Single-Entity Band Ampersand Expansion to "AND" (`shared/musicIdentity.js`, `shared/musicKeywords.js`)**:
+  - When an artist or group is a single entity with `&` (e.g. `Above & Beyond`, `Mumford & Sons`, `Kool & The Gang`, `Bob Marley & The Wailers`, `Of Mice & Men`), the `&` is expanded to `AND` (`ABOVEANDBEYOND`, `MUMFORDANDSONS`, `KOOLANDTHEGANG`) rather than being stripped out.
+  - Expanded `&` to `AND` in song titles as well (e.g. `Rock & Roll` -> `ROCKANDROLL`).
+  - Unified `canonicalMusicKey` to map `&` and `+` to `and` for consistent search and blacklisting comparisons.
+- **Automated Test Suite Expansion (`scripts/run_tests.js`)**:
+  - Added 20 automated unit assertions covering multi-artist splitting, collaboration clue generation, single-entity band identification, and ampersand expansion, bringing the test suite to **192 passing tests**.
+
+---
+
 ## [1.4.4] - 2026-09-18
 
 ### Added

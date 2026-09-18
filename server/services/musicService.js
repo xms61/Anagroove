@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { extractAnswerKeyword } from '../../shared/musicKeywords.js';
+import { extractAnswerKeyword, splitArtistNames } from '../../shared/musicKeywords.js';
 import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey } from '../../shared/musicIdentity.js';
 import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
@@ -9,7 +9,7 @@ import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
 
-export { extractAnswerKeyword };
+export { extractAnswerKeyword, splitArtistNames };
 
 export function setMusicProviderForTesting(provider) {
   musicProvider = provider || deezerMusicProvider;
@@ -411,7 +411,13 @@ export async function getRandomSongPool({
         targetArtistKey.includes(artistIdentity)
       );
 
-      if (!isTargetArtist && seenArtists.has(artistIdentity)) {
+      const artistNames = splitArtistNames(track.artist);
+      const isDuplicateArtist = !isTargetArtist && (
+        seenArtists.has(artistIdentity) ||
+        artistNames.some(name => seenArtists.has(canonicalArtistKey(name)))
+      );
+
+      if (isDuplicateArtist) {
         rejections.duplicateArtist++;
         continue;
       }
@@ -429,13 +435,19 @@ export async function getRandomSongPool({
         }
       }
 
-      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist });
+      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers });
 
-      // If answer already exists on the grid, fallback to song title or keyword
+      // If answer already exists on the grid, fallback:
       if (keyword && seenAnswers.has(keyword.answer)) {
-        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist });
+        if (keyword.clueType === 'Artist name') {
+          // If there is a co-performer (e.g. Sira in "Ski Aggu & Sira"), try them before giving up on artist clues
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, seenAnswers, artistIndex: 1 });
+        }
         if (keyword && seenAnswers.has(keyword.answer)) {
-          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist });
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist, seenAnswers });
+          if (keyword && seenAnswers.has(keyword.answer)) {
+            keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist, seenAnswers });
+          }
         }
       }
       if (!keyword) {
@@ -449,6 +461,7 @@ export async function getRandomSongPool({
 
       seenTracks.add(trackIdentity);
       seenArtists.add(artistIdentity);
+      artistNames.forEach(name => seenArtists.add(canonicalArtistKey(name)));
       seenTitles.add(titleIdentity);
       seenAnswers.add(keyword.answer);
 
