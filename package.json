@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "test": "node scripts/run_tests.js",
     "test:ci": "npm run lint && npm run test",
+    "test:prompts": "node scripts/test_prompts_crossword_suite.js",
     "generate": "node scripts/generate_puzzles.js",
     "generate:themes": "node scripts/generate_all_themes.js"
   },

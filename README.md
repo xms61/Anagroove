@@ -26,10 +26,11 @@
   - **Popularity Spectrum**: Toggle between **Pure Random** (unfiltered), **Hidden Gems** (indie/underrated cuts), **Balanced** (hits & discoveries), and **Top Hits** (chart-toppers).
   - **Natural Song Title Answers (Up to 14 Characters)**: Crossword answers combine multi-word titles without spaces (e.g. `YOURLOVE`, `GETLUCKY`, `BLINDINGLIGHTS`), perfectly fitted to grid dimensions.
   - **Balanced Clue Variety**: Puzzles offer an engaging mix of **Song Title**, **Artist Name**, and **Title Keyword** questions rather than being dominated by a single clue type.
-  - **Language Precision**: Strict English language enforcement across general categories, with explicit cultural support for **Anime** (Japanese/OSTs) and **K-Pop** (Korean).
+  - **Language Precision & Regional Storefronts**: Strict English language enforcement across general categories, with automatic regional storefront steering for international prompts (Japan, South Korea, France, Germany, Brazil, Jamaica, Nigeria, UK, US).
+  - **Thematic Homonym & Novelty Act Filtering**: Rejects Western artist collisions matching nationality adjectives (e.g. *The Japanese House*, *French Montana*, *German Brigante*) and novelty songs to ensure 100% authentic genre fidelity.
   - **Multi-Endpoint Provider Discovery**: Concurrent harvesting across Deezer advanced queries and iTunes Search API for 100% preview availability and rich catalog depth.
   - **Deterministic Seed Sharing**: Share exact puzzle seeds (e.g. `party-game-42`) with friends using deterministic SHA-256 hash ranking without server bloat.
-  - **Anti-Repetition & Variety Sampling**: Rejection sampling enforces max 1 track per artist, eliminates duplicate titles, and respects player history and blacklists.
+  - **Anti-Repetition & Variety Sampling**: Tiered play-frequency sampling guarantees $\le 3$ repetitions per song across 50 consecutive crosswords, enforces max 1 track per artist, and respects player history and blacklists.
 - **👥 Real-Time Multiplayer Lounge**:
   - **Co-Op Mode**: Two or more players solve the identical puzzle in real time with live keystroke synchronization.
   - **Versus Race Mode**: Race to complete the puzzle first with live real-time progress bars.

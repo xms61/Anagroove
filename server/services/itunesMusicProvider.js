@@ -25,10 +25,53 @@ export function resetItunesCachesForTesting() {
   itunesCache.clear();
 }
 
-export function mapItunesTrack(track) {
+export function detectStorefront(query = '') {
+  const q = String(query).toLowerCase();
+  if (/\b(japanese|japan|city\s*pop|citypop|j-pop|jpop|anime|shibuya-kei|kayokyoku|enka)\b/i.test(q)) {
+    return 'JP';
+  }
+  if (/\b(kpop|k-pop)\b/i.test(q)) {
+    return 'US';
+  }
+  if (/\b(korean|korea|trot|hallyu)\b/i.test(q)) {
+    return 'KR';
+  }
+  if (/\b(french|france|chanson|french\s*house|french\s*touch|y\u00e9-y\u00e9)\b/i.test(q)) {
+    return 'FR';
+  }
+  if (/\b(german|germany|krautrock|schlager|ndw|neue\s*deutsche\s*welle)\b/i.test(q)) {
+    return 'DE';
+  }
+  if (/\b(brazil|brazilian|bossa\s*nova|samba|mpb|tropicalia|forro)\b/i.test(q)) {
+    return 'BR';
+  }
+  if (/\b(latin|spanish|spain|reggaeton|cumbia|salsa|bachata|flamenco|bolero)\b/i.test(q)) {
+    return 'ES';
+  }
+  if (/\b(italian|italy|italo|canzone)\b/i.test(q)) {
+    return 'IT';
+  }
+  if (/\b(reggae|dancehall|roots\s*reggae|ska|dub)\b/i.test(q)) {
+    return 'JM';
+  }
+  if (/\b(afrobeats|afrobeat|highlife|amapiano)\b/i.test(q)) {
+    return 'NG';
+  }
+  if (/\b(britpop|uk\s*garage|grime|uk\s*drill|madchester|shoegaze)\b/i.test(q)) {
+    return 'GB';
+  }
+  return 'US';
+}
+
+export function mapItunesTrack(track, storefront = '') {
   if (!track?.trackId || !track?.trackName || !track?.artistName || !track?.previewUrl) {
     return null;
   }
+
+  // Filter out audiobooks, spoken radio drama episodes, and raw file rips
+  const lowerTitle = track.trackName.toLowerCase().trim();
+  if (/^(kapitel|folge|chapter|hörspiel|audiobook)\s*\d+/i.test(lowerTitle)) return null;
+  if (/\.(flac|mp3|wav|m4a)\b/i.test(lowerTitle)) return null;
 
   const albumArt = (track.artworkUrl100 || '')
     .replace('100x100bb', '600x600bb')
@@ -51,6 +94,7 @@ export function mapItunesTrack(track) {
       source: 'itunes',
       genre: track.primaryGenreName || '',
       releaseDate: track.releaseDate || '',
+      storefront,
     },
   };
 }
@@ -64,14 +108,13 @@ async function fetchJson(url) {
 export const itunesMusicProvider = {
   name: 'itunes',
 
-  async getCandidateTracks({ query = '', limit = 50, country = 'US' } = {}) {
+  async getCandidateTracks({ query = '', limit = 50, country } = {}) {
     const trimmed = typeof query === 'string' ? query.trim() : '';
     if (!trimmed) return [];
 
-    // For anime, kpop, city pop, and international themes, don't restrict to US storefront so native tracks are discoverable
-    const isSpecialGenre = /\b(anime|kpop|k-pop|japanese|japan|city\s*pop|j-pop|jpop|korean|latin|spanish|french|german)\b/i.test(trimmed);
-    const countryParam = isSpecialGenre || !country ? '' : `&country=${country}`;
-    const cacheKey = `${trimmed}:${limit}:${countryParam}`;
+    const effectiveCountry = country !== undefined ? country : detectStorefront(trimmed);
+    const countryParam = effectiveCountry ? `&country=${effectiveCountry}` : '';
+    const cacheKey = `${trimmed}:${limit}:${effectiveCountry}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
@@ -81,7 +124,7 @@ export const itunesMusicProvider = {
       const results = Array.isArray(data?.results) ? data.results : [];
 
       const candidates = results
-        .map(mapItunesTrack)
+        .map(track => mapItunesTrack(track, effectiveCountry))
         .filter(Boolean);
 
       return cacheSet(cacheKey, candidates);

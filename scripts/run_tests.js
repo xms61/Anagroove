@@ -14,9 +14,9 @@ import {
   mapDeezerTrack,
   resetDeezerCachesForTesting,
 } from '../server/services/deezerMusicProvider.js';
-import { mapItunesTrack } from '../server/services/itunesMusicProvider.js';
-import { parsePrompt, buildQueryPlan } from '../server/services/queryBuilder.js';
-import { getRandomSongPool, setMusicProviderForTesting, isLanguagePermitted } from '../server/services/musicService.js';
+import { mapItunesTrack, detectStorefront } from '../server/services/itunesMusicProvider.js';
+import { parsePrompt, buildQueryPlan, generateThemeVariations } from '../server/services/queryBuilder.js';
+import { getRandomSongPool, setMusicProviderForTesting, isLanguagePermitted, isThematicallyPermitted } from '../server/services/musicService.js';
 import {
   validateUserId,
   validateProgressPayload,
@@ -200,6 +200,39 @@ async function runUnitTests() {
 
   assert(isLanguagePermitted({ title: 'Plastic Love', artist: 'Mariya Takeuchi' }, 'all', '80s Japanese City Pop') === true, 'Permits Japanese tracks for City Pop prompt');
   assert(isLanguagePermitted({ title: '真夜中のドア / Stay With Me', artist: '松原みき' }, 'all', 'Japanese City Pop') === true, 'Permits Kanji/Kana for Japanese City Pop prompt');
+
+  // Storefront detection across international genres
+  assert(detectStorefront('Japanese City Pop') === 'JP', 'Detects Japan storefront for Japanese City Pop');
+  assert(detectStorefront('Korean Trot') === 'KR', 'Detects Korea storefront for Korean Trot');
+  assert(detectStorefront('K-Pop') === 'US', 'Routes K-Pop to global US storefront');
+  assert(detectStorefront('French House') === 'FR', 'Detects France storefront for French House');
+  assert(detectStorefront('German Krautrock') === 'DE', 'Detects Germany storefront for German Krautrock');
+  assert(detectStorefront('Bossa Nova') === 'BR', 'Detects Brazil storefront for Bossa Nova');
+  assert(detectStorefront('Reggae Roots') === 'JM', 'Detects Jamaica storefront for Reggae Roots');
+  assert(detectStorefront('Afrobeat') === 'NG', 'Detects Nigeria storefront for Afrobeat');
+  assert(detectStorefront('Britpop') === 'GB', 'Detects UK storefront for Britpop');
+  assert(detectStorefront('90s Grunge') === 'US', 'Defaults to US storefront for general rock');
+
+  // Theme variation atomicity & subgenre retention
+  const jcpVars = generateThemeVariations('Japanese City Pop', '1980s');
+  assert(jcpVars.includes('City Pop') || jcpVars.includes('Japanese Citypop'), 'Retains atomic City Pop genre in variations');
+  assert(!jcpVars.includes('Japanese Pop'), 'Does not dilute City Pop into general Japanese Pop');
+
+  const fhVars = generateThemeVariations('French House');
+  assert(fhVars.includes('french touch') || fhVars.includes('French House'), 'Includes French Touch synonym for French House');
+
+  // Thematic relevance & cultural homonym filtering
+  assert(isThematicallyPermitted({ title: 'Something', artist: 'The Japanese House' }, 'all', 'Japanese City Pop') === false, 'Rejects "The Japanese House" homonym for Japanese City Pop');
+  assert(isThematicallyPermitted({ title: 'Face Melter', artist: 'The Japanese Popstars' }, 'all', 'Japanese City Pop') === false, 'Rejects "The Japanese Popstars" homonym for Japanese City Pop');
+  assert(isThematicallyPermitted({ title: 'Japanese Boy', artist: 'Aneka' }, 'all', 'Japanese City Pop') === false, 'Rejects Aneka "Japanese Boy" novelty track for Japanese City Pop');
+  assert(isThematicallyPermitted({ title: 'Japanese Porn', artist: 'Doctor Flake' }, 'all', 'Japanese City Pop') === false, 'Rejects "Japanese Porn" novelty track for Japanese City Pop');
+  assert(isThematicallyPermitted({ title: 'Unforgettable', artist: 'French Montana' }, 'all', 'French House') === false, 'Rejects "French Montana" homonym for French House');
+  assert(isThematicallyPermitted({ title: 'Memories', artist: 'German Brigante' }, 'all', 'German Krautrock') === false, 'Rejects "German Brigante" homonym for German Krautrock');
+  assert(isThematicallyPermitted({ title: 'Kill City', artist: 'Iggy Pop' }, 'all', 'Japanese City Pop') === false, 'Rejects Iggy Pop "Kill City" split-genre collision for City Pop');
+  assert(isThematicallyPermitted({ title: 'Sparkle', artist: 'Tatsuro Yamashita' }, 'all', 'Japanese City Pop') === true, 'Permits authentic Tatsuro Yamashita for Japanese City Pop');
+  assert(isThematicallyPermitted({ title: 'One More Time', artist: 'Daft Punk' }, 'all', 'French House') === true, 'Permits authentic Daft Punk for French House');
+  assert(isThematicallyPermitted({ title: 'Vitamin C', artist: 'Can' }, 'all', 'German Krautrock') === true, 'Permits authentic Can for German Krautrock');
+  assert(isThematicallyPermitted({ title: 'In Bloom', artist: 'Nirvana' }, 'all', '90s Grunge') === true, 'Permits authentic Nirvana for 90s Grunge');
 
   const itunesSample = {
     trackId: 12345,

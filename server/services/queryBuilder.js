@@ -59,12 +59,18 @@ export function parsePrompt(prompt = '') {
   }
 
   // 5. Popularity modifiers
+  // Note: "classic rock", "classic soul", etc. are musical genres, not popularity filters
+  const hasClassicGenre = /\bclassic(al)?\s+(rock|soul|jazz|country|hip\s*hop|r&b|disco|metal|pop|blues|funk)\b/i.test(text);
+
   if (/\b(obscure|underground|niche|underrated|hidden gems?)\b/i.test(text)) {
     options.popularity = 'obscure';
     text = text.replace(/\b(obscure|underground|niche|underrated|hidden gems?)\b/gi, ' ');
-  } else if (/\b(hits?|famous|top|billboard|classics?|mainstream)\b/i.test(text)) {
+  } else if (!hasClassicGenre && /\b(hits?|famous|top|billboard|classics?|mainstream)\b/i.test(text)) {
     options.popularity = 'mainstream';
     text = text.replace(/\b(hits?|famous|top|billboard|classics?|mainstream)\b/gi, ' ');
+  } else if (hasClassicGenre && /\b(hits?|famous|top|billboard|mainstream)\b/i.test(text)) {
+    options.popularity = 'mainstream';
+    text = text.replace(/\b(hits?|famous|top|billboard|mainstream)\b/gi, ' ');
   } else if (/\b(pure|any|anything|random)\b/i.test(text)) {
     options.popularity = 'pure';
     text = text.replace(/\b(pure|any|anything|random)\b/gi, ' ');
@@ -94,8 +100,26 @@ export function generateThemeVariations(genre = '', decade = '') {
 
   variations.add(trimmed);
 
-  if (decade) {
-    variations.add(`${trimmed} ${decade}`);
+  // If there's a cultural/language prefix (e.g. "Japanese", "French", "Korean"), retain core compound genre
+  const words = trimmed.split(/\s+/);
+  const isCultural = /^(japanese|korean|french|german|spanish|italian|brazilian|latin|african|chinese|swedish|anime)\b/i.test(words[0]);
+
+  if (words.length >= 3) {
+    if (isCultural) {
+      // Retain core atomic subgenre without cultural prefix for native storefront querying (e.g. "City Pop")
+      const coreGenre = words.slice(1).join(' ');
+      variations.add(coreGenre);
+      if (decade) {
+        variations.add(`${coreGenre} ${decade}`);
+      }
+    } else {
+      // For non-cultural phrases (e.g. "alternative indie rock" -> "indie rock")
+      const coreSubGenre = words.slice(-2).join(' ');
+      variations.add(coreSubGenre);
+      if (decade) {
+        variations.add(`${coreSubGenre} ${decade}`);
+      }
+    }
   }
 
   // De-spaced compound variants (e.g. "city pop" -> "citypop", "synth wave" -> "synthwave", "hip hop" -> "hiphop")
@@ -107,25 +131,24 @@ export function generateThemeVariations(genre = '', decade = '') {
     }
   }
 
-  // If there's a cultural/language prefix (e.g. "Japanese", "French", "Korean"), retain it
-  const words = trimmed.split(/\s+/);
-  const isCultural = /^(japanese|korean|french|german|spanish|italian|brazilian|latin|african|chinese|swedish|anime)\b/i.test(words[0]);
-
-  if (words.length >= 3) {
-    if (isCultural) {
-      // Keep cultural prefix + last word (e.g. "Japanese Pop")
-      variations.add(`${words[0]} ${words[words.length - 1]}`);
-    } else {
-      // For non-cultural phrases (e.g. "alternative indie rock" -> "indie rock")
-      const coreSubGenre = words.slice(-2).join(' ');
-      variations.add(coreSubGenre);
-      if (decade) {
-        variations.add(`${coreSubGenre} ${decade}`);
-      }
-    }
+  if (decade) {
+    variations.add(`${trimmed} ${decade}`);
   }
 
-  return Array.from(variations).slice(0, 4);
+  // Add recognized subgenre synonyms
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('french house')) variations.add('french touch');
+  if (lower.includes('krautrock')) variations.add('kosmische musik');
+  if (lower.includes('city pop') || lower.includes('citypop')) variations.add('japanese city pop');
+  if (lower.includes('bossa nova')) variations.add('bossa nova brasil');
+  if (lower.includes('grunge')) variations.add('grunge rock');
+  if (lower.includes('reggae')) variations.add('roots reggae');
+  if (lower.includes('k-pop') || lower.includes('kpop')) {
+    variations.add('kpop');
+    variations.add('korean pop');
+  }
+
+  return Array.from(variations).slice(0, 6);
 }
 
 /**

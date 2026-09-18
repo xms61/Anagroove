@@ -36,6 +36,11 @@ export function getDeezerCacheStatsForTesting() {
 export function mapDeezerTrack(track, artistDetails = track.artist) {
   if (!track?.id || !track?.artist?.id || !track.preview || !track.title || !track.artist.name) return null;
 
+  // Filter out audiobooks, spoken radio drama episodes, and raw file rips
+  const lowerTitle = track.title.toLowerCase().trim();
+  if (/^(kapitel|folge|chapter|hörspiel|audiobook)\s*\d+/i.test(lowerTitle)) return null;
+  if (/\.(flac|mp3|wav|m4a)\b/i.test(lowerTitle)) return null;
+
   return {
     id: `deezer:${track.id}`,
     provider: 'deezer',

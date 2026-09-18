@@ -48,6 +48,59 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '') {
   return true;
 }
 
+/**
+ * Detects whether a candidate track is an unintended homonym or keyword collision
+ * for cultural/regional or compound genre themes.
+ */
+export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
+  const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
+  const artist = String(track?.artist || '').trim();
+  const title = String(track?.title || '').trim();
+  const lowerArtist = artist.toLowerCase();
+  const lowerTitle = title.toLowerCase();
+
+  // Cultural keyword homonym check
+  // E.g. prompt is "Japanese City Pop" or "French House" or "German Krautrock"
+  const culturalMatch = context.match(/\b(japanese|korean|french|german|italian|spanish|brazilian|irish|british|african|russian|chinese)\b/i);
+  if (culturalMatch) {
+    const culture = culturalMatch[1].toLowerCase();
+
+    // Reject Western acts where the artist name is literally "The [Culture] [Noun]" or "[Culture] [Western Name]"
+    // e.g. "The Japanese House", "The Japanese Popstars", "French Montana", "German Brigante"
+    // Also reject when appearing in artist or title (e.g. feat. French Montana)
+    const westernHomonymPattern = new RegExp(`(^|\\bthe\\s+|feat\\.?\\s+|ft\\.?\\s+|with\\s+|\\()${culture}\\s+(house|popstars|montana|brigante|band|project|connection|experience|breakfast|brothers|boys|girls)\\b`, 'i');
+    if (westernHomonymPattern.test(artist) || westernHomonymPattern.test(title)) {
+      return false;
+    }
+
+    // Reject novelty track titles like "[Culture] Boy", "[Culture] Girl", "[Culture] Porn"
+    // e.g. Aneka - "Japanese Boy", Doctor Flake - "Japanese Porn"
+    const westernNoveltyTitlePattern = new RegExp(`^${culture}\\s+(boy|girl|porn|breakfast|girl\\s+remix)\\b|\\b${culture}\\s+(boy|girl|porn)\\b`, 'i');
+    if (westernNoveltyTitlePattern.test(title)) {
+      return false;
+    }
+  }
+
+  // Compound genre homonym check
+  // E.g. "City Pop": reject tracks where "Pop" was in the artist name and "City" in title (like Iggy Pop - Kill City)
+  if (/\bcity\s*pop\b/i.test(context)) {
+    if (/\bpop\b/i.test(lowerArtist) && !/\b(japanese|city|j-pop)\b/i.test(lowerArtist)) {
+      if (/\b(city|kill city|motor city|sin city|inner city)\b/i.test(lowerTitle)) {
+        return false;
+      }
+    }
+  }
+
+  // E.g. "K-Pop": reject non-Korean rap tracks simply named "K-POP" (like Travis Scott - K-POP)
+  if (/\b(kpop|k-pop)\b/i.test(context)) {
+    if (/^k-?pop$/i.test(lowerTitle)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 const PREFERRED_CLUE_ROTATION = ['title', 'artist', 'title', 'artist', 'keyword'];
 
 /**
@@ -184,6 +237,7 @@ export async function getRandomSongPool({
     duplicateAnswer: 0,
     blacklist: 0,
     language: 0,
+    thematic: 0,
     noKeyword: 0,
   };
 
@@ -219,6 +273,12 @@ export async function getRandomSongPool({
         continue;
       }
 
+      // Thematic relevance constraint: reject cultural homonyms and split-genre collisions
+      if (!isThematicallyPermitted(track, queryPlan.genre, prompt || queryPlan.prompt)) {
+        rejections.thematic++;
+        continue;
+      }
+
       // Unless the user explicitly asked for a single artist, enforce max 1 track per artist
       if (!isTargetingSingleArtist && seenArtists.has(artistIdentity)) {
         rejections.duplicateArtist++;
@@ -226,8 +286,15 @@ export async function getRandomSongPool({
       }
 
       // Cycle preferred clue type across the crossword to guarantee clue variance
-      const preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
-      const keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
+      let preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
+      if (seenArtists.has(artistIdentity) && preferredType === 'artist') {
+        preferredType = 'title';
+      }
+      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
+      // If answer already exists on the grid, fallback to song title
+      if (keyword && seenAnswers.has(keyword.answer)) {
+        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title' });
+      }
       if (!keyword) {
         rejections.noKeyword++;
         continue;
