@@ -5,6 +5,7 @@ import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
 import { buildQueryPlan } from './queryBuilder.js';
+import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
 
@@ -107,8 +108,10 @@ export async function getRandomSongPool({
     }
   }
 
+  const harvestStart = Date.now();
   const results = await Promise.all(candidateTasks);
   const rawCandidates = results.flat();
+  logger.harvest('Aggregator', rawCandidates.length, Date.now() - harvestStart);
 
   // 2. Ordering: Deterministic SHA-256 seed hashing or Fisher-Yates shuffle
   let orderedCandidates;
@@ -126,6 +129,17 @@ export async function getRandomSongPool({
   // 3. Variety Rejection Sampling & Language Filtering
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const songs = [];
+  const clueStats = { title: 0, artist: 0, keyword: 0 };
+  const rejections = {
+    recent: 0,
+    duplicateTrack: 0,
+    duplicateTitle: 0,
+    duplicateArtist: 0,
+    duplicateAnswer: 0,
+    blacklist: 0,
+    language: 0,
+    noKeyword: 0,
+  };
 
   for (const track of orderedCandidates) {
     const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
@@ -138,34 +152,55 @@ export async function getRandomSongPool({
       recent.has(`itunes:${providerTrackId}`) ||
       recent.has(`hit-${providerTrackId}`);
 
-    if (
-      isRecent ||
-      seenTracks.has(trackIdentity) ||
-      seenTitles.has(titleIdentity) ||
-      blacklistMatchesTrack(blacklist, track)
-    ) {
+    if (isRecent) {
+      rejections.recent++;
+      continue;
+    }
+    if (seenTracks.has(trackIdentity)) {
+      rejections.duplicateTrack++;
+      continue;
+    }
+    if (seenTitles.has(titleIdentity)) {
+      rejections.duplicateTitle++;
+      continue;
+    }
+    if (blacklistMatchesTrack(blacklist, track)) {
+      rejections.blacklist++;
       continue;
     }
 
     // Language constraint: enforce English for all categories except anime and kpop
     if (!isLanguagePermitted(track, queryPlan.genre)) {
+      rejections.language++;
       continue;
     }
 
     // Unless the user explicitly asked for a single artist, enforce max 1 track per artist
     if (!isTargetingSingleArtist && seenArtists.has(artistIdentity)) {
+      rejections.duplicateArtist++;
       continue;
     }
 
     // Cycle preferred clue type across the crossword to guarantee clue variance
     const preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
     const keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
-    if (!keyword || seenAnswers.has(keyword.answer)) continue;
+    if (!keyword) {
+      rejections.noKeyword++;
+      continue;
+    }
+    if (seenAnswers.has(keyword.answer)) {
+      rejections.duplicateAnswer++;
+      continue;
+    }
 
     seenTracks.add(trackIdentity);
     seenArtists.add(artistIdentity);
     seenTitles.add(titleIdentity);
     seenAnswers.add(keyword.answer);
+
+    if (keyword.clueType === 'Song title') clueStats.title++;
+    else if (keyword.clueType === 'Artist name') clueStats.artist++;
+    else clueStats.keyword++;
 
     songs.push({
       ...track,
@@ -175,6 +210,8 @@ export async function getRandomSongPool({
     });
     if (songs.length >= count) break;
   }
+
+  logger.sampling(orderedCandidates.length, songs.length, clueStats, rejections);
 
   return songs;
 }

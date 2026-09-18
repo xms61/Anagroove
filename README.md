@@ -227,6 +227,31 @@ To run it:
 
 ---
 
+## 📊 Extended Server Logging & Diagnostics
+
+SpotySpice features a structured, high-visibility server logging system (`server/logger.js`) providing detailed telemetry into music harvesting, candidate sampling, and multiplayer rooms:
+
+| Category | Description | Example Log Output |
+| :--- | :--- | :--- |
+| `[STARTUP]` | Server initialization & port status | `🎵 SpotySpice Backend API & WebSocket running on port 3011 [env: development, log: info]` |
+| `[API]` | HTTP request method, path, status, latency | `[API] GET /api/puzzles/live -> 200 (154ms) (user: user_123)` |
+| `[HARVEST]` | External provider harvesting metrics | `Aggregator returned 40 candidate tracks in 180ms` |
+| `[SAMPLING]` | Candidate evaluation & rejection telemetry | `Evaluated 40 tracks -> 10 accepted (4 Title, 4 Artist, 2 Keyword) \| Filtered: 8 language, 6 duplicateArtist, 4 duplicateTitle` |
+| `[CROSSWORD]` | Layout generation duration & grid dimensions | `Layout generated for "⚡ Live: Synth-pop": 10/10 words placed across 18x18 in 42ms` |
+| `[STORE]` | Token generation, consumption, and eviction | `Token created: 7f3b8a1c... (active: 3)` |
+| `[WS]` / `[ROOM]`| Real-time multiplayer lifecycle events | `Room created: VINYL-42 [mode: coop, host: Alex]` |
+
+### Log Level Configuration
+
+Configure log verbosity via the `LOG_LEVEL` environment variable:
+
+```bash
+# Available levels: debug, info (default), warn, error, none
+LOG_LEVEL=debug npm run dev:server
+```
+
+---
+
 ## 🐳 Docker Deployment
 
 SpotySpice includes a production-ready, multi-stage Alpine Docker configuration. The image builds the React client and runs the Express backend + WebSockets server seamlessly on a single port (`3000` by default).

@@ -18,6 +18,7 @@ import {
   validateWsMessage
 } from './validators.js';
 import { createRateLimiter, wsRateLimiter } from './middleware/rateLimiter.js';
+import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,7 +65,9 @@ export function createLivePuzzleStore({
     add(puzzle) {
       removeExpired();
       while (puzzles.size >= capacity) {
-        remove(puzzles.keys().next().value);
+        const evicted = puzzles.keys().next().value;
+        remove(evicted);
+        logger.store('evicted', evicted, '(capacity reached)');
       }
 
       const token = createToken();
@@ -76,14 +79,17 @@ export function createLivePuzzleStore({
       puzzles.set(token, record);
       record.expiryTimer = setTimeout(() => expire(token), ttlMs);
       record.expiryTimer.unref?.();
+      logger.store('created', token, `(active: ${puzzles.size})`);
       return token;
     },
     consume(token) {
       const record = puzzles.get(token);
       if (!record || record.expiresAt <= Date.now()) {
         remove(token);
+        logger.store('expired_on_consume', token);
         return null;
       }
+      logger.store('consumed', token);
       return remove(token);
     },
     clear() {
@@ -127,12 +133,15 @@ app.use(cors({
 // Body parser with size limits
 app.use(express.json({ limit: '256kb' }));
 
-// Live API request logging
+// Extended API request logging
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     if (req.path.startsWith('/api')) {
-      console.log(`[API] ${req.method} ${req.originalUrl || req.url} -> ${res.statusCode} (${Date.now() - start}ms)`);
+      const latency = Date.now() - start;
+      const user = req.userId || req.headers['x-user-id'];
+      const userContext = user ? `user: ${user}` : '';
+      logger.http(req.method, req.originalUrl || req.url, res.statusCode, latency, userContext);
     }
   });
   next();
@@ -216,6 +225,9 @@ app.post('/api/puzzles/live', async (req, res) => {
       seed,
     } = validation.data;
 
+    logger.info('puzzle', `Generating live puzzle for user "${userId || 'anonymous'}" | genre: ${genre}, popularity: ${popularity}, prompt: "${prompt || ''}"`);
+    const genStart = Date.now();
+
     const songs = await getRandomSongPool({
       genre,
       minFans,
@@ -231,6 +243,7 @@ app.post('/api/puzzles/live', async (req, res) => {
     });
 
     if (songs.length < 6) {
+      logger.warn('puzzle', `Insufficient eligible tracks (${songs.length}) for request`);
       return res.status(422).json({
         error: 'Not enough eligible tracks are currently available for this selection. Try broader settings or another prompt.',
         available: songs.length,
@@ -245,6 +258,7 @@ app.post('/api/puzzles/live', async (req, res) => {
 
     const puzzle = generateLiveCrossword(songs, puzzleTitle, targetWords);
     if (!puzzle) {
+      logger.warn('puzzle', `Crossword generator could not place words from ${songs.length} candidates`);
       return res.status(422).json({
         error: 'Eligible tracks could not form an intersecting crossword. Please try again.',
         available: songs.length,
@@ -252,6 +266,8 @@ app.post('/api/puzzles/live', async (req, res) => {
     }
 
     const livePuzzleToken = livePuzzles.add(puzzle);
+    const gridSize = `${puzzle.grid?.length || 0}x${puzzle.grid?.[0]?.length || 0}`;
+    logger.puzzle(puzzleTitle, puzzle.clues?.length || 0, targetWords, gridSize, Date.now() - genStart);
 
     res.json({
       success: true,
@@ -270,7 +286,7 @@ app.post('/api/puzzles/live', async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Error generating live puzzle:', err);
+    logger.error('puzzle', `Error generating live puzzle: ${err.message}`, err.stack);
     res.status(503).json({ error: 'Live music discovery is temporarily unavailable. Please try again.' });
   }
 });
@@ -387,7 +403,7 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  console.log(`[WS] Client connected: ${ip}`);
+  logger.ws(`Client connected: ${ip}`);
   const allowMessage = wsRateLimiter.createMessageTracker(35);
   let currentPlayer = null;
   let currentRoomCode = null;
@@ -412,7 +428,7 @@ wss.on('connection', (ws, req) => {
       }
 
       const data = validation.data;
-      console.log(`[WS] Action: ${data.action} (Player: ${data.playerId || 'anonymous'}, Room: ${data.roomCode || 'new'})`);
+      logger.ws(`Action: ${data.action} (Player: ${data.playerId || 'anonymous'}, Room: ${data.roomCode || 'new'})`);
 
       switch (data.action) {
         case 'create_room': {
@@ -596,12 +612,13 @@ wss.on('connection', (ws, req) => {
         }
       }
     } catch (err) {
-      console.error('WebSocket message parsing error:', err);
+      logger.error('ws', `WebSocket message parsing error: ${err.message}`, err.stack);
     }
   });
 
   ws.on('close', () => {
     wsRateLimiter.releaseConnection(ip);
+    logger.ws(`Client disconnected: ${ip} (Player: ${currentPlayer?.name || 'anonymous'})`);
 
     if (currentRoomCode) {
       const room = rooms.get(currentRoomCode);
@@ -609,6 +626,7 @@ wss.on('connection', (ws, req) => {
         room.players = room.players.filter(p => p.id !== currentPlayer?.id);
         if (room.players.length === 0) {
           rooms.delete(currentRoomCode);
+          logger.info('room', `Room deleted: ${currentRoomCode} (all players left)`);
         } else {
           // If host left, assign next host
           if (room.hostId === currentPlayer?.id) {
@@ -643,6 +661,6 @@ export { app, server };
 const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename);
 if (isMainModule) {
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT})`);
+    logger.info('startup', `🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT}) [env: ${process.env.NODE_ENV || 'development'}, log: ${process.env.LOG_LEVEL || 'info'}]`);
   });
 }

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-09-18
+
+### Added
+- **Extended Structured Server Logging (`server/logger.js`)**:
+  - **Subsystem Categorization**: Contextual tagging across the backend stack (`[STARTUP]`, `[API]`, `[HARVEST]`, `[SAMPLING]`, `[CROSSWORD]`, `[STORE]`, `[WS]`, `[ROOM]`).
+  - **ISO Timestamps & Colorized TTY Levels**: High-visibility console output (`DEBUG`, `INFO`, `WARN`, `ERROR`) with automatic TTY color detection and `NO_COLOR` compliance.
+  - **Runtime Log Level Filtering**: Configurable via `LOG_LEVEL` environment variable (`debug`, `info`, `warn`, `error`).
+  - **Deep Rejection Sampling Telemetry**: Real-time breakdown of candidate filtering metrics, pinpointing why tracks were discarded (recency, blacklist, non-English language markers, artist duplicates, title duplicates, and answer collisions).
+  - **Clue Distribution Visibility**: Logs exact clue type distributions across generated song pools (`Title`, `Artist`, `Keyword`).
+  - **Crossword Layout & Token Diagnostics**: Tracks layout generation execution time (ms), grid dimensions, word placement ratios, and live token lifecycle events.
+  - **Multiplayer WebSocket Event Tracing**: Room creation, joins, game starts, disconnections, and cleanup logged with player and room metadata.
+
+---
+
 ## [1.1.0] - 2026-09-18
 
 ### Added
