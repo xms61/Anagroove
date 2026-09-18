@@ -193,7 +193,7 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 Run automated CI-friendly test suites and linters:
 
 ```bash
-# Run the complete automated test suite (100 unit & integration tests)
+# Run the complete automated test suite (130 unit & integration tests)
 npm test
 
 # Run ESLint across TypeScript, server, scripts, and shared modules
@@ -201,6 +201,9 @@ npm run lint
 
 # Run full CI pipeline validation (Lint + Tests)
 npm run test:ci
+
+# Run the live multi-prompt crossword verification suite (10 diverse genres & cultures)
+npm run test:prompts
 
 # Format codebase with Prettier
 npm run format
@@ -217,14 +220,14 @@ npx tsx scripts/test_randomizer.js
 
 SpotySpice provides a manual GitHub Actions release pipeline (`.github/workflows/manual-release.yml`) triggered on-demand via **Workflow Dispatch**:
 
-1. **Validation**: Executes `npm run lint` and all 106 tests via `npm test`.
+1. **Validation**: Executes `npm run lint` and all 130 tests via `npm test`. Optionally runs the live 10-genre prompt evaluation suite when `run_prompt_suite` is enabled.
 2. **Containerization**: Sets up Docker Buildx and builds a production-optimized container (`spotyspice:<tag>`).
-3. **Automated Tagging**: Creates and pushes the semantic version git tag (e.g. `v1.1.0` or custom).
+3. **Automated Tagging**: Creates and pushes the semantic version git tag (e.g. `v1.3.0` or custom).
 4. **Release Notes & Publishing**: Automatically extracts version-specific notes from `CHANGELOG.md` and publishes the GitHub Release.
 
 To run it:
 - Navigate to **Actions** $\rightarrow$ **Manual Test, Lint, Build & Release** on GitHub.
-- Click **Run workflow**, optionally specify a version tag, and launch.
+- Click **Run workflow**, optionally specify a version tag (or leave blank to use `package.json`), toggle pre-release / prompt suite, and launch.
 
 ---
 

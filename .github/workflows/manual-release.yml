@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_prompt_suite:
+        description: 'Run the live multi-prompt crossword verification suite (10 genres)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -42,6 +47,10 @@ jobs:
 
       - name: Run automated test suite
         run: npm test
+
+      - name: Run multi-prompt crossword test suite
+        if: ${{ inputs.run_prompt_suite }}
+        run: npm run test:prompts
 
       - name: Determine release version tag
         id: get_version
