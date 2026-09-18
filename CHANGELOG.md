@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.6] - 2026-09-18
+
+### Maintenance & CI/CD
+- **GitHub Actions Node.js 24 Runtime & Modern Action Upgrades (`.github/workflows/ci.yml`, `.github/workflows/manual-release.yml`)**:
+  - Upgraded GitHub Actions to official Node 24 native major releases, resolving runner deprecation warnings for Node.js 20:
+    - `actions/checkout@v4` $\rightarrow$ `actions/checkout@v5`
+    - `actions/setup-node@v4` $\rightarrow$ `actions/setup-node@v5` with `node-version: 22` (Active LTS)
+    - `docker/setup-buildx-action@v3` $\rightarrow$ `docker/setup-buildx-action@v4`
+    - `docker/build-push-action@v5` $\rightarrow$ `docker/build-push-action@v7`
+    - `softprops/action-gh-release@v2` $\rightarrow$ `softprops/action-gh-release@v3`
+  - Ensured future-proof execution ahead of GitHub runner image transitions.
+
+---
+
 ## [1.4.5] - 2026-09-18
 
 ### Fixed
