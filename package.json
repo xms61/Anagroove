@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.4.2",
+  "version": "1.4.3",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"vite\"",
@@ -16,7 +16,7 @@
     "test": "node scripts/run_tests.js",
     "test:prompts": "node scripts/test_prompts_crossword_suite.js",
     "test:all": "npm test && npm run test:prompts",
-    "test:ci": "npm run lint && npm run test:all",
+    "test:ci": "npm run lint && npm run test",
     "generate": "node scripts/generate_puzzles.js",
     "generate:themes": "node scripts/generate_all_themes.js"
   },

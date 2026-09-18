@@ -17,7 +17,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(0.25);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [loadError, setLoadError] = useState(false);
@@ -27,11 +27,19 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     onPlaybackChange?.(playing);
   };
 
+  // Ensure default base volume of 25% on mount
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = 0.25;
+    }
+  }, []);
+
   // Sync audio source when active clue changes
   useEffect(() => {
     if (!audioRef.current || !activeClue?.song.audioUrl) return;
 
     setLoadError(false);
+    audioRef.current.volume = isMuted ? 0 : volume;
     audioRef.current.src = activeClue.song.audioUrl;
     audioRef.current.currentTime = 0;
     setProgress(0);

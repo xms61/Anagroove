@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.3] - 2026-09-18
+
+### Changed
+- **Audio Preamp Deck & End-Screen Base Volume Set to 25% (`src/components/AudioPlayerBar.tsx`, `src/components/EndScreenModal.tsx`)**:
+  - Calibrated default audio playback volume to a comfortable 25% (0.25) across all preview players.
+  - Initialized volume immediately upon audio element mount and clue transitions.
+- **CI Test Suite Optimization (`.github/workflows/ci.yml`, `.github/workflows/manual-release.yml`)**:
+  - Configured automated CI workflow to execute linting and the 155-case automated test suite (`npm test`) on every push and pull request, omitting the live network-harvesting prompt suite.
+  - Reserved the 14-scenario multi-prompt crossword suite for manual execution via workflow dispatch (`run_prompt_suite: false` by default in `manual-release.yml`) or local CLI (`npm run test:prompts` / `npm run test:all`).
+
+---
+
 ## [1.4.2] - 2026-09-18
 
 ### Added

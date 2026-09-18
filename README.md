@@ -207,7 +207,7 @@ npm run test:all
 # Run ESLint across TypeScript, server, scripts, and shared modules
 npm run lint
 
-# Run full CI pipeline validation (Lint + All Test Suites)
+# Run full CI pipeline validation (Lint + Unit/Integration Tests)
 npm run test:ci
 
 # Format codebase with Prettier

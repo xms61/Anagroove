@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Puzzle } from '../types/crossword';
 import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban } from 'lucide-react';
 import { Song } from '../types/crossword';
@@ -25,6 +25,12 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = 0.25;
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const uniqueSongs = Array.from(
@@ -38,6 +44,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
       audioRef.current.pause();
       setPlayingSongId(null);
     } else {
+      audioRef.current.volume = 0.25;
       audioRef.current.src = audioUrl;
       audioRef.current.play().then(() => {
         setPlayingSongId(songId);

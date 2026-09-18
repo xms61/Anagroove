@@ -28,6 +28,3 @@ jobs:
 
       - name: Run automated test suite (155 tests)
         run: npm test
-
-      - name: Run multi-prompt crossword test suite (14 prompts)
-        run: npm run test:prompts

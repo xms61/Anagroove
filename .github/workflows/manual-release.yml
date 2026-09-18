@@ -16,7 +16,7 @@ on:
       run_prompt_suite:
         description: 'Run the live multi-prompt crossword verification suite (14 genres & constraints)'
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -49,7 +49,7 @@ jobs:
         run: npm test
 
       - name: Run multi-prompt crossword test suite (14 prompts)
-        if: ${{ inputs.run_prompt_suite != false }}
+        if: ${{ inputs.run_prompt_suite }}
         run: npm run test:prompts
 
       - name: Determine release version tag
