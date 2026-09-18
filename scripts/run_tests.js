@@ -254,7 +254,8 @@ async function runUnitTests() {
   assert(purePlan.deezerSearches.length > 0, 'Pure mode injects entropy search seeds');
 
   const animePlan = buildQueryPlan({ genre: 'anime' });
-  assert(animePlan.genre === 'anime' && animePlan.deezerSearches.includes('anime'), 'Genre query retains targeted anime search');
+  assert(animePlan.genre === 'anime' && animePlan.deezerSearches.includes('anime opening'), 'Genre query retains targeted anime opening search');
+  assert(!animePlan.deezerSearches.includes('anime'), 'Genre query avoids bare "anime" search to prevent DJ AniMe collisions');
   assert(animePlan.deezerSearches.every(s => !/^[a-z]{2}$/.test(s)), 'Genre query avoids adding unrelated alphanumeric seeds');
 
   assert(isLanguagePermitted({ title: 'Blinding Lights', artist: 'The Weeknd' }, 'pop') === true, 'Allows English track for pop');
@@ -391,6 +392,10 @@ async function runUnitTests() {
   assert(isThematicallyPermitted({ title: 'As Crianças E Os Animais', artist: 'Os Abelhudos' }, 'anime', 'anime') === false, 'Rejects "Animais" prefix collision for anime');
   assert(isThematicallyPermitted({ title: 'Freefall', artist: 'Techno Animal' }, 'anime', 'anime') === false, 'Rejects "Techno Animal" for anime');
   assert(isThematicallyPermitted({ title: 'Dominator Anthem', artist: 'AniMe' }, 'anime', 'anime') === false, 'Rejects DJ AniMe hardcore anthem for anime');
+  assert(isThematicallyPermitted({ title: 'Make It Break', artist: 'Anime', providerArtistId: '147485' }, 'anime', 'anime songs from 2024 to 2026') === false, 'Rejects Deezer Artist ID 147485 (DJ AniMe) for anime');
+  assert(isThematicallyPermitted({ title: 'Absolute Power', artist: 'Broken Minds & Anime', album: 'Break Your Mind' }, 'anime', 'anime') === false, 'Rejects DJ Anime collaboration for anime');
+  assert(isThematicallyPermitted({ title: 'Party', artist: 'DJ AniMe', album: 'Aftermath' }, 'anime', 'anime') === false, 'Rejects DJ AniMe prefix for anime');
+  assert(isThematicallyPermitted({ title: 'Break Your Mind', artist: 'Broken Minds', album: 'Break Your Mind' }, 'anime', 'anime') === false, 'Rejects Masters of Hardcore album Break Your Mind for anime');
   assert(isThematicallyPermitted({ title: 'Same Blue', artist: 'Official髭男dism' }, 'anime', 'anime songs from 2024 to 2026') === true, 'Permits authentic anime theme for Japanese artist');
   assert(isThematicallyPermitted({ title: 'Sousou no Frieren Opening', artist: 'Dimension Anime' }, 'anime', 'anime') === true, 'Permits authentic anime opening release');
 

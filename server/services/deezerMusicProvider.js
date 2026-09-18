@@ -54,6 +54,7 @@ export function mapDeezerTrack(track, artistDetails = track.artist) {
     providerUrl: track.link || `https://www.deezer.com/track/${track.id}`,
     rank: Number(track.rank) || 0,
     fans: Number(artistDetails?.nb_fan ?? artistDetails?.fans) || 0,
+    contributorArtistIds: Array.isArray(track.contributors) ? track.contributors.map(c => String(c.id)) : [],
     releaseDate: track.release_date || track.album?.release_date || '',
     selection: {
       source: 'deezer',

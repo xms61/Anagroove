@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { extractAnswerKeyword, splitArtistNames } from '../../shared/musicKeywords.js';
-import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
@@ -101,13 +101,28 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
 
   // ANIME THEMATIC & STEM COLLISION GUARDRAILS
   if (/\banime\b/i.test(context)) {
-    // 1. Literal "Anime" as artist or title
-    if (/^anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) {
+    // 1. Block Deezer Artist ID 147485 (Italian hardcore techno producer "AniMe" / "Anime")
+    if (String(track?.providerArtistId) === '147485' || String(track?.artistId) === '147485') {
+      return false;
+    }
+    if (Array.isArray(track?.contributorArtistIds) && track.contributorArtistIds.includes('147485')) {
       return false;
     }
 
-    // 2. Hardcore techno DJ "AniMe" and anthem tracks
-    if (/\b(official\s+dominator|ground\s+zero\s+\d+|toxicator\s+\d+|hardcore|anthem)\b/i.test(lowerTitle)) {
+    // 2. Reject if artist or any collaborator is "Anime" or "DJ AniMe"
+    const artists = splitArtistNames(artist).map(a => a.toLowerCase().trim());
+    if (artists.some(a => /^(dj\s+)?anime$/i.test(a))) {
+      return false;
+    }
+    if (/^(dj\s+)?anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) {
+      return false;
+    }
+    if (toCrosswordAnswer(artist) === 'ANIME') {
+      return false;
+    }
+
+    // 3. Hardcore techno DJ "AniMe" anthem tracks and label affiliations
+    if (/\b(official\s+dominator|ground\s+zero\s+\d+|toxicator\s+\d+|hardcore|anthem|masters\s+of\s+hardcore|traxtorm|thunderdome|aftermath|break\s+your\s+mind)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`)) {
       return false;
     }
 

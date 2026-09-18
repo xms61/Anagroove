@@ -182,6 +182,21 @@ export function generateThemeVariations(genre = '', decade = '') {
   const trimmed = typeof genre === 'string' ? genre.trim() : '';
   if (!trimmed) return [];
 
+  const lower = trimmed.toLowerCase();
+
+  // For anime, avoid querying the bare word "anime" on Deezer which collides with artist ID 147485 ("Anime" / DJ AniMe)
+  if (lower === 'anime') {
+    variations.add('anime opening');
+    variations.add('anime ost');
+    variations.add('anime theme');
+    variations.add('japanese anime');
+    if (decade) {
+      variations.add(`anime opening ${decade}`);
+      variations.add(`anime ost ${decade}`);
+    }
+    return Array.from(variations).slice(0, 6);
+  }
+
   variations.add(trimmed);
 
   // If there's a cultural/language prefix (e.g. "Japanese", "French", "Korean"), retain core compound genre
@@ -220,7 +235,6 @@ export function generateThemeVariations(genre = '', decade = '') {
   }
 
   // Add recognized subgenre synonyms
-  const lower = trimmed.toLowerCase();
   if (lower === 'anime' || lower.includes('anime')) {
     variations.add('anime opening');
     variations.add('anime ost');

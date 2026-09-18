@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.8] - 2026-09-18
+
+### Fixed
+- **Deezer Artist ID 147485 ("Anime" / DJ AniMe) & Collaborator Elimination (`server/services/queryBuilder.js`, `server/services/musicService.js`, `server/services/deezerMusicProvider.js`)**:
+  - Identified the exact source of Italian hardcore techno DJ Barbara Palermo (Deezer Artist ID `147485`, indexed as `"Anime"` with 15,791 fans): Deezer's search engine treated the raw search term `q=anime` as a direct artist lookup, surfacing her solo tracks and collaborating artists (*Broken Minds*, *DJ Paul Elstak*, *Miss K8*, *MAD DOG*).
+  - Replaced raw bare `'anime'` queries in `generateThemeVariations` with compound Japanese animation terms (`'anime opening'`, `'anime ost'`, `'anime theme'`, `'japanese anime'`), preventing Deezer from returning artist ID 147485 and unrelated Latin/Gabber tracks.
+  - Added strict guardrails in `isThematicallyPermitted`:
+    - Explicitly blocks tracks where `providerArtistId === '147485'` or `contributorArtistIds` contains `'147485'`.
+    - Recursively checks all collaborating artists (`splitArtistNames`) to block `Anime` / `DJ AniMe` when featured or co-credited.
+    - Rejects any candidate in anime contexts where the generated crossword answer would be `ANIME`.
+    - Disallows hardcore techno labels, festivals, and releases (*Masters of Hardcore*, *Traxtorm*, *Thunderdome*, *Dominator*, *Break Your Mind*, *Aftermath*).
+  - Extended `mapDeezerTrack` to preserve `contributorArtistIds` for downstream filtering.
+
+---
+
 ## [1.4.7] - 2026-09-18
 
 ### Fixed
