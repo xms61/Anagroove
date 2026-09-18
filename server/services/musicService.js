@@ -16,12 +16,16 @@ export function setMusicProviderForTesting(provider) {
 }
 
 /**
- * Validates whether a track fits the required language constraints:
- * English for all categories, with an explicit exemption for Anime (Japanese) and K-Pop (Korean).
+ * Language Policy: Enforces English for Western mainstream categories,
+ * with explicit exemption for non-English cultural genres and prompts
+ * (Japanese/Anime, City Pop, K-Pop, Latin, Reggaeton, etc.).
  */
-export function isLanguagePermitted(track, genre = 'all') {
-  const normalizedGenre = typeof genre === 'string' ? genre.toLowerCase().trim() : 'all';
-  if (normalizedGenre === 'anime' || normalizedGenre === 'kpop') {
+export function isLanguagePermitted(track, genre = 'all', prompt = '') {
+  const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
+
+  // Cultural and international exemptions
+  const internationalPatterns = /\b(anime|kpop|k-pop|korean|japanese|japan|city\s*pop|j-pop|jpop|latin|spanish|french|german|brazil|bossanova|reggaeton|cumbia|salsa|flamenco|afrobeats|bollywood|mandopop|cantopop)\b/i;
+  if (internationalPatterns.test(context)) {
     return true;
   }
 
@@ -72,6 +76,8 @@ export async function getRandomSongPool({
     decade,
     popularity,
   });
+
+  logger.info('query', `Plan: genre="${queryPlan.genre}" searches=${JSON.stringify(queryPlan.deezerSearches)} offset=${queryPlan.randomOffset}`);
 
   const recent = new Set(recentIds.map(String));
   const seenTracks = new Set();
@@ -169,8 +175,8 @@ export async function getRandomSongPool({
       continue;
     }
 
-    // Language constraint: enforce English for all categories except anime and kpop
-    if (!isLanguagePermitted(track, queryPlan.genre)) {
+    // Language constraint: enforce English for all categories except anime, kpop, and international themes
+    if (!isLanguagePermitted(track, queryPlan.genre, prompt || queryPlan.prompt)) {
       rejections.language++;
       continue;
     }

@@ -216,7 +216,7 @@ npx tsx scripts/test_randomizer.js
 
 SpotySpice provides a manual GitHub Actions release pipeline (`.github/workflows/manual-release.yml`) triggered on-demand via **Workflow Dispatch**:
 
-1. **Validation**: Executes `npm run lint` and all 100 tests via `npm test`.
+1. **Validation**: Executes `npm run lint` and all 106 tests via `npm test`.
 2. **Containerization**: Sets up Docker Buildx and builds a production-optimized container (`spotyspice:<tag>`).
 3. **Automated Tagging**: Creates and pushes the semantic version git tag (e.g. `v1.1.0` or custom).
 4. **Release Notes & Publishing**: Automatically extracts version-specific notes from `CHANGELOG.md` and publishes the GitHub Release.

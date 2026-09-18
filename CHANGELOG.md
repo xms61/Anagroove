@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Clue Distribution Visibility**: Logs exact clue type distributions across generated song pools (`Title`, `Artist`, `Keyword`).
   - **Crossword Layout & Token Diagnostics**: Tracks layout generation execution time (ms), grid dimensions, word placement ratios, and live token lifecycle events.
   - **Multiplayer WebSocket Event Tracing**: Room creation, joins, game starts, disconnections, and cleanup logged with player and room metadata.
+- **Prompt Priority & Thematic Query Precision (`server/services/queryBuilder.js`)**:
+  - Prompts with themes/genres (e.g. `"80s Japanese City Pop"`) take priority over modal default `genre: 'all'`, preventing open catalog fallback.
+  - Compound search term generation combining genre + era/decade (e.g. `"Japanese City Pop 1980s"`).
+  - Strict guardrail: random alphanumeric entropy seeds (`generateDynamicSeed()`) are forbidden from executing whenever a user prompt is present.
+- **Cultural & Regional Language Policy (`server/services/musicService.js`, `server/services/itunesMusicProvider.js`)**:
+  - Automatically detects international/regional themes in prompts or genres (`Japanese`, `City Pop`, `K-Pop`, `Latin`, `Anime`, `Spanish`, `French`, `German`, etc.).
+  - Grants language exemption allowing native titles, Kanji, Kana, Hangul, and accented characters.
+  - Bypasses US iTunes storefront constraint for international and Asian soundtrack discovery.
 
 ---
 

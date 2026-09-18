@@ -192,6 +192,15 @@ async function runUnitTests() {
   assert(isLanguagePermitted({ title: 'Gurenge', artist: 'LiSA' }, 'anime') === true, 'Permits Japanese track for anime');
   assert(isLanguagePermitted({ title: 'Dynamite', artist: 'BTS' }, 'kpop') === true, 'Permits Korean track for kpop');
 
+  const cityPopPlan = buildQueryPlan({ prompt: '80s Japanese City Pop', genre: 'all' });
+  assert(cityPopPlan.genre === 'Japanese City Pop', 'Prompt overrides default genre=all');
+  assert(cityPopPlan.deezerSearches.includes('Japanese City Pop'), 'Generates targeted Deezer search for prompt genre');
+  assert(cityPopPlan.deezerSearches.includes('Japanese City Pop 1980s'), 'Generates compound search with decade');
+  assert(cityPopPlan.deezerSearches.every(s => !/^[a-z]{2}$/.test(s)), 'Prompt query never injects random 2-letter seeds');
+
+  assert(isLanguagePermitted({ title: 'Plastic Love', artist: 'Mariya Takeuchi' }, 'all', '80s Japanese City Pop') === true, 'Permits Japanese tracks for City Pop prompt');
+  assert(isLanguagePermitted({ title: '真夜中のドア / Stay With Me', artist: '松原みき' }, 'all', 'Japanese City Pop') === true, 'Permits Kanji/Kana for Japanese City Pop prompt');
+
   const itunesSample = {
     trackId: 12345,
     trackName: 'Midnight City',

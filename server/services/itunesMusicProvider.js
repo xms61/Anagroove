@@ -68,8 +68,8 @@ export const itunesMusicProvider = {
     const trimmed = typeof query === 'string' ? query.trim() : '';
     if (!trimmed) return [];
 
-    // For anime and kpop, don't restrict to US storefront so Japanese/Korean OSTs are discoverable
-    const isSpecialGenre = /\b(anime|kpop|k-pop|japanese|korean)\b/i.test(trimmed);
+    // For anime, kpop, city pop, and international themes, don't restrict to US storefront so native tracks are discoverable
+    const isSpecialGenre = /\b(anime|kpop|k-pop|japanese|japan|city\s*pop|j-pop|jpop|korean|latin|spanish|french|german)\b/i.test(trimmed);
     const countryParam = isSpecialGenre || !country ? '' : `&country=${country}`;
     const cacheKey = `${trimmed}:${limit}:${countryParam}`;
     const cached = cacheGet(cacheKey);

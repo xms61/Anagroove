@@ -87,17 +87,34 @@ export function parsePrompt(prompt = '') {
  * Builds a query plan with search terms and filtering thresholds for Deezer and iTunes.
  */
 export function buildQueryPlan(userOptions = {}) {
-  // Merge prompt-extracted options with explicit options (explicit options take precedence)
+  // Parse prompt-extracted options
   const promptOptions = parsePrompt(userOptions.prompt);
-  const options = { ...promptOptions, ...userOptions };
+
+  // If user provided a prompt that identified a genre/theme, and userOptions.genre was left at default 'all'
+  let effectiveGenre = '';
+  if (promptOptions.genre) {
+    if (userOptions.genre && userOptions.genre !== 'all') {
+      effectiveGenre = `${userOptions.genre} ${promptOptions.genre}`.trim();
+    } else {
+      effectiveGenre = promptOptions.genre;
+    }
+  } else if (userOptions.genre && userOptions.genre !== 'all') {
+    effectiveGenre = userOptions.genre;
+  }
+
+  // Merge options with resolved genre taking precedence over 'all'
+  const options = {
+    ...promptOptions,
+    ...userOptions,
+    genre: effectiveGenre || 'all',
+  };
 
   const popularity = options.popularity || (options.genre === 'all' && !options.artist ? 'pure' : 'balanced');
   const artist = typeof options.artist === 'string' ? options.artist.trim() : '';
   const album = typeof options.album === 'string' ? options.album.trim() : '';
-  const genre = typeof options.genre === 'string' && options.genre.trim() && options.genre !== 'all'
-    ? options.genre.trim()
-    : '';
+  const genre = effectiveGenre.trim();
   const decade = typeof options.decade === 'string' ? options.decade.trim() : '';
+  const prompt = typeof userOptions.prompt === 'string' ? userOptions.prompt.trim() : '';
 
   // Popularity thresholds for Deezer candidate filtering
   let minFans = 0;
@@ -125,7 +142,7 @@ export function buildQueryPlan(userOptions = {}) {
     minFans = Number(userOptions.minFans);
   }
 
-  // Build targeted Deezer searches
+  // Build targeted Deezer & iTunes searches
   const deezerSearches = [];
   const itunesSearches = [];
 
@@ -142,9 +159,13 @@ export function buildQueryPlan(userOptions = {}) {
   if (genre) {
     deezerSearches.push(genre);
     itunesSearches.push(genre);
-  }
 
-  if (decade) {
+    // Compound search with decade for higher match rates (e.g. "japanese city pop 80s")
+    if (decade) {
+      deezerSearches.push(`${genre} ${decade}`);
+      itunesSearches.push(`${genre} ${decade}`);
+    }
+  } else if (decade) {
     const yearBase = parseInt(decade);
     if (!isNaN(yearBase)) {
       deezerSearches.push(`release_date:"${yearBase}"`);
@@ -152,9 +173,19 @@ export function buildQueryPlan(userOptions = {}) {
     }
   }
 
-  // ONLY when completely open (no artist, album, genre, or decade specified),
+  // Fallback: If searches are empty but user entered a prompt, search by the cleaned prompt terms
+  if (deezerSearches.length === 0 && prompt) {
+    const cleanPrompt = prompt.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (cleanPrompt) {
+      deezerSearches.push(cleanPrompt);
+      itunesSearches.push(cleanPrompt);
+    }
+  }
+
+  // STRICT GUARDRAIL: ONLY when completely open (no artist, album, genre, decade, OR prompt specified),
   // inject dynamic random alphanumeric exploration (never hardcoded dictionary words)
-  if (deezerSearches.length === 0) {
+  const hasThematicCriteria = Boolean(artist || album || genre || decade || prompt);
+  if (deezerSearches.length === 0 && !hasThematicCriteria) {
     const dynamicSeed = generateDynamicSeed();
     deezerSearches.push(dynamicSeed);
     itunesSearches.push(dynamicSeed);
@@ -170,6 +201,7 @@ export function buildQueryPlan(userOptions = {}) {
     album,
     genre: genre || 'all',
     decade,
+    prompt,
     minFans,
     maxFans,
     minRank,
