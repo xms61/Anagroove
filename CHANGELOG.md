@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-09-18
+
+### Removed
+- **Gemini LLM Judge Layer (`server/services/geminiJudge.js`, `server/config.js`, `server/services/musicService.js`)**:
+  - Completely removed the external LLM judge dependency, simplifying the backend pipeline, eliminating external network latency and 503 high-demand failures while relying on deterministic high-precision rule engines and verified catalog querying.
+
+### Added
+- **Word Field Audio Auto-Play on Click (`src/components/AudioPlayerBar.tsx`, `src/hooks/useCrosswordGame.ts`, `src/App.tsx`)**:
+  - Selecting any clue or grid cell now instantly plays that track's audio preview. If audio was previously paused or finished, playback automatically rewinds to 0:00 and starts.
+- **Dedicated Keyboard Shortcuts Cheat-Sheet (`src/components/HintModal.tsx`)**:
+  - Separated `<kbd>` tags from action buttons into a dedicated, clean keyboard shortcuts card at the bottom of the hint modal (`Space` for letter, `Tab` for word, `Shift + Tab` for entire puzzle).
+- **Persistent Input on "Next Puzzle" & Loading Indicator (`src/App.tsx`, `src/components/EndScreenModal.tsx`, `src/components/LiveGeneratorModal.tsx`)**:
+  - Pressing "Next Puzzle" on the victory screen now faithfully regenerates another crossword using the exact active configuration (custom prompt, genre preset, popularity tier, target words), avoiding unwanted resets to generic random themes.
+  - Added an interactive `Loader2` spinning indicator on the Next Puzzle button during generation.
+- **Full Multi-Line Artist Typography on Victory Screen (`src/components/EndScreenModal.tsx`)**:
+  - Replaced single-line clipping with flexible wrapping and `min-w-0` bounding, ensuring featuring artists, long band names, and multi-artist collaborations are fully legible.
+- **Answer Length Variety Engine (`shared/musicKeywords.js`, `server/services/musicService.js`)**:
+  - Introduced rotating answer length target buckets (`short`: 3–5, `medium`: 6–8, `long`: 9–14 characters) with graceful fallbacks, ensuring puzzles feature an engaging variety of short punchy words and sweeping title phrases.
+- **Strict English Enforcement for Random Crosswords (`server/services/queryBuilder.js`, `server/services/musicService.js`)**:
+  - Directed random catalog queries to English billboard charts and expanded stopword detection against Spanish, French, German, Italian, Portuguese, and Dutch lyrics.
+- **Strict Temporal Release Date Verification (`server/services/musicService.js`)**:
+  - Fixed custom prompt temporal parsing (`yearRange`) to strictly verify actual track/album release years or vintage remaster stamps, rejecting out-of-range or unverified tracks.
+- **Cross-Session Anti-Repetition Persistence (`src/services/dynamicMusicService.ts`, `server/services/musicService.js`)**:
+  - Switched recent track history from `sessionStorage` to `localStorage` (storing up to 500 tracks and normalized artist keys across visits).
+  - Deepened Deezer search offset steps (0–175) and added recent artist frequency penalties to ensure fresh catalog variety.
+
+### Fixed
+- **Selective Hint Validation (`src/hooks/useCrosswordGame.ts`)**:
+  - Fixed a bug where applying a single letter or word hint invoked `validateGrid`, prematurely coloring untested letters on the board. Hints now validate only the revealed cells.
+
+---
+
 ## [1.6.2] - 2026-09-18
 
 ### Added

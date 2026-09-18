@@ -6,7 +6,7 @@ import { ClueList } from './components/ClueList';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { HintModal } from './components/HintModal';
 import { EndScreenModal } from './components/EndScreenModal';
-import { LiveGeneratorModal } from './components/LiveGeneratorModal';
+import { LiveGeneratorModal, PuzzleGenerationConfig } from './components/LiveGeneratorModal';
 import { BlacklistModal } from './components/BlacklistModal';
 import { MultiplayerModal } from './components/MultiplayerModal';
 import { LoungeDrawer } from './components/LoungeDrawer';
@@ -120,6 +120,16 @@ export default function App() {
 
   const activePuzzle = currentPuzzle || EMPTY_PUZZLE;
 
+  const [activePuzzleConfig, setActivePuzzleConfig] = useState<PuzzleGenerationConfig>(() => {
+    try {
+      const saved = localStorage.getItem('spotyspice_active_config');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore storage parse errors
+    }
+    return { genre: currentGenre, targetWords: 10 };
+  });
+
   const {
     userLetters,
     setUserLetters,
@@ -127,6 +137,7 @@ export default function App() {
     setValidity,
     selectedCell,
     activeClue,
+    audioPlayTrigger,
     celebratingCells,
     isCompleted,
     setIsCompleted,
@@ -150,15 +161,24 @@ export default function App() {
     playerColor: '#1db954',
   });
 
-  const generateNewPuzzle = useCallback(async (genre = currentGenre, targetWords = 10) => {
+  const generateNewPuzzle = useCallback(async (customConfig?: PuzzleGenerationConfig) => {
+    const config = customConfig || activePuzzleConfig;
     setIsLoadingPuzzle(true);
     setPuzzleError(null);
     try {
-      const { puzzle } = await dynamicMusicService.generateLivePuzzle(genre, targetWords);
+      const { puzzle } = await dynamicMusicService.generateLivePuzzle({
+        genre: config.genre || currentGenre,
+        targetWords: config.targetWords || 10,
+        popularity: config.popularity,
+        prompt: config.prompt,
+        artist: config.artist,
+      });
       setCurrentPuzzle(puzzle);
-      setCurrentGenre(genre);
+      if (config.genre) setCurrentGenre(config.genre);
+      setActivePuzzleConfig(config);
       localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(puzzle));
-      localStorage.setItem('spotyspice_active_genre', genre);
+      localStorage.setItem('spotyspice_active_config', JSON.stringify(config));
+      if (config.genre) localStorage.setItem('spotyspice_active_genre', config.genre);
       setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
       setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
       setShowEndScreen(false);
@@ -169,14 +189,14 @@ export default function App() {
     } finally {
       setIsLoadingPuzzle(false);
     }
-  }, [currentGenre, setUserLetters, setValidity, setShowEndScreen, setIsCompleted]);
+  }, [activePuzzleConfig, currentGenre, setUserLetters, setValidity, setShowEndScreen, setIsCompleted]);
 
   // Initial load: generate random puzzle if none stored in localStorage
   useEffect(() => {
     if (!currentPuzzle) {
-      generateNewPuzzle(currentGenre, 10);
+      generateNewPuzzle(activePuzzleConfig);
     }
-  }, [currentPuzzle, currentGenre, generateNewPuzzle]);
+  }, [currentPuzzle, activePuzzleConfig, generateNewPuzzle]);
 
   // Restore server progress on initial load (no accounts needed)
   useEffect(() => {
@@ -294,7 +314,7 @@ export default function App() {
   }, [setUserLetters, setValidity]);
 
   const handleNextPuzzle = () => {
-    generateNewPuzzle(currentGenre, 10);
+    generateNewPuzzle(activePuzzleConfig);
   };
 
   const handleRestartPuzzle = () => {
@@ -370,7 +390,7 @@ export default function App() {
             {/* Quick Random Shuffle Button */}
             <button
               type="button"
-              onClick={() => generateNewPuzzle(currentGenre, 10)}
+              onClick={() => generateNewPuzzle({ genre: currentGenre, targetWords: 10 })}
               disabled={isLoadingPuzzle}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-50"
               title="Generate a fresh random crossword on the fly"
@@ -488,7 +508,7 @@ export default function App() {
           <p className="text-xs text-slate-400 mb-6 max-w-sm text-center">{puzzleError}</p>
           <button
             type="button"
-            onClick={() => generateNewPuzzle('all', 10)}
+            onClick={() => generateNewPuzzle({ genre: 'all', targetWords: 10 })}
             className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:opacity-95 text-slate-950 font-bold rounded-xl text-xs cursor-pointer shadow-lg shadow-amber-500/20"
           >
             Try Again
@@ -546,14 +566,19 @@ export default function App() {
         volume={defaultVolume}
         onVolumeChange={handleChangeDefaultVolume}
         isCompleted={isCompleted || showEndScreen}
+        playTrigger={audioPlayTrigger}
       />
 
       {/* On-The-Fly Live Generator Modal */}
       <LiveGeneratorModal
         isOpen={isLiveGeneratorOpen}
         onClose={() => setIsLiveGeneratorOpen(false)}
-        onPuzzleGenerated={livePuzzle => {
+        onPuzzleGenerated={(livePuzzle, config) => {
           setCurrentPuzzle(livePuzzle);
+          if (config.genre) setCurrentGenre(config.genre);
+          setActivePuzzleConfig(config);
+          localStorage.setItem('spotyspice_active_config', JSON.stringify(config));
+          if (config.genre) localStorage.setItem('spotyspice_active_genre', config.genre);
           localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(livePuzzle));
           setUserLetters(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('')));
           setValidity(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('untested')));
@@ -602,6 +627,7 @@ export default function App() {
           onRestartPuzzle={handleRestartPuzzle}
           onBlacklistArtist={addArtist}
           onBlacklistSong={addSong}
+          isLoading={isLoadingPuzzle}
         />
       )}
 
@@ -622,7 +648,7 @@ export default function App() {
         onOpenLiveGenerator={() => setIsLiveGeneratorOpen(true)}
         onInstantRandomPuzzle={() => {
           setIsLoungeDrawerOpen(false);
-          generateNewPuzzle(currentGenre, 10);
+          generateNewPuzzle({ genre: currentGenre, targetWords: 10 });
         }}
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
         onOpenBlacklist={() => setIsBlacklistOpen(true)}

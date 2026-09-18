@@ -38,18 +38,3 @@ export function loadEnv() {
 
 // Automatically load on import
 loadEnv();
-
-/**
- * Returns the configured Gemini API key, defaulting to 'TODO'.
- */
-export function getGeminiApiKey() {
-  return (process.env.GEMINI_API_KEY || 'TODO').trim();
-}
-
-/**
- * Checks if Gemini LLM Judge is active and configured.
- */
-export function isGeminiJudgeConfigured() {
-  const key = getGeminiApiKey();
-  return Boolean(key && key !== 'TODO' && key.length > 5);
-}

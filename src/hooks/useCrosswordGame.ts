@@ -53,6 +53,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
   // Victory / Completed state
   const [isCompleted, setIsCompleted] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
+  const [audioPlayTrigger, setAudioPlayTrigger] = useState(0);
 
   // Staggered celebration bounce animation when a typed word is correct
   const [celebratingCells, setCelebratingCells] = useState<{ row: number; col: number; delay: number }[]>([]);
@@ -222,6 +223,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
 
   const selectClue = useCallback((clue: Clue) => {
     setDirection(clue.direction);
+    setAudioPlayTrigger(prev => prev + 1);
     for (let i = 0; i < clue.length; i++) {
       const r = clue.direction === 'across' ? clue.row : clue.row + i;
       const c = clue.direction === 'across' ? clue.col + i : clue.col;
@@ -236,6 +238,8 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
   const selectCell = useCallback((row: number, col: number) => {
     const cell = puzzle.grid[row][col];
     if (cell.isBlock) return;
+
+    setAudioPlayTrigger(prev => prev + 1);
 
     if (selectedCell.row === row && selectedCell.col === col) {
       const hasAcross = puzzle.clues.some(
@@ -504,9 +508,36 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
 
     setUserLetters(newLetters);
     setValidity(newValidity);
-    validateGrid(newLetters);
+
+    // Check if entire puzzle is filled and correct without auto-checking untested cells
+    let allFilledAndCorrect = true;
+    for (let r = 0; r < puzzle.rows; r++) {
+      for (let c = 0; c < puzzle.cols; c++) {
+        const expected = puzzle.grid[r][c].char;
+        if (expected && newLetters[r][c] !== expected.toUpperCase()) {
+          allFilledAndCorrect = false;
+          break;
+        }
+      }
+      if (!allFilledAndCorrect) break;
+    }
+
+    if (allFilledAndCorrect) {
+      setIsCompleted(true);
+      setShowEndScreen(true);
+      confetti({
+        particleCount: 120,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
+      apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length);
+      if (multiplayerRoom && playerId) {
+        socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');
+      }
+    }
+
     scheduleServerSave(newLetters, newValidity);
-  }, [userLetters, validity, puzzle, selectedCell, activeClue, direction, validateGrid, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor, selectClue]);
+  }, [userLetters, validity, puzzle, selectedCell, activeClue, direction, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor, selectClue]);
 
   return {
     userLetters,
@@ -516,6 +547,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     selectedCell,
     direction,
     activeClue,
+    audioPlayTrigger,
     celebratingCells,
     isCompleted,
     setIsCompleted,

@@ -453,20 +453,32 @@ export function buildQueryPlan(userOptions = {}) {
   }
 
   // Open / Shuffle Mode (no artist, album, genre, decade, OR prompt specified)
-  // Query curated charts and popular genres instead of noisy 2-letter alphabetic searches
+  // Query curated English charts and mainstream hits instead of unconstrained searches
   const hasThematicCriteria = Boolean(artist || album || (genre && genre !== 'all') || decade || prompt);
   if (deezerSearches.length === 0 && !hasThematicCriteria) {
-    const openSeeds = ['pop hits', 'rock classics', 'dance hits', 'billboard'];
+    const openSeeds = [
+      'billboard hot 100',
+      'uk top 40',
+      'top hits us',
+      'classic rock english',
+      'pop hits english',
+      'greatest hits radio',
+      'billboard hits',
+      '90s hits us',
+      '2000s hits us',
+    ];
     const selectedSeed = openSeeds[Math.floor(Math.random() * openSeeds.length)];
     deezerSearches.push(selectedSeed);
     itunesSearches.push(selectedSeed);
-    itunesSearches.push('top hits');
+    itunesSearches.push('billboard hot 100');
   }
 
   // Dynamic sorting order to explore varied catalog depths on repeated calls
   const SORT_ORDERS = ['RANKING', 'TRACK_ASC', 'RATING_ASC', 'DURATION_ASC'];
   const randomOrder = SORT_ORDERS[Math.floor(Math.random() * SORT_ORDERS.length)];
-  const randomOffset = (genre && genre !== 'all') ? Math.floor(Math.random() * 25) : Math.floor(Math.random() * 20);
+  const randomOffset = (genre && genre !== 'all')
+    ? Math.floor(Math.random() * 6) * 25
+    : Math.floor(Math.random() * 8) * 25;
 
   return {
     genre: genre || 'all',
