@@ -5,6 +5,9 @@ import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
 import { buildQueryPlan } from './queryBuilder.js';
+import { evaluateSongSelection } from './geminiJudge.js';
+import { isGeminiJudgeConfigured } from '../config.js';
+import { detectStorefront } from './itunesMusicProvider.js';
 import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
@@ -476,15 +479,18 @@ export async function getRandomSongPool({
     noKeyword: 0,
   };
 
-  function trySelectTracks(candidateList, maxPlays) {
+  function trySelectTracks(candidateList, maxPlays, targetList = songs, excludedKeys = new Set()) {
     for (const track of candidateList) {
-      if (songs.length >= count) break;
+      if (targetList.length >= count) break;
 
       const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
       const artistIdentity = canonicalArtistKey(track.artist);
       const titleIdentity = canonicalTrackKey(track.title);
       const playCount = getTrackRecentCount(track);
 
+      if (excludedKeys && excludedKeys.has(trackIdentity)) {
+        continue;
+      }
       if (playCount > maxPlays) {
         rejections.recent++;
         continue;
@@ -549,9 +555,9 @@ export async function getRandomSongPool({
       const allowArtist = !isTargetingSingleArtist;
       let preferredType;
       if (isTargetingSingleArtist) {
-        preferredType = (songs.length % 2 === 0) ? 'title' : 'keyword';
+        preferredType = (targetList.length % 2 === 0) ? 'title' : 'keyword';
       } else {
-        preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
+        preferredType = PREFERRED_CLUE_ROTATION[targetList.length % PREFERRED_CLUE_ROTATION.length];
         if (seenArtists.has(artistIdentity) && preferredType === 'artist') {
           preferredType = 'title';
         }
@@ -559,7 +565,7 @@ export async function getRandomSongPool({
 
       // Answer length variation (2-14 letters) rotation:
       const LENGTH_BUCKET_ROTATION = ['short', 'medium', 'long', 'medium', 'short', 'long', 'medium'];
-      const targetLengthBucket = LENGTH_BUCKET_ROTATION[songs.length % LENGTH_BUCKET_ROTATION.length];
+      const targetLengthBucket = LENGTH_BUCKET_ROTATION[targetList.length % LENGTH_BUCKET_ROTATION.length];
 
       let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers, targetLengthBucket });
 
@@ -595,7 +601,7 @@ export async function getRandomSongPool({
       else if (keyword.clueType === 'Artist name') clueStats.artist++;
       else clueStats.keyword++;
 
-      songs.push({
+      targetList.push({
         ...track,
         answer: keyword.answer,
         clueType: keyword.clueType,
@@ -620,6 +626,105 @@ export async function getRandomSongPool({
   // Pass 4: Last resort fallback to prevent complete failure on tiny catalogs
   if (songs.length < 6) {
     trySelectTracks(tier3Plus, Infinity);
+  }
+
+  // 4. Gemini LLM Judge Thematic & Prompt Evaluation Loop (if configured)
+  if (isGeminiJudgeConfigured() && songs.length >= 6) {
+    const sessionExcludedKeys = new Set();
+    const MAX_JUDGE_ROUNDS = 4;
+    let round = 0;
+
+    while (round < MAX_JUDGE_ROUNDS) {
+      round++;
+      const inputContract = {
+        mode: prompt ? 'custom_prompt' : 'theme',
+        theme: {
+          id: queryPlan.genre || 'all',
+          title: typeof queryPlan.genre === 'string' && queryPlan.genre !== 'all' ? queryPlan.genre : 'Mixed All-Time Hits',
+        },
+        customPrompt: prompt || '',
+        popularity: queryPlan.popularity || 'balanced',
+        targetWordCount: count,
+        candidateTracks: songs,
+      };
+
+      const evalResult = await evaluateSongSelection(inputContract);
+
+      if (!evalResult.evaluated || evalResult.judgment.isSatisfied || evalResult.judgment.rejectedTrackIndices.length === 0) {
+        logger.info('llm_judge', `LLM Judge approved selection on round ${round} (model: ${evalResult.modelUsed || 'standby'}).`);
+        break;
+      }
+
+      const rejectedIndices = new Set(evalResult.judgment.rejectedTrackIndices);
+      logger.info('llm_judge', `Round ${round}: Judge rejected ${rejectedIndices.size} track(s). Reasons: ${JSON.stringify(evalResult.judgment.rejectionReasons)}`);
+
+      // Filter out rejected tracks and clean up tracking sets
+      const remainingSongs = [];
+      for (let i = 0; i < songs.length; i++) {
+        const track = songs[i];
+        if (rejectedIndices.has(i)) {
+          const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
+          sessionExcludedKeys.add(trackIdentity);
+          seenTracks.delete(trackIdentity);
+          seenTitles.delete(canonicalTrackKey(track.title));
+          seenArtists.delete(canonicalArtistKey(track.artist));
+          const artistNames = splitArtistNames(track.artist);
+          artistNames.forEach(name => seenArtists.delete(canonicalArtistKey(name)));
+          seenAnswers.delete(track.answer);
+        } else {
+          remainingSongs.push(track);
+        }
+      }
+
+      songs.length = 0;
+      songs.push(...remainingSongs);
+
+      // Execute Negotiated Replacement Queries on music providers
+      const replacementQueries = evalResult.judgment.replacementQueries || [];
+      if (replacementQueries.length > 0) {
+        const replacementTasks = [];
+        for (const q of replacementQueries) {
+          const deezerSearches = [...(q.searchTerms || [])];
+          if (q.artist) deezerSearches.push(`artist:"${q.artist}"`);
+
+          replacementTasks.push(
+            musicProvider.getCandidateTracks({
+              genre: q.genre || queryPlan.genre,
+              searches: deezerSearches,
+              limit: 30,
+              popularity: q.popularity || queryPlan.popularity,
+            }).catch(() => [])
+          );
+
+          for (const term of (q.searchTerms || []).slice(0, 2)) {
+            replacementTasks.push(
+              itunesMusicProvider.getCandidateTracks({
+                query: term,
+                country: q.targetStorefront || detectStorefront(term),
+                limit: 30,
+              }).catch(() => [])
+            );
+          }
+        }
+
+        const repResults = await Promise.all(replacementTasks);
+        const replacementCandidates = repResults.flat();
+        if (replacementCandidates.length > 0) {
+          trySelectTracks(replacementCandidates, Infinity, songs, sessionExcludedKeys);
+        }
+      }
+
+      // Backfill remaining openings from catalog tiers if still below target count
+      if (songs.length < count) {
+        trySelectTracks(tier0, 0, songs, sessionExcludedKeys);
+      }
+      if (songs.length < count) {
+        trySelectTracks(tier1, 1, songs, sessionExcludedKeys);
+      }
+      if (songs.length < count) {
+        trySelectTracks(tier2, 2, songs, sessionExcludedKeys);
+      }
+    }
   }
 
   logger.sampling(orderedCandidates.length, songs.length, clueStats, rejections);

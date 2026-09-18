@@ -59,6 +59,12 @@
   - Dynamic answer lengths (2 to 14 letters) with rotating short/medium/long buckets and strict collaborating artist isolation.
   - Staggered spring bounce celebration animation when a typed word matches correctly (with toggle switch in settings).
   - Generation era parsing for K-Pop (*"new gen kpop"*, *"4th gen"*, *"3rd gen"*) and authentic soundalike/workout remix filtration.
+- **🧠 Gemini LLM Song Selection Judge**:
+  - Automatically audits candidate song selections against user criteria (preset themes or custom prompts with popularity profiles).
+  - **Cascade Fallback Ladder**: Queries `gemini-3.8-flash` primarily, gracefully cascading to `gemini-3.7-flash`, `gemini-3.6-flash`, and `gemini-3.5-flash` on 404, 429, 500, 503, or network errors.
+  - **Negotiated Replacement Query Contract**: When tracks are deemed off-topic or inappropriate, Gemini specifies structured replacement query fields (`artist`, `trackTitle`, `genre`, `searchTerms`, bounded `yearRange`, `targetStorefront`, `popularity`) mapped to catalog harvesting engines.
+  - **Iterative Refinement Loop**: Fetches replacements across Deezer and iTunes and loops evaluation until the judge is satisfied (up to 4 iterations).
+  - **Zero-Overhead Standby Mode**: When `GEMINI_API_KEY` is `'TODO'` or unset, the judge remains dormant without making API calls or adding generation latency.
 - **🏆 Victory Showcase & Auto-Silence**:
   - Confetti celebration, full song breakdown with album cover artwork, track titles, artist details, and direct preview playback.
   - Automatically cuts off background preview music the moment the puzzle is solved or fully revealed (via hint modal or `Shift+Tab`).
@@ -71,6 +77,7 @@
 | :--- | :--- |
 | **Frontend** | React 19, TypeScript, Vite 6, TailwindCSS, Lucide React, Canvas Confetti |
 | **Backend** | Node.js, Express, WebSocket (`ws`), Native HTTP Fetch |
+| **AI / LLM Judge** | Google Gemini (`gemini-3.8-flash` cascade -> `3.7-flash`, `3.6-flash`, `3.5-flash`) |
 | **Database** | Lightweight file-backed JSON database (`server/db.js`) |
 | **Audio Engine** | Deezer API & iTunes preview resolver with dynamic fallback self-healing |
 
@@ -90,7 +97,16 @@ cd SpotySpice
 npm install
 ```
 
-### 3. Running in Development
+### 3. Environment Configuration (Optional)
+SpotySpice runs fully functional out-of-the-box in standby mode without requiring any API keys. To activate the **Gemini LLM Judge** for live AI song selection vetting:
+```bash
+cp .env.example .env
+# Edit .env and supply your Gemini API key:
+# GEMINI_API_KEY=your_gemini_api_key
+```
+*Note: Never commit your `.env` file or actual API keys. When unset or set to `TODO`, the LLM Judge remains in zero-overhead standby bypass.*
+
+### 4. Running in Development
 Start both the Express/WebSocket backend and the Vite frontend dev server concurrently:
 ```bash
 npm run dev
@@ -105,7 +121,7 @@ npm run dev:client # Starts Vite only on port 3000
 npm run dev:server # Starts Node.js backend on port 3001
 ```
 
-### 4. Building for Production
+### 5. Building for Production
 ```bash
 npm run build
 ```
@@ -124,10 +140,12 @@ SpotySpice/
 │   ├── build_recognized_artists.js
 │   ├── fetch_all_previews.js
 │   ├── generate_all_themes.js
+│   ├── run_tests.js            # Automated test suite (272 tests)
 │   ├── test_features.js        # Core API & persistence tests
 │   ├── test_multiplayer_live_sync.js # E2E two-player live sync test
 │   └── test_randomizer.js      # Recognizable pool entropy test
 ├── server/                     # Express & WebSocket backend
+│   ├── config.js               # Environment loader & API key manager
 │   ├── data/
 │   │   ├── recognized_artists.json # 105+ iconic artists with >= 250k fans
 │   │   ├── store.json              # Anonymous user session store
@@ -137,6 +155,7 @@ SpotySpice/
 │   ├── validators.js           # Endpoint and WebSocket payload validators
 │   └── services/
 │       ├── deezerMusicProvider.js # Deezer candidate harvesting & catalog taxonomy
+│       ├── geminiJudge.js         # Gemini LLM Judge with cascade fallback & contract validation
 │       ├── itunesMusicProvider.js # iTunes candidate harvesting & fallback previews
 │       ├── musicService.js     # Unified random pool, variety & seed selection
 │       └── queryBuilder.js     # Prompt parser & multi-endpoint query planner
