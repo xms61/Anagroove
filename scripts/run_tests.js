@@ -14,6 +14,8 @@ import {
   mapDeezerTrack,
   resetDeezerCachesForTesting,
 } from '../server/services/deezerMusicProvider.js';
+import { mapItunesTrack } from '../server/services/itunesMusicProvider.js';
+import { parsePrompt, buildQueryPlan } from '../server/services/queryBuilder.js';
 import { getRandomSongPool, setMusicProviderForTesting } from '../server/services/musicService.js';
 import {
   validateUserId,
@@ -70,8 +72,14 @@ async function runUnitTests() {
   const featTrack = extractAnswerKeyword('Stay (feat. Justin Bieber)', 'The Kid LAROI');
   assert(featTrack?.answer === 'STAY', 'Strips (feat. ...) and extracts clean title');
 
-  const multiWord = extractAnswerKeyword('Smells Like Teen Spirit', 'Nirvana');
-  assert(multiWord?.answer === 'SMELLS', 'Extracts prominent keyword from multi-word title');
+  const combinedTrack = extractAnswerKeyword('Your Love', 'The Outfield');
+  assert(combinedTrack?.answer === 'YOURLOVE' && combinedTrack.clueType === 'Song title', 'Combines multi-word title up to 16 characters');
+
+  const longBoundTrack = extractAnswerKeyword("Don't Stop Believin'", 'Journey');
+  assert(longBoundTrack?.answer === 'DONTSTOPBELIEVIN' && longBoundTrack.answer.length === 16, 'Permits combined titles up to 16 characters');
+
+  const multiWordTooLong = extractAnswerKeyword('Smells Like Teen Spirit', 'Nirvana');
+  assert(multiWordTooLong?.answer === 'NIRVANA' && multiWordTooLong.clueType === 'Artist name', 'Falls back to artist for titles exceeding 16 characters');
 
   const nullResult = extractAnswerKeyword('', '');
   assert(nullResult === null, 'Returns null on empty input');
@@ -157,6 +165,30 @@ async function runUnitTests() {
     );
   }
   assert(Boolean(DEEZER_GENRE_TAXONOMY.all && DEEZER_GENRE_TAXONOMY.electronic), 'Backward compatibility aliases all and electronic exist');
+
+  console.log('\n--- 3c. Testing Prompt Parsing, iTunes Mapping & Steered Query Builder ---');
+  const parsedPrompt = parsePrompt('obscure 80s synth-pop by Daft Punk');
+  assert(parsedPrompt.popularity === 'obscure', 'Parses obscure popularity modifier');
+  assert(parsedPrompt.decade === '1980s', 'Parses 80s decade into 1980s');
+  assert(parsedPrompt.artist === 'Daft Punk', 'Parses artist from directive "by Daft Punk"');
+  assert(parsedPrompt.genre === 'synth-pop', 'Extracts remaining theme as genre');
+
+  const purePlan = buildQueryPlan({ popularity: 'pure' });
+  assert(purePlan.popularity === 'pure' && purePlan.minFans === 0 && purePlan.minRank === 0, 'Pure mode clears popularity filters');
+  assert(purePlan.deezerSearches.length > 0, 'Pure mode injects entropy search seeds');
+
+  const itunesSample = {
+    trackId: 12345,
+    trackName: 'Midnight City',
+    artistName: 'M83',
+    previewUrl: 'https://audio.itunes.com/preview.m4a',
+    artworkUrl100: 'https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg',
+    collectionName: 'Hurry Up, We Are Dreaming'
+  };
+  const mappedItunes = mapItunesTrack(itunesSample);
+  assert(mappedItunes?.id === 'itunes:12345' && mappedItunes?.provider === 'itunes', 'Maps iTunes track format');
+  assert(mappedItunes?.albumArt?.includes('600x600bb'), 'Scales iTunes artwork to 600x600');
+  assert(mapItunesTrack({ trackId: 999 }) === null, 'Rejects iTunes track missing preview or title');
 
   console.log('\n--- 4. Testing Deezer Provider Resilience and Cache Bounds ---');
   const originalFetch = globalThis.fetch;
@@ -472,6 +504,31 @@ async function runIntegrationTests() {
       uniqueAnswerPool.length === 1 && uniqueAnswerPool[0].answer === 'NEON',
       'Provider pool excludes tracks that would duplicate a crossword answer'
     );
+
+    // Test deterministic seed hashing & variety mode
+    const determinismCatalog = [
+      { id: 'deezer:101', providerTrackId: '101', title: 'Solar', artist: 'Band A', fans: 500000, rank: 500000 },
+      { id: 'deezer:102', providerTrackId: '102', title: 'Lunar', artist: 'Band B', fans: 500000, rank: 500000 },
+      { id: 'deezer:103', providerTrackId: '103', title: 'Cosmic', artist: 'Band A', fans: 500000, rank: 500000 },
+      { id: 'deezer:104', providerTrackId: '104', title: 'Astral', artist: 'Band C', fans: 500000, rank: 500000 },
+    ];
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => determinismCatalog });
+    const seedRun1 = await getRandomSongPool({ seed: 'test-seed-xyz', count: 4 });
+    const seedRun2 = await getRandomSongPool({ seed: 'test-seed-xyz', count: 4 });
+    assert(
+      seedRun1.length === seedRun2.length &&
+      seedRun1.every((t, i) => t.id === seedRun2[i].id),
+      'Deterministic seed produces identical song selection and ordering'
+    );
+
+    // Variety mode check: Band A has 2 songs (Solar, Cosmic), only 1 should be selected
+    const bandACount = seedRun1.filter(t => t.artist === 'Band A').length;
+    assert(bandACount === 1, 'Variety mode enforces max 1 track per artist by default');
+
+    // Steered artist check: when artist is steered, multiple tracks by that artist are permitted
+    const steeredBandARun = await getRandomSongPool({ artist: 'Band A', count: 4 });
+    assert(steeredBandARun.filter(t => t.artist === 'Band A').length === 2, 'Steering single artist permits multiple tracks by that artist');
+
     setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
 
     const invalidLive = await fetch(`${baseUrl}/api/puzzles/live`, {

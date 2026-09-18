@@ -160,12 +160,17 @@ export function validateBlacklistPayload(body) {
 export function validateLivePuzzlePayload(body) {
   if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
   if (body.genre !== undefined && typeof body.genre !== 'string') return { valid: false, error: 'Invalid genre' };
+  if (body.prompt !== undefined && typeof body.prompt !== 'string') return { valid: false, error: 'Invalid prompt' };
+  if (body.artist !== undefined && typeof body.artist !== 'string') return { valid: false, error: 'Invalid artist' };
+  if (body.album !== undefined && typeof body.album !== 'string') return { valid: false, error: 'Invalid album' };
+  if (body.decade !== undefined && typeof body.decade !== 'string') return { valid: false, error: 'Invalid decade' };
+  if (body.popularity !== undefined && typeof body.popularity !== 'string') return { valid: false, error: 'Invalid popularity' };
   if (body.minFans !== undefined && !Number.isFinite(Number(body.minFans))) return { valid: false, error: 'Invalid minFans' };
   if (body.targetWords !== undefined && !Number.isFinite(Number(body.targetWords))) return { valid: false, error: 'Invalid targetWords' };
   if (body.recentIds !== undefined && !Array.isArray(body.recentIds)) return { valid: false, error: 'recentIds must be an array' };
 
   const rawGenre = typeof body.genre === 'string' ? body.genre.trim().toLowerCase() : 'all';
-  const genre = rawGenre.replace(/[^a-z0-9_-]/g, '').slice(0, 30) || 'all';
+  const genre = rawGenre.replace(/[^a-z0-9_\s-]/g, '').slice(0, 50) || 'all';
   const minFans = Math.max(0, Math.min(50000000, parseInt(body.minFans) || 250000));
   const targetWords = Math.max(6, Math.min(15, parseInt(body.targetWords) || 10));
   const recentIds = Array.isArray(body.recentIds)
@@ -176,14 +181,37 @@ export function validateLivePuzzlePayload(body) {
       .filter(Boolean)
     : [];
 
-  return { valid: true, data: { genre, minFans, targetWords, recentIds } };
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 200) : '';
+  const artist = typeof body.artist === 'string' ? body.artist.trim().slice(0, 100) : '';
+  const album = typeof body.album === 'string' ? body.album.trim().slice(0, 100) : '';
+  const decade = typeof body.decade === 'string' ? body.decade.trim().slice(0, 20) : '';
+  const popularity = typeof body.popularity === 'string' && ['pure', 'obscure', 'indie', 'balanced', 'mainstream'].includes(body.popularity.toLowerCase().trim())
+    ? body.popularity.toLowerCase().trim()
+    : undefined;
+  const seed = body.seed !== undefined && body.seed !== null ? String(body.seed).trim().slice(0, 64) : undefined;
+
+  return {
+    valid: true,
+    data: {
+      genre,
+      minFans,
+      targetWords,
+      recentIds,
+      prompt,
+      artist,
+      album,
+      decade,
+      popularity,
+      seed,
+    }
+  };
 }
 
 /**
  * Validates and sanitizes random music query parameters
  */
 export function validateMusicQuery(query) {
-  const genre = typeof query.genre === 'string' ? query.genre.slice(0, 30).toLowerCase().replace(/[^a-z0-9_-]/g, '') : 'all';
+  const genre = typeof query.genre === 'string' ? query.genre.slice(0, 50).toLowerCase().replace(/[^a-z0-9_\s-]/g, '') : 'all';
   const minFans = Math.max(0, Math.min(50000000, parseInt(query.minFans) || 250000));
   const count = Math.max(1, Math.min(50, parseInt(query.count) || 25));
   
@@ -196,11 +224,26 @@ export function validateMusicQuery(query) {
       .filter(id => id.length > 0);
   }
 
+  const prompt = typeof query.prompt === 'string' ? query.prompt.trim().slice(0, 200) : '';
+  const artist = typeof query.artist === 'string' ? query.artist.trim().slice(0, 100) : '';
+  const album = typeof query.album === 'string' ? query.album.trim().slice(0, 100) : '';
+  const decade = typeof query.decade === 'string' ? query.decade.trim().slice(0, 20) : '';
+  const popularity = typeof query.popularity === 'string' && ['pure', 'obscure', 'indie', 'balanced', 'mainstream'].includes(query.popularity.toLowerCase().trim())
+    ? query.popularity.toLowerCase().trim()
+    : undefined;
+  const seed = query.seed !== undefined && query.seed !== null ? String(query.seed).trim().slice(0, 64) : undefined;
+
   return {
     genre: genre || 'all',
     minFans,
     count,
-    recentIds
+    recentIds,
+    prompt,
+    artist,
+    album,
+    decade,
+    popularity,
+    seed,
   };
 }
 

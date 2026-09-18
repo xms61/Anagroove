@@ -93,7 +93,17 @@ export const DEEZER_GENRE_TAXONOMY = {
 export const deezerMusicProvider = {
   name: 'deezer',
 
-  async getCandidateTracks({ genre = 'all', limit = 50, minFans = 250000 } = {}) {
+  async getCandidateTracks({
+    genre = 'all',
+    limit = 50,
+    minFans = 250000,
+    maxFans = Infinity,
+    minRank = 0,
+    maxRank = Infinity,
+    searches = [],
+    offset = 0,
+    popularity = 'balanced',
+  } = {}) {
     const normalizedGenre = typeof genre === 'string' ? genre.toLowerCase().trim() : 'all';
     const genreConfig = DEEZER_GENRE_TAXONOMY[normalizedGenre] || {
       chartId: 0,
@@ -102,18 +112,23 @@ export const deezerMusicProvider = {
       minRank: 250000,
     };
 
-    const thresholdFans = Math.min(minFans, genreConfig.minFans);
-    const thresholdRank = genreConfig.minRank;
-    const cacheKey = `${normalizedGenre}:${limit}:${thresholdFans}:${thresholdRank}`;
+    const isPure = popularity === 'pure';
+    const thresholdFans = isPure ? 0 : Math.min(minFans, genreConfig.minFans);
+    const thresholdRank = isPure ? 0 : Math.max(minRank, genreConfig.minRank);
+    const customSearches = Array.isArray(searches) && searches.length > 0 ? searches : genreConfig.searches;
+    const cacheKey = `${normalizedGenre}:${customSearches.join(',')}:${offset}:${limit}:${thresholdFans}:${thresholdRank}:${maxFans}:${maxRank}:${popularity}`;
     const cached = cacheGet(trackCache, cacheKey);
     if (cached) return cached;
 
     const requests = [];
-    if (genreConfig.chartId !== undefined) {
+    if (customSearches.length === 0 && genreConfig.chartId !== undefined && !isPure) {
       requests.push(fetchJson(`https://api.deezer.com/chart/${genreConfig.chartId}/tracks?limit=100`));
     }
-    for (const query of genreConfig.searches) {
-      requests.push(fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100`));
+    for (const query of customSearches) {
+      const searchUrl = offset > 0
+        ? `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100&index=${offset}`
+        : `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100`;
+      requests.push(fetchJson(searchUrl));
     }
     if (requests.length === 0) {
       requests.push(fetchJson('https://api.deezer.com/chart/0/tracks?limit=100'));
@@ -139,7 +154,10 @@ export const deezerMusicProvider = {
       const mapped = mapDeezerTrack(track, artist);
       if (!mapped) continue;
 
-      if (mapped.fans >= thresholdFans && mapped.rank >= thresholdRank) {
+      const withinFans = isPure || (mapped.fans >= thresholdFans && mapped.fans <= maxFans);
+      const withinRank = isPure || (mapped.rank >= thresholdRank && mapped.rank <= maxRank);
+
+      if (withinFans && withinRank) {
         candidates.push(mapped);
         if (candidates.length >= limit) break;
       } else {

@@ -172,7 +172,13 @@ app.get('/api/music/random', async (req, res) => {
       minFans: validatedQuery.minFans,
       count: validatedQuery.count,
       blacklist: userBlacklist,
-      recentIds: validatedQuery.recentIds
+      recentIds: validatedQuery.recentIds,
+      prompt: validatedQuery.prompt,
+      artist: validatedQuery.artist,
+      album: validatedQuery.album,
+      decade: validatedQuery.decade,
+      popularity: validatedQuery.popularity,
+      seed: validatedQuery.seed,
     });
 
     res.json({ success: true, count: songs.length, songs });
@@ -183,7 +189,7 @@ app.get('/api/music/random', async (req, res) => {
 });
 
 // Builds one complete puzzle on the server so every multiplayer participant
-// receives the host's same, already-selected Deezer tracks and grid.
+// receives the host's same, already-selected tracks and grid.
 app.post('/api/puzzles/live', async (req, res) => {
   const rawUserId = req.headers['x-user-id'] || req.query.userId;
   const userId = validateUserId(rawUserId);
@@ -197,26 +203,50 @@ app.post('/api/puzzles/live', async (req, res) => {
   }
 
   try {
-    const { genre, minFans, targetWords, recentIds } = validation.data;
+    const {
+      genre,
+      minFans,
+      targetWords,
+      recentIds,
+      prompt,
+      artist,
+      album,
+      decade,
+      popularity,
+      seed,
+    } = validation.data;
+
     const songs = await getRandomSongPool({
       genre,
       minFans,
       count: Math.min(40, targetWords + 12),
       blacklist: db.getBlacklist(userId),
       recentIds,
+      prompt,
+      artist,
+      album,
+      decade,
+      popularity,
+      seed,
     });
 
     if (songs.length < 6) {
       return res.status(422).json({
-        error: 'Not enough eligible Deezer tracks are currently available for a live puzzle.',
+        error: 'Not enough eligible tracks are currently available for this selection. Try broader settings or another prompt.',
         available: songs.length,
       });
     }
 
-    const puzzle = generateLiveCrossword(songs, `⚡ Live: ${genre === 'all' ? 'Eclectic Hits' : genre}`, targetWords);
+    const puzzleTitle = prompt
+      ? `⚡ Live: ${prompt.slice(0, 30)}`
+      : artist
+        ? `⚡ Live: ${artist}`
+        : `⚡ Live: ${genre === 'all' ? (popularity === 'pure' ? 'Pure Universe' : 'Eclectic Hits') : genre}`;
+
+    const puzzle = generateLiveCrossword(songs, puzzleTitle, targetWords);
     if (!puzzle) {
       return res.status(422).json({
-        error: 'Eligible Deezer tracks could not form an intersecting crossword. Please try again.',
+        error: 'Eligible tracks could not form an intersecting crossword. Please try again.',
         available: songs.length,
       });
     }
@@ -232,11 +262,16 @@ app.post('/api/puzzles/live', async (req, res) => {
         candidateCount: songs.length,
         genre,
         minFans,
+        popularity,
+        artist,
+        album,
+        prompt,
+        seed,
       },
     });
   } catch (err) {
-    console.error('Error generating live Deezer puzzle:', err);
-    res.status(503).json({ error: 'Live Deezer music is temporarily unavailable. Please try again.' });
+    console.error('Error generating live puzzle:', err);
+    res.status(503).json({ error: 'Live music discovery is temporarily unavailable. Please try again.' });
   }
 });
 
