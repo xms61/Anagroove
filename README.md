@@ -61,7 +61,7 @@
   - Generation era parsing for K-Pop (*"new gen kpop"*, *"4th gen"*, *"3rd gen"*) and authentic soundalike/workout remix filtration.
 - **🧠 Gemini LLM Song Selection Judge**:
   - Automatically audits candidate song selections against user criteria (preset themes or custom prompts with popularity profiles).
-  - **Cascade Fallback Ladder**: Queries `gemini-3.8-flash` primarily, gracefully cascading to `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, and active production fallbacks `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`, and `gemini-1.5-flash-8b` on 404, 429, 500, 503, or network errors.
+  - **Cascade Fallback Ladder & Intra-Model Retries**: Queries `gemini-3.8-flash` primarily, retrying up to 4 times per model with backoff on temporary 503 spikes or rate limits before gracefully cascading to `gemini-3.7-flash`, `gemini-3.6-flash`, and `gemini-3.5-flash`.
   - **Negotiated Replacement Query Contract**: When tracks are deemed off-topic or inappropriate, Gemini specifies structured replacement query fields (`artist`, `trackTitle`, `genre`, `searchTerms`, bounded `yearRange`, `targetStorefront`, `popularity`) mapped to catalog harvesting engines.
   - **Iterative Refinement Loop**: Fetches replacements across Deezer and iTunes and loops evaluation until the judge is satisfied (up to 4 iterations).
   - **Zero-Overhead Standby Mode**: When `GEMINI_API_KEY` is `'TODO'` or unset, the judge remains dormant without making API calls or adding generation latency.
@@ -77,7 +77,7 @@
 | :--- | :--- |
 | **Frontend** | React 19, TypeScript, Vite 6, TailwindCSS, Lucide React, Canvas Confetti |
 | **Backend** | Node.js, Express, WebSocket (`ws`), Native HTTP Fetch |
-| **AI / LLM Judge** | Google Gemini (`gemini-3.8-flash` cascade -> `3.7-flash`, `3.6-flash`, `3.5-flash`, `2.5-flash`, `2.0-flash`, `1.5-flash`) |
+| **AI / LLM Judge** | Google Gemini (`gemini-3.8-flash` cascade -> `3.7-flash`, `3.6-flash`, `3.5-flash`, with 4x retry) |
 | **Database** | Lightweight file-backed JSON database (`server/db.js`) |
 | **Audio Engine** | Deezer API & iTunes preview resolver with dynamic fallback self-healing |
 
