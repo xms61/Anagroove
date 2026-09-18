@@ -91,10 +91,11 @@ export class SqliteCatalog {
 
     this.db = new DatabaseSync(this.dbPath);
 
-    // Enable WAL mode and foreign key constraints
+    // Enable WAL mode, busy timeout, and foreign key constraints
     try {
       this.db.exec('PRAGMA journal_mode = WAL;');
       this.db.exec('PRAGMA synchronous = NORMAL;');
+      this.db.exec('PRAGMA busy_timeout = 10000;');
       this.db.exec('PRAGMA foreign_keys = ON;');
     } catch {
       // Memory DBs or certain environments ignore pragma journal_mode

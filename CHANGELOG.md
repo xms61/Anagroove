@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.5] - 2026-09-19
+
+### Improved
+- **SQLite Concurrency & Lock Resilience (`server/db/sqliteCatalog.js`)**:
+  - Configured `PRAGMA busy_timeout = 10000;` on SQLite initialization.
+  - Automatically handles concurrent transaction retries up to 10 seconds, eliminating `database is locked` exceptions under heavy asynchronous ingestion.
+
+---
+
 ## [1.9.4] - 2026-09-19
 
 ### Added
