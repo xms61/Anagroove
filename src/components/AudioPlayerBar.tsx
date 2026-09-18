@@ -9,6 +9,7 @@ interface AudioPlayerBarProps {
   onPlaybackChange?: (isPlaying: boolean) => void;
   volume?: number;
   onVolumeChange?: (volume: number) => void;
+  isCompleted?: boolean;
 }
 
 export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
@@ -18,6 +19,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   onPlaybackChange,
   volume: controlledVolume,
   onVolumeChange,
+  isCompleted = false,
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -62,6 +64,16 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     }
   }, []);
 
+  // Stop background music when puzzle is revealed or completed
+  useEffect(() => {
+    if (isCompleted) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      notifyPlayback(false);
+    }
+  }, [isCompleted]);
+
   // Sync audio source when active clue changes
   useEffect(() => {
     if (!audioRef.current || !activeClue?.song.audioUrl) return;
@@ -73,11 +85,11 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     setCurrentTime(0);
     setProgress(0);
 
-    // If was already playing, continue playing the new clue snippet
-    if (isPlaying) {
+    // If was already playing and puzzle is not completed/revealed, continue playing the new clue snippet
+    if (isPlaying && !isCompleted) {
       audioRef.current.play().catch(() => notifyPlayback(false));
     }
-  }, [activeClue?.id]);
+  }, [activeClue?.id, isCompleted]);
 
   // Handle Play/Pause
   const togglePlay = () => {

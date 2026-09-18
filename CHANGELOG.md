@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---\n
+## [1.5.2] - 2026-09-18
+
+### Changed
+- **Automatic Audio Silence on Puzzle Completion & Reveal (`src/components/AudioPlayerBar.tsx`, `src/App.tsx`, `src/hooks/useCrosswordGame.ts`, `src/components/EndScreenModal.tsx`)**:
+  - Automatically pauses background music snippets and resets playback state whenever the full crossword puzzle is revealed (via hint modal or `Shift+Tab` hotkey) or completed (all words correctly solved).
+  - Wired `isCompleted` and `showEndScreen` state into `AudioPlayerBar`, ensuring background audio immediately cuts out when opening the victory showcase.
+  - Added guards to prevent automatic audio snippet playback on clue transitions when the puzzle has reached completion.
+  - Enhanced `EndScreenModal` with lifecycle unmount cleanup ensuring audio previews stop cleanly without dangling audio elements.
+  - Corrected `validateGrid` and `handleRestartPuzzle` state transitions so `isCompleted` reliably resets to `false` when a puzzle is restarted or cleared.
+
+---
+
 ## [1.5.1] - 2026-09-18
 
 ### Added

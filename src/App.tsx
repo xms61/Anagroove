@@ -128,6 +128,8 @@ export default function App() {
     selectedCell,
     activeClue,
     celebratingCells,
+    isCompleted,
+    setIsCompleted,
     showEndScreen,
     setShowEndScreen,
     isCellInActiveWord,
@@ -160,13 +162,14 @@ export default function App() {
       setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
       setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
       setShowEndScreen(false);
+      setIsCompleted(false);
     } catch (err: unknown) {
       console.error('Failed to generate live puzzle:', err);
       setPuzzleError(err instanceof Error ? err.message : 'Could not generate live crossword.');
     } finally {
       setIsLoadingPuzzle(false);
     }
-  }, [currentGenre, setUserLetters, setValidity, setShowEndScreen]);
+  }, [currentGenre, setUserLetters, setValidity, setShowEndScreen, setIsCompleted]);
 
   // Initial load: generate random puzzle if none stored in localStorage
   useEffect(() => {
@@ -300,6 +303,7 @@ export default function App() {
       setValidity(Array.from({ length: currentPuzzle.rows }, () => Array(currentPuzzle.cols).fill('untested')));
     }
     setShowEndScreen(false);
+    setIsCompleted(false);
   };
 
   const handleCreateRoom = useCallback(async (playerName: string, mode: 'coop' | 'race', themeId = 'all') => {
@@ -541,6 +545,7 @@ export default function App() {
         onPlaybackChange={setIsAudioPlaying}
         volume={defaultVolume}
         onVolumeChange={handleChangeDefaultVolume}
+        isCompleted={isCompleted || showEndScreen}
       />
 
       {/* On-The-Fly Live Generator Modal */}
@@ -553,6 +558,7 @@ export default function App() {
           setUserLetters(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('')));
           setValidity(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('untested')));
           setShowEndScreen(false);
+          setIsCompleted(false);
         }}
       />
 

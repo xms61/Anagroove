@@ -198,24 +198,24 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
       socketService.sendRaceProgress(multiplayerRoom.code, pct, playerId);
     }
 
-    if (allFilled) {
-      if (!hasError) {
-        setIsCompleted(true);
-        setShowEndScreen(true);
-        confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: { y: 0.6 }
-        });
+    if (allFilled && !hasError) {
+      setIsCompleted(true);
+      setShowEndScreen(true);
+      confetti({
+        particleCount: 120,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
 
-        // Record solved puzzle to server
-        apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length);
+      // Record solved puzzle to server
+      apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length);
 
-        // Notify multiplayer room of win
-        if (multiplayerRoom && playerId) {
-          socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');
-        }
+      // Notify multiplayer room of win
+      if (multiplayerRoom && playerId) {
+        socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');
       }
+    } else {
+      setIsCompleted(false);
     }
     return { allFilled, isAllCorrect: allFilled && !hasError };
   }, [puzzle, scheduleServerSave, multiplayerRoom, playerId, playerName]);
@@ -518,6 +518,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     activeClue,
     celebratingCells,
     isCompleted,
+    setIsCompleted,
     showEndScreen,
     setShowEndScreen,
     isCellInActiveWord,

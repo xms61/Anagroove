@@ -59,8 +59,9 @@
   - Dynamic answer lengths (2 to 14 letters) with rotating short/medium/long buckets and strict collaborating artist isolation.
   - Staggered spring bounce celebration animation when a typed word matches correctly (with toggle switch in settings).
   - Generation era parsing for K-Pop (*"new gen kpop"*, *"4th gen"*, *"3rd gen"*) and authentic soundalike/workout remix filtration.
-- **🏆 Victory Showcase**:
+- **🏆 Victory Showcase & Auto-Silence**:
   - Confetti celebration, full song breakdown with album cover artwork, track titles, artist details, and direct preview playback.
+  - Automatically cuts off background preview music the moment the puzzle is solved or fully revealed (via hint modal or `Shift+Tab`).
 
 ---
 

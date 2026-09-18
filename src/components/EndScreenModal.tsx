@@ -42,6 +42,11 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
     if (audioRef.current) {
       audioRef.current.volume = getSavedVolume();
     }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
