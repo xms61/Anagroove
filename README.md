@@ -168,6 +168,7 @@ npm run crawl:status
 | :--- | :--- | :--- |
 | `--target=<n>` | `500000` | Stops crawling as soon as the total canonical track count in SQLite reaches `<n>`. |
 | `--playlists=<n>` | `100` | Maximum number of curated genre & historical playlists to spider (Vector 1). Set to `0` to skip. |
+| `--decades=<n>` | `105` | Maximum decade × genre queries to spider (Vector 2). Set to `0` to skip. |
 | `--artists=<n>` | `250` | Maximum foundation artists to spider discographies and related artist graphs for (Vector 3). |
 | `--lexicon=<n>` | `1500` | Maximum high-frequency vocabulary keywords to sweep across paginated offsets (Vector 4). |
 | `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, country codes, languages, and cross-referenced merges without crawling. |

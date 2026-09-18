@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.4] - 2026-09-19
+
+### Added
+- **Decade/Genre Crawler Control (`--decades=<n>`)**:
+  - Added `decadesLimit` option to `musicHarvester.runFullHarvest` and `--decades=<n>` CLI argument in `scripts/crawl_catalog.js`.
+  - Enables skipping or scoping Vector 2 (e.g. `--decades=0`) when running targeted high-speed crawler runs.
+  - Documented `--decades=<n>` in the `README.md` flags table.
+
+---
+
 ## [1.9.3] - 2026-09-19
 
 ### Added

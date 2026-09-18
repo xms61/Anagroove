@@ -554,6 +554,7 @@ export class MusicHarvester {
   async runFullHarvest({
     targetTracks = 100000,
     playlistsLimit = 40,
+    decadesLimit = 105,
     artistsLimit = 150,
     lexiconLimit = 350,
     onProgress = () => {},
@@ -562,17 +563,17 @@ export class MusicHarvester {
 
     const stats = {
       playlistsCrawled: 0,
+      decadeQueriesCrawled: 0,
       artistsCrawled: 0,
       lexiconWordsCrawled: 0,
-      decadeQueriesCrawled: 0,
       totalInserted: 0,
       totalMerged: 0,
     };
 
     const isTargetReached = () => this.catalog.getStats().tracks >= targetTracks;
 
-    // Vector 1: Curated Playlists
-    if (!isTargetReached() && !this.abortRequested) {
+    // Vector 1: Curated Genre & Historical Playlists Spidering
+    if (playlistsLimit > 0 && !isTargetReached() && !this.abortRequested) {
       const playlistsToCrawl = CURATED_PLAYLIST_SEEDS.slice(0, playlistsLimit);
       for (const plQuery of playlistsToCrawl) {
         if (this.abortRequested || isTargetReached()) break;
@@ -587,8 +588,9 @@ export class MusicHarvester {
     }
 
     // Vector 2: Decade & Genre Cross-Product Matrix
-    if (!isTargetReached() && !this.abortRequested) {
-      for (const query of DECADE_GENRE_SEEDS) {
+    if (decadesLimit > 0 && !isTargetReached() && !this.abortRequested) {
+      const queriesToCrawl = DECADE_GENRE_SEEDS.slice(0, decadesLimit);
+      for (const query of queriesToCrawl) {
         if (this.abortRequested || isTargetReached()) break;
         const res = await this.harvestDeezerQuery(query, 2);
         stats.decadeQueriesCrawled++;
