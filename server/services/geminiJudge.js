@@ -1,34 +1,7 @@
 import { getGeminiApiKey, isGeminiJudgeConfigured } from '../config.js';
 import { logger } from '../logger.js';
 
-/**
- * Fallback priority ladder for Gemini models as specified:
- * 1. gemini-3.8-flash
- * 2. gemini-3.7-flash
- * 3. gemini-3.6-flash
- * 4. gemini-3.5-flash
- */
-export const GEMINI_MODEL_CASCADE = [
-  'gemini-3.8-flash',
-  'gemini-3.7-flash',
-  'gemini-3.6-flash',
-  'gemini-3.5-flash',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
-];
 
-let customGeminiFetch = null;
-
-/**
- * Allows test suites to inject mock Gemini fetch handlers.
- */
-export function setGeminiFetchForTesting(fn) {
-  customGeminiFetch = fn;
-}
 
 /**
  * Normalizes and validates the Negotiated Replacement Query Contract.
@@ -241,9 +214,28 @@ ${JSON.stringify(tracksSnippet, null, 2)}
 Respond ONLY with valid JSON conforming to the contract above.`;
 }
 
+export const GEMINI_MODEL_CASCADE = [
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+];
+
+const MAX_ATTEMPTS_PER_MODEL = 4;
+
+let customGeminiFetch = null;
+
 /**
- * Invokes the Gemini API with automatic fallback ladder:
+ * Allows test suites to inject mock Gemini fetch handlers.
+ */
+export function setGeminiFetchForTesting(fn) {
+  customGeminiFetch = fn;
+}
+
+/**
+ * Invokes the Gemini API with automatic retry per model and fallback ladder:
  * gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-3.5-flash
+ * Each model is retried up to MAX_ATTEMPTS_PER_MODEL (4) times before cascading.
  */
 export async function queryGeminiWithFallback(promptText) {
   const apiKey = getGeminiApiKey();
@@ -274,42 +266,67 @@ export async function queryGeminiWithFallback(promptText) {
       },
     };
 
-    try {
-      logger.info('llm_judge', `Attempting evaluation with model ${model}...`);
-      const response = await fetchFn(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
+    let modelFailedDueTo404 = false;
 
-      if (response.ok) {
-        const json = await response.json();
-        const rawContent = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawContent) {
-          try {
-            const parsed = JSON.parse(rawContent);
-            logger.info('llm_judge', `Model ${model} responded successfully.`);
-            return {
-              success: true,
-              modelUsed: model,
-              data: parsed,
-            };
-          } catch (parseErr) {
-            logger.warn('llm_judge', `Model ${model} returned unparseable JSON: ${parseErr.message}`);
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
+      try {
+        logger.info(
+          'llm_judge',
+          attempt === 1
+            ? `Attempting evaluation with model ${model}...`
+            : `Retrying evaluation with model ${model} (attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL})...`
+        );
+        const response = await fetchFn(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (response.ok) {
+          const json = await response.json();
+          const rawContent = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawContent) {
+            try {
+              const parsed = JSON.parse(rawContent);
+              logger.info('llm_judge', `Model ${model} responded successfully.`);
+              return {
+                success: true,
+                modelUsed: model,
+                data: parsed,
+              };
+            } catch (parseErr) {
+              logger.warn('llm_judge', `Model ${model} returned unparseable JSON: ${parseErr.message}`);
+            }
+          }
+        } else {
+          const errText = await response.text().catch(() => '');
+          logger.warn(
+            'llm_judge',
+            `Model ${model} attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL} failed with HTTP ${response.status}: ${errText.slice(0, 150)}`
+          );
+          if (response.status === 404) {
+            // Non-existent or deprecated model endpoint; retrying will produce the exact same 404
+            modelFailedDueTo404 = true;
+            break;
           }
         }
-      } else {
-        const errText = await response.text().catch(() => '');
-        logger.warn('llm_judge', `Model ${model} failed with HTTP ${response.status}: ${errText.slice(0, 150)}`);
-        if (i < GEMINI_MODEL_CASCADE.length - 1) {
-          logger.info('llm_judge', `Falling back to next model: ${GEMINI_MODEL_CASCADE[i + 1]}`);
+      } catch (netErr) {
+        logger.warn(
+          'llm_judge',
+          `Model ${model} attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL} network error: ${netErr.message}`
+        );
+      }
+
+      if (attempt < MAX_ATTEMPTS_PER_MODEL && !modelFailedDueTo404) {
+        if (!customGeminiFetch) {
+          const backoffMs = Math.min(attempt * 800, 3000);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
         }
       }
-    } catch (netErr) {
-      logger.warn('llm_judge', `Model ${model} network error: ${netErr.message}`);
-      if (i < GEMINI_MODEL_CASCADE.length - 1) {
-        logger.info('llm_judge', `Falling back to next model: ${GEMINI_MODEL_CASCADE[i + 1]}`);
-      }
+    }
+
+    if (i < GEMINI_MODEL_CASCADE.length - 1) {
+      logger.info('llm_judge', `Falling back to next model: ${GEMINI_MODEL_CASCADE[i + 1]}`);
     }
   }
 

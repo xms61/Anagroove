@@ -637,9 +637,7 @@ async function runUnitTests() {
   assert(GEMINI_MODEL_CASCADE[1] === 'gemini-3.7-flash', 'Model cascade fallback 1 is gemini-3.7-flash');
   assert(GEMINI_MODEL_CASCADE[2] === 'gemini-3.6-flash', 'Model cascade fallback 2 is gemini-3.6-flash');
   assert(GEMINI_MODEL_CASCADE[3] === 'gemini-3.5-flash', 'Model cascade fallback 3 is gemini-3.5-flash');
-  assert(GEMINI_MODEL_CASCADE.includes('gemini-2.5-flash'), 'Model cascade includes gemini-2.5-flash');
-  assert(GEMINI_MODEL_CASCADE.includes('gemini-2.0-flash'), 'Model cascade includes gemini-2.0-flash');
-  assert(GEMINI_MODEL_CASCADE.includes('gemini-1.5-flash'), 'Model cascade includes gemini-1.5-flash');
+  assert(GEMINI_MODEL_CASCADE.length === 4, 'Model cascade contains exactly the 4 functional 3.x models');
 
   // Simulate model fallback execution with mock API
   const requestedModels = [];
@@ -671,14 +669,51 @@ async function runUnitTests() {
   assert(res38.evaluated === true && res38.modelUsed === 'gemini-3.8-flash', 'Primary model gemini-3.8-flash used when available');
   assert(requestedModels.length === 1 && requestedModels[0] === 'gemini-3.8-flash', 'Only requested 3.8 when it succeeded');
 
-  // Test 4b: gemini-3.8-flash fails with 404, gemini-3.7-flash succeeds
+  // Test 4b: Intra-model retry: gemini-3.8-flash fails 2 times with 503, then succeeds on attempt 3
+  requestedModels.length = 0;
+  let attempts38 = 0;
+  setGeminiFetchForTesting(async (url) => {
+    const match = url.match(/models\/([^:]+):generateContent/);
+    const model = match ? match[1] : '';
+    requestedModels.push(model);
+    if (model === 'gemini-3.8-flash') {
+      attempts38++;
+      if (attempts38 < 3) {
+        return new Response('High demand temporary spike', { status: 503 });
+      }
+      return new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                isSatisfied: true,
+                verdictSummary: 'Approved on 3.8 after retry',
+                rejectedTrackIndices: [],
+                replacementQueries: [],
+              }),
+            }],
+          },
+        }],
+      }), { status: 200 });
+    }
+    return new Response('Fallback', { status: 500 });
+  });
+
+  const resRetry = await evaluateSongSelection({
+    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
+  });
+  assert(resRetry.evaluated === true && resRetry.modelUsed === 'gemini-3.8-flash', 'Model retries with same model and succeeds without cascading');
+  assert(requestedModels.length === 3, 'Tried same model 3 times before succeeding');
+  assert(requestedModels.every(m => m === 'gemini-3.8-flash'), 'Never cascaded to next model when retry succeeded');
+
+  // Test 4c: gemini-3.8-flash exhausts all 4 retries, then cascades to gemini-3.7-flash
   requestedModels.length = 0;
   setGeminiFetchForTesting(async (url) => {
     const match = url.match(/models\/([^:]+):generateContent/);
     const model = match ? match[1] : '';
     requestedModels.push(model);
     if (model === 'gemini-3.8-flash') {
-      return new Response('Model Not Found', { status: 404 });
+      return new Response('High demand', { status: 503 });
     }
     return new Response(JSON.stringify({
       candidates: [{
@@ -699,17 +734,18 @@ async function runUnitTests() {
   const res37 = await evaluateSongSelection({
     candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
   });
-  assert(res37.evaluated === true && res37.modelUsed === 'gemini-3.7-flash', 'Falls back to gemini-3.7-flash on 3.8 failure');
-  assert(requestedModels[0] === 'gemini-3.8-flash' && requestedModels[1] === 'gemini-3.7-flash', 'Tried 3.8 first, then fell back to 3.7');
+  assert(res37.evaluated === true && res37.modelUsed === 'gemini-3.7-flash', 'Falls back to gemini-3.7-flash after 4 retries of 3.8');
+  assert(requestedModels.filter(m => m === 'gemini-3.8-flash').length === 4, 'Attempted gemini-3.8-flash exactly 4 times before cascading');
+  assert(requestedModels[4] === 'gemini-3.7-flash', 'Fifth request was to fallback gemini-3.7-flash');
 
-  // Test 4c: 3.8 and 3.7 fail, 3.6 succeeds
+  // Test 4d: 404 immediately cascades without wasting 4 retries
   requestedModels.length = 0;
   setGeminiFetchForTesting(async (url) => {
     const match = url.match(/models\/([^:]+):generateContent/);
     const model = match ? match[1] : '';
     requestedModels.push(model);
-    if (model === 'gemini-3.8-flash' || model === 'gemini-3.7-flash') {
-      return new Response('Rate limited', { status: 429 });
+    if (model === 'gemini-3.8-flash') {
+      return new Response('Not Found', { status: 404 });
     }
     return new Response(JSON.stringify({
       candidates: [{
@@ -717,7 +753,7 @@ async function runUnitTests() {
           parts: [{
             text: JSON.stringify({
               isSatisfied: true,
-              verdictSummary: 'Approved on 3.6',
+              verdictSummary: 'Approved on 3.7 after 404',
               rejectedTrackIndices: [],
               replacementQueries: [],
             }),
@@ -727,72 +763,13 @@ async function runUnitTests() {
     }), { status: 200 });
   });
 
-  const res36 = await evaluateSongSelection({
+  const res404 = await evaluateSongSelection({
     candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
   });
-  assert(res36.evaluated === true && res36.modelUsed === 'gemini-3.6-flash', 'Falls back to gemini-3.6-flash when 3.8 and 3.7 fail');
+  assert(res404.evaluated === true && res404.modelUsed === 'gemini-3.7-flash', 'Cascades to 3.7 on 404');
+  assert(requestedModels.filter(m => m === 'gemini-3.8-flash').length === 1, '404 immediately breaks without retrying same model');
 
-  // Test 4d: 3.8, 3.7, 3.6 fail, 3.5 succeeds
-  requestedModels.length = 0;
-  setGeminiFetchForTesting(async (url) => {
-    const match = url.match(/models\/([^:]+):generateContent/);
-    const model = match ? match[1] : '';
-    requestedModels.push(model);
-    if (model !== 'gemini-3.5-flash') {
-      return new Response('Unavailable', { status: 503 });
-    }
-    return new Response(JSON.stringify({
-      candidates: [{
-        content: {
-          parts: [{
-            text: JSON.stringify({
-              isSatisfied: true,
-              verdictSummary: 'Approved on 3.5',
-              rejectedTrackIndices: [],
-              replacementQueries: [],
-            }),
-          }],
-        },
-      }],
-    }), { status: 200 });
-  });
-
-  const res35 = await evaluateSongSelection({
-    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
-  });
-  assert(res35.evaluated === true && res35.modelUsed === 'gemini-3.5-flash', 'Falls back to gemini-3.5-flash when 3.8, 3.7, 3.6 fail');
-
-  // Test 4d2: 3.x models fail -> falls back to gemini-2.5-flash
-  requestedModels.length = 0;
-  setGeminiFetchForTesting(async (url) => {
-    const match = url.match(/models\/([^:]+):generateContent/);
-    const model = match ? match[1] : '';
-    requestedModels.push(model);
-    if (model.startsWith('gemini-3.')) {
-      return new Response('High demand', { status: 503 });
-    }
-    return new Response(JSON.stringify({
-      candidates: [{
-        content: {
-          parts: [{
-            text: JSON.stringify({
-              isSatisfied: true,
-              verdictSummary: 'Approved on 2.5-flash',
-              rejectedTrackIndices: [],
-              replacementQueries: [],
-            }),
-          }],
-        },
-      }],
-    }), { status: 200 });
-  });
-
-  const res25 = await evaluateSongSelection({
-    candidateTracks: [{ title: 'T1', artist: 'A1', answer: 'W1', clueType: 'Song title' }],
-  });
-  assert(res25.evaluated === true && res25.modelUsed === 'gemini-2.5-flash', 'Falls back to gemini-2.5-flash when 3.x models fail with 503');
-
-  // Test 4e: All models fail -> graceful fallback without breaking
+  // Test 4e: All models fail across all retries -> graceful fallback without breaking
   requestedModels.length = 0;
   setGeminiFetchForTesting(async (url) => {
     const match = url.match(/models\/([^:]+):generateContent/);
@@ -805,7 +782,7 @@ async function runUnitTests() {
   });
   assert(resFail.evaluated === false, 'Gracefully handles total cascade failure without crashing');
   assert(resFail.judgment.isSatisfied === true, 'Provides safe bypass judgment when all models fail');
-  assert(requestedModels.length === GEMINI_MODEL_CASCADE.length, 'Attempted all models in cascade before giving up');
+  assert(requestedModels.length === GEMINI_MODEL_CASCADE.length * 4, 'Attempted all models 4 times before giving up (16 total calls)');
 
   // 5. Iterative Refinement Loop in getRandomSongPool
   const mockInitialCandidates = [
