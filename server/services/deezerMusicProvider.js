@@ -79,8 +79,8 @@ export const DEEZER_GENRE_TAXONOMY = {
   edm: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"'], minFans: 100000, minRank: 250000 },
   electronic: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"'], minFans: 100000, minRank: 250000 },
   latin: { chartId: 197, searches: ['genre:"latin"'], minFans: 150000, minRank: 300000 },
-  kpop: { chartId: 16, searches: ['k-pop', 'kpop'], minFans: 50000, minRank: 250000 },
-  anime: { chartId: 16, searches: ['anime', 'j-rock', 'vocaloid'], minFans: 10000, minRank: 200000 },
+  kpop: { chartId: null, searches: ['k-pop', 'kpop hits', 'korean pop'], minFans: 25000, minRank: 200000 },
+  anime: { chartId: null, searches: ['anime ost', 'anime opening', 'japanese animation', 'j-rock anime'], minFans: 1000, minRank: 100000 },
   gaming: { chartId: 173, searches: ['video game soundtrack', 'gaming ost'], minFans: 1000, minRank: 150000 },
   cinematic: { chartId: 173, searches: ['soundtrack', 'movie ost', 'film score'], minFans: 1000, minRank: 150000 },
   poppunk: { chartId: 85, searches: ['pop punk', 'emo rock'], minFans: 50000, minRank: 250000 },
@@ -121,7 +121,7 @@ export const deezerMusicProvider = {
     if (cached) return cached;
 
     const requests = [];
-    if (customSearches.length === 0 && genreConfig.chartId !== undefined && !isPure) {
+    if (customSearches.length === 0 && genreConfig.chartId !== null && genreConfig.chartId !== undefined && !isPure) {
       requests.push(fetchJson(`https://api.deezer.com/chart/${genreConfig.chartId}/tracks?limit=100`));
     }
     for (const query of customSearches) {

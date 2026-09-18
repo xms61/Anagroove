@@ -1,14 +1,18 @@
 /**
  * Parses user prompts and settings into actionable multi-provider query plans.
  * Follows KISS and DRY principles: pure functions, transparent regexes, zero external dependencies.
+ * Strictly avoids predetermined lists (artists, songs, seed words) to ensure dynamic, non-repetitive exploration.
  */
 
-const RANDOM_SEED_WORDS = [
-  'love', 'time', 'night', 'dance', 'heart', 'baby', 'world', 'dream',
-  'fire', 'light', 'blue', 'sun', 'rain', 'star', 'girl', 'life',
-  'music', 'rock', 'sky', 'eyes', 'road', 'magic', 'wild', 'gold',
-  'shadow', 'river', 'moon', 'space', 'sweet', 'summer', 'winter'
-];
+/**
+ * Generates a dynamic, non-predetermined alphanumeric search seed for open exploration.
+ * Uses uniform random letter or bigram sampling across the entire alphabet.
+ */
+function generateDynamicSeed() {
+  const char1 = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+  const char2 = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+  return `${char1}${char2}`;
+}
 
 /**
  * Parses a free-text prompt into structured steering parameters.
@@ -148,16 +152,17 @@ export function buildQueryPlan(userOptions = {}) {
     }
   }
 
-  // If pure mode or no specific searches, add high-entropy random seeds
-  if (deezerSearches.length === 0 || popularity === 'pure') {
-    const seedWord1 = RANDOM_SEED_WORDS[Math.floor(Math.random() * RANDOM_SEED_WORDS.length)];
-    const seedWord2 = RANDOM_SEED_WORDS[Math.floor(Math.random() * RANDOM_SEED_WORDS.length)];
-    deezerSearches.push(seedWord1);
-    if (seedWord1 !== seedWord2) {
-      deezerSearches.push(seedWord2);
-    }
-    itunesSearches.push(seedWord1);
+  // ONLY when completely open (no artist, album, genre, or decade specified),
+  // inject dynamic random alphanumeric exploration (never hardcoded dictionary words)
+  if (deezerSearches.length === 0) {
+    const dynamicSeed = generateDynamicSeed();
+    deezerSearches.push(dynamicSeed);
+    itunesSearches.push(dynamicSeed);
   }
+
+  // Dynamic sorting order to explore varied catalog depths on repeated calls
+  const SORT_ORDERS = ['RANKING', 'TRACK_ASC', 'RATING_ASC', 'DURATION_ASC'];
+  const randomOrder = SORT_ORDERS[Math.floor(Math.random() * SORT_ORDERS.length)];
 
   return {
     popularity,
@@ -171,6 +176,7 @@ export function buildQueryPlan(userOptions = {}) {
     maxRank,
     deezerSearches,
     itunesSearches,
-    randomOffset: Math.floor(Math.random() * 120),
+    randomOffset: Math.floor(Math.random() * 150),
+    sortOrder: randomOrder,
   };
 }

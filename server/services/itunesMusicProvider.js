@@ -64,16 +64,19 @@ async function fetchJson(url) {
 export const itunesMusicProvider = {
   name: 'itunes',
 
-  async getCandidateTracks({ query = '', limit = 50 } = {}) {
+  async getCandidateTracks({ query = '', limit = 50, country = 'US' } = {}) {
     const trimmed = typeof query === 'string' ? query.trim() : '';
     if (!trimmed) return [];
 
-    const cacheKey = `${trimmed}:${limit}`;
+    // For anime and kpop, don't restrict to US storefront so Japanese/Korean OSTs are discoverable
+    const isSpecialGenre = /\b(anime|kpop|k-pop|japanese|korean)\b/i.test(trimmed);
+    const countryParam = isSpecialGenre || !country ? '' : `&country=${country}`;
+    const cacheKey = `${trimmed}:${limit}:${countryParam}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
     try {
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=song&limit=${Math.min(100, Math.max(10, limit))}`;
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=song&limit=${Math.min(100, Math.max(10, limit))}${countryParam}`;
       const data = await fetchJson(url);
       const results = Array.isArray(data?.results) ? data.results : [];
 

@@ -15,6 +15,37 @@ export function setMusicProviderForTesting(provider) {
 }
 
 /**
+ * Validates whether a track fits the required language constraints:
+ * English for all categories, with an explicit exemption for Anime (Japanese) and K-Pop (Korean).
+ */
+export function isLanguagePermitted(track, genre = 'all') {
+  const normalizedGenre = typeof genre === 'string' ? genre.toLowerCase().trim() : 'all';
+  if (normalizedGenre === 'anime' || normalizedGenre === 'kpop') {
+    return true;
+  }
+
+  const title = String(track?.title || '');
+  const artist = String(track?.artist || '');
+
+  // Reject non-Latin alphabets (Cyrillic, Greek, Arabic, Kanji, Hiragana, Hangul, Thai, etc.)
+  // \u0000-\u024F encompasses Basic Latin and Latin Extended (common Western European accents)
+  if (/[^\u0000-\u024F\s\d.,!?'"&()/-]/u.test(title) || /[^\u0000-\u024F\s\d.,!?'"&()/-]/u.test(artist)) {
+    return false;
+  }
+
+  // Reject tracks containing common non-English linguistic markers
+  // (Spanish/Portuguese/French/German stopwords) unless it's a known theme
+  const foreignMarkers = /\b(amor|de|el|la|los|las|del|por|para|una|uno|vida|mi|su|tu|dans|avec|pour|des|une|und|nicht|ist|dass|como|mais|pra|você|sen|ben|bir)\b/i;
+  if (foreignMarkers.test(title)) {
+    return false;
+  }
+
+  return true;
+}
+
+const PREFERRED_CLUE_ROTATION = ['title', 'artist', 'title', 'artist', 'keyword'];
+
+/**
  * Selects playable, distinct tracks combining Deezer & iTunes with
  * deterministic seed sorting and variety rejection sampling.
  */
@@ -44,6 +75,7 @@ export async function getRandomSongPool({
   const recent = new Set(recentIds.map(String));
   const seenTracks = new Set();
   const seenArtists = new Set();
+  const seenTitles = new Set();
   const seenAnswers = new Set();
   const limit = Math.min(100, count * 3);
 
@@ -91,13 +123,14 @@ export async function getRandomSongPool({
     orderedCandidates = shuffleArray(rawCandidates);
   }
 
-  // 3. Variety Rejection Sampling
+  // 3. Variety Rejection Sampling & Language Filtering
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const songs = [];
 
   for (const track of orderedCandidates) {
     const trackIdentity = `${canonicalArtistKey(track.artist)}|${canonicalTrackKey(track.title)}`;
     const artistIdentity = canonicalArtistKey(track.artist);
+    const titleIdentity = canonicalTrackKey(track.title);
     const providerTrackId = String(track.providerTrackId);
     const isRecent = recent.has(track.id) ||
       recent.has(providerTrackId) ||
@@ -108,8 +141,14 @@ export async function getRandomSongPool({
     if (
       isRecent ||
       seenTracks.has(trackIdentity) ||
+      seenTitles.has(titleIdentity) ||
       blacklistMatchesTrack(blacklist, track)
     ) {
+      continue;
+    }
+
+    // Language constraint: enforce English for all categories except anime and kpop
+    if (!isLanguagePermitted(track, queryPlan.genre)) {
       continue;
     }
 
@@ -118,11 +157,14 @@ export async function getRandomSongPool({
       continue;
     }
 
-    const keyword = extractAnswerKeyword(track.title, track.artist);
+    // Cycle preferred clue type across the crossword to guarantee clue variance
+    const preferredType = PREFERRED_CLUE_ROTATION[songs.length % PREFERRED_CLUE_ROTATION.length];
+    const keyword = extractAnswerKeyword(track.title, track.artist, { preferredType });
     if (!keyword || seenAnswers.has(keyword.answer)) continue;
 
     seenTracks.add(trackIdentity);
     seenArtists.add(artistIdentity);
+    seenTitles.add(titleIdentity);
     seenAnswers.add(keyword.answer);
 
     songs.push({

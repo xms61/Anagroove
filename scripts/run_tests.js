@@ -16,7 +16,7 @@ import {
 } from '../server/services/deezerMusicProvider.js';
 import { mapItunesTrack } from '../server/services/itunesMusicProvider.js';
 import { parsePrompt, buildQueryPlan } from '../server/services/queryBuilder.js';
-import { getRandomSongPool, setMusicProviderForTesting } from '../server/services/musicService.js';
+import { getRandomSongPool, setMusicProviderForTesting, isLanguagePermitted } from '../server/services/musicService.js';
 import {
   validateUserId,
   validateProgressPayload,
@@ -73,13 +73,19 @@ async function runUnitTests() {
   assert(featTrack?.answer === 'STAY', 'Strips (feat. ...) and extracts clean title');
 
   const combinedTrack = extractAnswerKeyword('Your Love', 'The Outfield');
-  assert(combinedTrack?.answer === 'YOURLOVE' && combinedTrack.clueType === 'Song title', 'Combines multi-word title up to 16 characters');
+  assert(combinedTrack?.answer === 'YOURLOVE' && combinedTrack.clueType === 'Song title', 'Combines multi-word title up to 14 characters');
+
+  const boundTrack = extractAnswerKeyword('Blinding Lights', 'The Weeknd');
+  assert(boundTrack?.answer === 'BLINDINGLIGHTS' && boundTrack.answer.length === 14, 'Permits combined titles up to 14 characters');
 
   const longBoundTrack = extractAnswerKeyword("Don't Stop Believin'", 'Journey');
-  assert(longBoundTrack?.answer === 'DONTSTOPBELIEVIN' && longBoundTrack.answer.length === 16, 'Permits combined titles up to 16 characters');
+  assert(longBoundTrack?.answer === 'JOURNEY' && longBoundTrack.clueType === 'Artist name', 'Falls back to artist for titles exceeding 14 characters');
 
   const multiWordTooLong = extractAnswerKeyword('Smells Like Teen Spirit', 'Nirvana');
-  assert(multiWordTooLong?.answer === 'NIRVANA' && multiWordTooLong.clueType === 'Artist name', 'Falls back to artist for titles exceeding 16 characters');
+  assert(multiWordTooLong?.answer === 'NIRVANA' && multiWordTooLong.clueType === 'Artist name', 'Falls back to artist for titles exceeding 14 characters');
+
+  const artistPreferred = extractAnswerKeyword('Your Love', 'The Outfield', { preferredType: 'artist' });
+  assert(artistPreferred?.answer === 'THEOUTFIELD' && artistPreferred.clueType === 'Artist name', 'Honors preferred clue type for artist');
 
   const nullResult = extractAnswerKeyword('', '');
   assert(nullResult === null, 'Returns null on empty input');
@@ -176,6 +182,15 @@ async function runUnitTests() {
   const purePlan = buildQueryPlan({ popularity: 'pure' });
   assert(purePlan.popularity === 'pure' && purePlan.minFans === 0 && purePlan.minRank === 0, 'Pure mode clears popularity filters');
   assert(purePlan.deezerSearches.length > 0, 'Pure mode injects entropy search seeds');
+
+  const animePlan = buildQueryPlan({ genre: 'anime' });
+  assert(animePlan.genre === 'anime' && animePlan.deezerSearches.includes('anime'), 'Genre query retains targeted anime search');
+  assert(animePlan.deezerSearches.every(s => !/^[a-z]{2}$/.test(s)), 'Genre query avoids adding unrelated alphanumeric seeds');
+
+  assert(isLanguagePermitted({ title: 'Blinding Lights', artist: 'The Weeknd' }, 'pop') === true, 'Allows English track for pop');
+  assert(isLanguagePermitted({ title: 'Amor de Mi Vida', artist: 'Artista' }, 'pop') === false, 'Rejects foreign track in English pop');
+  assert(isLanguagePermitted({ title: 'Gurenge', artist: 'LiSA' }, 'anime') === true, 'Permits Japanese track for anime');
+  assert(isLanguagePermitted({ title: 'Dynamite', artist: 'BTS' }, 'kpop') === true, 'Permits Korean track for kpop');
 
   const itunesSample = {
     trackId: 12345,
@@ -530,6 +545,11 @@ async function runIntegrationTests() {
     assert(steeredBandARun.filter(t => t.artist === 'Band A').length === 2, 'Steering single artist permits multiple tracks by that artist');
 
     setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
+
+    // Clue variance check: ensure the pool produces diverse clue types across questions
+    const diversePool = await getRandomSongPool({ count: 6 });
+    const clueTypes = new Set(diversePool.map(s => s.clueType));
+    assert(clueTypes.size > 1, 'Song pool yields diverse clue types across questions');
 
     const invalidLive = await fetch(`${baseUrl}/api/puzzles/live`, {
       method: 'POST',

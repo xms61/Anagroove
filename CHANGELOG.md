@@ -10,33 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-09-18
 
 ### Added
-- **Pure & Steered Randomization Engine**:
-  - Full catalog discovery capability unconstrained by top chart rankings or popularity filters.
-  - Free-text prompt parser (`server/services/queryBuilder.js`) with regex heuristics extracting decades (`80s`, `1990s`), artist directives (`by Daft Punk`, quotes), popularity modifiers, and custom themes.
-  - 4-tier popularity spectrum: `Pure Random` (unfiltered), `Hidden Gems` (indie/obscure cuts), `Balanced` (pleasing mix), and `Top Hits` (chart-toppers).
-  - Single-artist steering mode with automatic exemption from 1-track-per-artist variety limits.
-- **Natural Song Title Answers (Combined Words Up to 16 Characters)**:
-  - Multi-word track titles are now concatenated into natural crossword answers (e.g. *"Your Love"* $\rightarrow$ `YOURLOVE`, *"Don't Stop Believin'"* $\rightarrow$ `DONTSTOPBELIEVIN`, *"Blinding Lights"* $\rightarrow$ `BLINDINGLIGHTS`).
-  - Strict 3 to 16 character bounds matching the 22×22 physical crossword grid dimension.
-  - Graceful fallback to normalized complete artist names or prominent keywords for titles exceeding 16 letters (e.g. *"Smells Like Teen Spirit"* $\rightarrow$ `NIRVANA`).
-- **Multi-Endpoint Music Harvesting**:
-  - Integrated iTunes Search API provider (`server/services/itunesMusicProvider.js`) with preview validation, 600×600 artwork resolution, and bounded LRU caching.
-  - Coordinated parallel fetching between Deezer and iTunes with canonical track identity deduplication (`canonicalArtistKey + '|' + canonicalTrackKey`).
-- **Deterministic Seed Hashing & Sharing**:
-  - Deterministic SHA-256 seed hashing ($\text{SHA-256}(\text{seed} + \text{":"} + \text{track.id})$) per architectural blueprint for reproducible puzzle sharing across players.
-- **Enhanced Live Generator UI (`src/components/LiveGeneratorModal.tsx`)**:
-  - Mode switcher for **Theme Presets** vs. **Steered Prompt & AI**.
-  - Quick example prompt chips (*"80s Japanese City Pop"*, *"Songs by Daft Punk"*, *"Classic 70s rock ballads"*, etc.).
-  - Popularity spectrum segmented controls.
-  - Collapsible advanced steering panel for custom artist targets and deterministic seeds.
+- **Dynamic Catalog Discovery (Zero Predetermined Lists)**:
+  - Completely removed hardcoded artist lists, predetermined songs, and dictionary seed words to prevent repetitive output on requerying.
+  - Dynamically randomized query exploration via random pagination offsets (`index`), randomized sort orders (`RANKING`, `TRACK_ASC`, `RATING_ASC`, `DURATION_ASC`), and uniform phonetic letter sampling for open catalog queries.
+- **Genre Fidelity & Anime Search Precision**:
+  - Eliminated generic English seed word pollution from genre searches. Selecting `anime` strictly queries anime soundtracks, openings, and Japanese animation music without unrelated pop songs.
+- **English Language Enforcement (Except Anime & K-Pop)**:
+  - Non-anime/non-kpop categories (Pop, Rock, Hip-Hop, EDM, etc.) are strictly filtered to the English language, discarding non-Latin scripts and foreign language tracks.
+  - Explicitly permits Japanese soundtracks and artists for **Anime** and Korean tracks for **K-Pop**.
+  - Localized iTunes queries with `country=US` and `lang=en_us` for English themes.
+- **Balanced Clue Type Variance**:
+  - Puzzles now feature an engaging, intentional balance of question types: **~40% Song Title**, **~40% Artist Name**, and **~20% Song Title Keyword**.
+  - Clue types cycle across the crossword (`extractAnswerKeyword` accepts `preferredType`), with automatic graceful fallback.
+- **14-Character Song Title Cap**:
+  - Reduced combined song title maximum length from 16 to **14 characters** (3 to 14 letters), perfectly suited for standard physical crossword dimensions (e.g. `YOURLOVE`, `GETLUCKY`, `BLINDINGLIGHTS`).
+  - Longer titles fall back to artist name (3 to 14 chars) or prominent title keyword (4 to 10 chars).
+- **Duplicate Title Exclusion**:
+  - Candidate pool rejection sampling tracks canonical song titles (`seenTitles`) in addition to tracks, artists, and answers, preventing duplicate or cover song titles in the same puzzle.
+- **Prompt Parser & Multi-Endpoint Harvesting**:
+  - Free-text prompt parser (`server/services/queryBuilder.js`) extracting decades, artist directives, and popularity spectrums.
+  - iTunes search provider integration (`server/services/itunesMusicProvider.js`) with 600×600 album artwork and preview verification.
+  - Deterministic SHA-256 seed hashing for reproducible puzzle sharing.
 - **Automated Test Coverage**:
-  - Added 12 new automated test assertions in `scripts/run_tests.js` covering prompt parsing, iTunes track mapping, query plan generation, deterministic seed hashing, and variety rejection sampling (91 tests total).
+  - Expanded automated test suite in `scripts/run_tests.js` to 100 passing tests covering 14-char limits, clue variance, language permission checks, anime genre isolation, and duplicate title exclusions.
 
 ### Changed
-- `shared/musicKeywords.js`: Replaced single-word title extraction with combined multi-word answers up to 16 characters.
-- `server/server.js`: `/api/puzzles/live` and `/api/music/random` forward steering parameters (`prompt`, `artist`, `album`, `decade`, `popularity`, `seed`).
-- `server/validators.js`: Updated payload schemas to accept and sanitize steering parameters.
-- `src/services/dynamicMusicService.ts`: Upgraded `generateLivePuzzle` to accept `LivePuzzleOptions` while preserving backward compatibility.
+- `shared/musicKeywords.js`: Updated combined song title answer cap to 14 letters; added candidate extraction supporting preferred clue types (`extractAllAnswerCandidates`, `extractAnswerKeyword`).
+- `server/services/queryBuilder.js`: Replaced hardcoded seed words with dynamic entropy; ensured genre queries are never contaminated with unrelated search terms.
+- `server/services/deezerMusicProvider.js`: Removed generic Asian pop chart 16 for anime; configured targeted anime and soundtrack searches.
+- `server/services/musicService.js`: Added `isLanguagePermitted`, duplicate title rejection, and clue type rotation across crossword pools.
 
 ---
 
