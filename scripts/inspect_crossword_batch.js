@@ -66,41 +66,112 @@ const SUITES = {
   ],
 };
 
-const promptsToRun = SUITES[targetSuite] || SUITES.edge_cases;
+const suitesToRun = targetSuite === 'all'
+  ? Object.entries(SUITES)
+  : [[targetSuite, SUITES[targetSuite] || SUITES.edge_cases]];
 
 async function main() {
-  console.log(`=== RUNNING SUITE [${targetSuite.toUpperCase()}] FOR LIVE LLM JUDGMENT ===\n`);
+  console.log(`================================================================================`);
+  console.log(`=== STARTING VERY BIG CROSSWORD GENERATION BATCH (${numGens} GENS PER PROMPT) ===`);
+  console.log(`================================================================================\n`);
 
-  for (const item of promptsToRun) {
-    console.log(`--------------------------------------------------------------------------------`);
-    console.log(`PROMPT [${item.id}]: "${item.prompt}" (Archetype: ${targetSuite === 'dense' || targetSuite === 'small' ? targetSuite : 'standard'})`);
-    console.log(`--------------------------------------------------------------------------------`);
+  let totalCrosswordsGenerated = 0;
+  let totalSuccessfulPuzzles = 0;
+  let totalWordsPlaced = 0;
+  let grandTotalShort = 0;
+  let grandTotalMedium = 0;
+  let grandTotalLong = 0;
+  const allFlags = [];
 
-    for (let gen = 1; gen <= numGens; gen++) {
-      const res = await buildCrosswordFromCatalog({
-        prompt: item.prompt,
-        archetype: targetSuite === 'dense' || targetSuite === 'small' ? targetSuite : 'standard',
-        targetWords: targetSuite === 'small' ? 6 : 10,
-      });
+  for (const [suiteKey, promptList] of suitesToRun) {
+    console.log(`\n################################################################################`);
+    console.log(`### SUITE: ${suiteKey.toUpperCase()} (${promptList.length} prompts x ${numGens} gens = ${promptList.length * numGens} puzzles)`);
+    console.log(`################################################################################\n`);
 
-      const p = res.puzzle;
-      if (!p) {
-        console.log(`  Gen ${gen}: FAILED (No layout generated)`);
-        continue;
+    const archetype = (suiteKey === 'dense' || suiteKey === 'small') ? suiteKey : 'standard';
+    const targetWords = suiteKey === 'small' ? 6 : 10;
+
+    for (const item of promptList) {
+      console.log(`--------------------------------------------------------------------------------`);
+      console.log(`[${item.id}] "${item.prompt}" (Archetype: ${archetype}, Target words: ${targetWords})`);
+      console.log(`--------------------------------------------------------------------------------`);
+
+      const promptTracks = [];
+      const promptAnswers = [];
+      let successfulPuzzles = 0;
+      let shortCount = 0;
+      let medCount = 0;
+      let longCount = 0;
+
+      for (let gen = 1; gen <= numGens; gen++) {
+        totalCrosswordsGenerated++;
+        const res = await buildCrosswordFromCatalog({
+          prompt: item.prompt,
+          archetype,
+          targetWords,
+        });
+
+        const p = res.puzzle;
+        if (!p) {
+          console.log(`  Gen ${gen}: FAILED (No layout generated)`);
+          allFlags.push({ id: item.id, prompt: item.prompt, issue: `Gen ${gen} failed to generate layout` });
+          continue;
+        }
+
+        successfulPuzzles++;
+        totalSuccessfulPuzzles++;
+        totalWordsPlaced += p.clues.length;
+
+        console.log(`  Gen ${gen} (${p.clues.length}/${targetWords} words, ${p.rows}x${p.cols}):`);
+        for (const c of p.clues) {
+          const s = c.song || {};
+          const pop = typeof s.popularity === 'number' ? (s.popularity > 100 ? Math.round(s.popularity / 10000) : s.popularity) : 0;
+          const lang = s.language || '??';
+          const yr = s.release_year || '????';
+          const ans = c.answer || toCrosswordAnswer(c.title || '');
+          const ansLen = ans.length;
+
+          if (ansLen <= 5) { shortCount++; grandTotalShort++; }
+          else if (ansLen <= 8) { medCount++; grandTotalMedium++; }
+          else { longCount++; grandTotalLong++; }
+
+          promptTracks.push(`${s.artist} - ${s.title}`);
+          promptAnswers.push(ans);
+
+          // Criteria checks
+          const isSingleArtist = /songs by /i.test(item.prompt);
+          if (isSingleArtist && c.clueType === 'Artist name') {
+            allFlags.push({ id: item.id, prompt: item.prompt, issue: `Single artist prompt leaked artist clue: "${ans}"` });
+          }
+
+          console.log(`    - [${lang}] ${s.artist} - "${s.title}" (${yr}, Pop: ${pop}) -> Ans: "${ans}" (${ansLen} letters, ${c.clueType})`);
+        }
       }
 
-      console.log(`  Gen ${gen} (${p.clues.length} words, ${p.rows}x${p.cols}):`);
-      for (const c of p.clues) {
-        const s = c.song || {};
-        const pop = typeof s.popularity === 'number' ? (s.popularity > 100 ? Math.round(s.popularity / 10000) : s.popularity) : '?';
-        const lang = s.language || '??';
-        const yr = s.release_year || '????';
-        const ans = c.answer || toCrosswordAnswer(c.title || '');
-        console.log(`    - [${lang}] ${s.artist} - "${s.title}" (${yr}, Pop: ${pop}) -> Answer: "${ans}" (${ans.length} letters, ${c.clueType})`);
-      }
+      // Compute prompt-level variety & length distribution
+      const uniqueTracks = new Set(promptTracks);
+      const uniquenessRatio = promptTracks.length > 0 ? (uniqueTracks.size / promptTracks.length) : 1;
+      const totalWords = promptAnswers.length;
+      const pctShort = totalWords > 0 ? Math.round((shortCount / totalWords) * 100) : 0;
+      const pctMed = totalWords > 0 ? Math.round((medCount / totalWords) * 100) : 0;
+      const pctLong = totalWords > 0 ? Math.round((longCount / totalWords) * 100) : 0;
+
+      console.log(`  📊 Prompt Summary: Success: ${successfulPuzzles}/${numGens} | Uniqueness: ${(uniquenessRatio * 100).toFixed(1)}% (${uniqueTracks.size}/${promptTracks.length} tracks) | Lengths: Short ${pctShort}%, Med ${pctMed}%, Long ${pctLong}%\n`);
     }
-    console.log('');
   }
+
+  const grandTotalWords = grandTotalShort + grandTotalMedium + grandTotalLong;
+  console.log(`================================================================================`);
+  console.log(`=== BATCH GENERATION COMPLETE ===`);
+  console.log(`Total Puzzles Attempted: ${totalCrosswordsGenerated}`);
+  console.log(`Successful Puzzles: ${totalSuccessfulPuzzles} (${((totalSuccessfulPuzzles / totalCrosswordsGenerated) * 100).toFixed(1)}%)`);
+  console.log(`Total Words Placed: ${totalWordsPlaced}`);
+  console.log(`Grand Length Distribution: Short (3-5): ${Math.round((grandTotalShort / grandTotalWords) * 100)}%, Med (6-8): ${Math.round((grandTotalMedium / grandTotalWords) * 100)}%, Long (9-14): ${Math.round((grandTotalLong / grandTotalWords) * 100)}%`);
+  console.log(`Anomalies / Flags Detected: ${allFlags.length}`);
+  if (allFlags.length > 0) {
+    console.log(`Flags:`, JSON.stringify(allFlags, null, 2));
+  }
+  console.log(`================================================================================\n`);
 }
 
 main().catch(console.error);
