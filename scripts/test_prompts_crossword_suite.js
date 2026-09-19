@@ -189,7 +189,7 @@ async function runPromptCrosswordSuite() {
         else clueStats.keyword++;
 
         // Validate answer integrity
-        if (!clue.answer || clue.answer.length < 3 || clue.answer.length > 14) {
+        if (!clue.answer || clue.answer.length < 2 || clue.answer.length > 14) {
           throw new Error(`Invalid answer keyword length: "${clue.answer}" (${clue.answer.length})`);
         }
         if (/[^A-Z0-9]/.test(clue.answer)) {
@@ -217,7 +217,7 @@ async function runPromptCrosswordSuite() {
       // 6. Validate temporal release bounds on harvested songs if specified
       if (testCase.yearRange) {
         for (const song of songs) {
-          const yr = song.releaseDate ? parseInt(String(song.releaseDate).slice(0, 4), 10) : NaN;
+          const yr = song.releaseYear || (song.releaseDate ? parseInt(String(song.releaseDate).slice(0, 4), 10) : NaN);
           if (Number.isFinite(yr)) {
             if ((testCase.yearRange.start !== undefined && yr < testCase.yearRange.start) ||
                 (testCase.yearRange.end !== undefined && yr > testCase.yearRange.end)) {

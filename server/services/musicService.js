@@ -5,6 +5,8 @@ import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
 import { buildQueryPlan } from './queryBuilder.js';
+import { sqliteCatalog } from '../db/sqliteCatalog.js';
+import { batchResolvePreviews } from './previewResolver.js';
 import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
@@ -360,6 +362,11 @@ export function isTemporalPermitted(track, yearRange) {
   if (yearRange.end !== undefined && year > yearRange.end) {
     return false;
   }
+
+  // Synchronize track release year and normalized release date
+  track.releaseYear = year;
+  track.releaseDate = `${year}-01-01`;
+
   return true;
 }
 
@@ -457,6 +464,42 @@ export async function getRandomSongPool({
             return [];
           })
       );
+    }
+  }
+
+  // If using live default provider (not a unit test mock), also harvest candidates from local SQLite catalog
+  if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.getRandomPlayableTracks === 'function') {
+    try {
+      const localTracks = sqliteCatalog.getRandomPlayableTracks({
+        count: Math.min(60, limit),
+        minPopularity: queryPlan.popularity || 0,
+        yearRange: queryPlan.yearRange || null,
+        allowSampleless: true,
+      });
+      if (localTracks && localTracks.length > 0) {
+        const mappedLocal = localTracks.map(t => ({
+          id: `sqlite:${t.id}`,
+          catalogTrackId: t.id,
+          provider: t.provider || 'deezer',
+          providerTrackId: t.provider_track_id || t.deezer_id || String(t.id),
+          deezer_id: t.deezer_id,
+          spotify_id: t.spotify_id,
+          itunes_id: t.itunes_id,
+          title: t.title,
+          artist: t.artist,
+          album: t.album || 'Single',
+          audioUrl: t.sample_url || '',
+          sample_url: t.sample_url || '',
+          duration_ms: t.duration_ms,
+          isrc: t.isrc,
+          release_year: t.release_year,
+          releaseDate: t.release_date || (t.release_year ? `${t.release_year}-01-01` : null),
+          popularity: t.popularity,
+        }));
+        candidateTasks.push(Promise.resolve(mappedLocal));
+      }
+    } catch {
+      // Non-fatal if sqliteCatalog is not yet initialized or in an isolated test
     }
   }
 
@@ -676,7 +719,30 @@ export async function getRandomSongPool({
     trySelectTracks(tier3Plus, Infinity);
   }
 
-  logger.sampling(orderedCandidates.length, songs.length, clueStats, rejections);
+  // 4. JIT Lazy Preview Hydration for tracks lacking verified audio previews
+  const needsPreview = songs.filter(s => !s.audioUrl || !s.audioUrl.startsWith('http'));
+  if (needsPreview.length > 0 && musicProvider === deezerMusicProvider) {
+    try {
+      const { resolvedTracks } = await batchResolvePreviews(needsPreview);
+      const resolvedMap = new Map(resolvedTracks.map(t => [t.id, t.audioUrl]));
+      for (const song of songs) {
+        if ((!song.audioUrl || !song.audioUrl.startsWith('http')) && resolvedMap.has(song.id)) {
+          song.audioUrl = resolvedMap.get(song.id);
+          song.sample_url = song.audioUrl;
+        }
+      }
+    } catch (err) {
+      logger.warn('preview_resolver', `Error during batch lazy preview hydration: ${err.message}`);
+    }
+  }
 
-  return songs;
+  // Filter out any songs that could not resolve an audio preview in live mode
+  const playableSongs = songs.filter(s => {
+    if (musicProvider !== deezerMusicProvider) return true;
+    return s.audioUrl && typeof s.audioUrl === 'string' && s.audioUrl.startsWith('http');
+  });
+
+  logger.sampling(orderedCandidates.length, playableSongs.length, clueStats, rejections);
+
+  return playableSongs;
 }
