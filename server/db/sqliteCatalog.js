@@ -668,7 +668,7 @@ export class SqliteCatalog {
       const genreClauses = genres.map(() => 'a.genres_json LIKE ?').join(' OR ');
       query += ` AND (${genreClauses})`;
       for (const g of genres) {
-        params.push(`%${g.trim()}%`);
+        params.push(`%"${g.trim()}"%`);
       }
     }
 

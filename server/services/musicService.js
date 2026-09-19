@@ -293,13 +293,13 @@ export function isAuthenticTrack(track) {
   const lowerAlbum = album.toLowerCase();
 
   // 1. Generic compilation/workout/soundalike artists and unofficial YouTube/fan cover artists
-  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew|music\s*box\s*(ensemble|lullaby|collection|band)|lullaby\s*(baby|ensemble|band)|pellek|little\s*v\.?|shironeko|jonathan\s*young|natewantstobattle|tsuko\s*g\.?|richaadeb|rainych|amalee|cao|fonzi\s*m)\b/i;
+  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew|music\s*box\s*(ensemble|lullaby|collection|band)|lullaby\s*(baby|ensemble|band)|anime\s*(keys|piano|relax|chill|cafe|project|ensemble|orchestra|tribute|band|music|soundtrack)|peaceful\s*(anime|piano|music)|ultra\s*beats|relaxing\s*piano|pellek|little\s*v\.?|shironeko|jonathan\s*young|natewantstobattle|tsuko\s*g\.?|richaadeb|rainych|amalee|cao|fonzi\s*m)\b/i;
   if (fakeArtistPatterns.test(lowerArtist)) {
     return false;
   }
 
   // 2. Audio modifications, covers, karaoke, and utility releases in titles
-  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|music\s*box|musicbox|lullaby|bgm\s+cover|fan\s*cover|metal\s*cover|rock\s*cover|guitar\s*cover|guitar\s+version|violin\s*cover|piano\s*cover|piano\s+version|acoustic\s+version|harp\s+version|synth\s*cover|lo-?fi\s*remix|phonk\s*remix|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental(?:\s+version)?|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by|karaoke(?:\s+version)?|backing\s+track|sans\s+paroles)\b/i;
+  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|music\s*box|musicbox|lullaby|bgm\s+cover|fan\s*cover|metal\s*cover|rock\s*cover|guitar\s*cover|guitar\s+version|violin\s*cover|piano\s*cover|piano\s+version|acoustic\s+version|harp\s+version|synth\s*cover|lo-?fi\s*remix|phonk\s*remix|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental(?:\s+version)?|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by|karaoke(?:\s+version)?|backing\s+track|sans\s+paroles|no\s*vocals?|track\s*-\s*no\s*vocal|guide\s*vocal|minus\s*one|bass\s*boost(?:ed)?|drum\s*loop|waiting\s*loop|synth\s*loop)\b|[([](?:piano|acoustic|instrumental|orchestral|violin|cello|harp|flute|guitar|music\s*box|karaoke|backing\s*track)[)\]]/i;
   if (audioModPatterns.test(lowerTitle)) {
     return false;
   }
@@ -337,7 +337,10 @@ export function isAnimeTrack(track) {
   if (/\b(?:le\s+coeur\s+nous\s+anime|dessin\s+anim\u00e9)\b/i.test(lowerTitle)) return false;
 
   // 2. Reject Western pop/rap acts with accidental "anime" stem or collision
-  if (/\b(?:rockstar|lalisa|sa-wa-di-ka|sawadika|money)\b/i.test(lowerTitle) && /lisa/i.test(lowerArtist)) return false;
+  if (/lisa/i.test(lowerArtist)) {
+    if (/\b(?:rockstar|lalisa|sa-wa-di-ka|sawadika|money|moonlit|rapunzel|kiss\s*me|new\s*woman)\b/i.test(lowerTitle)) return false;
+    if (/megan\s*thee\s*stallion|rosal[ií]a/i.test(lowerTitle)) return false;
+  }
   if (/eve/i.test(lowerArtist) && /\b(?:blow\s+ya\s+mind|who'?s\s+that\s+girl|ruff\s+ryders|gangsta\s+lovin)\b/i.test(lowerTitle)) return false;
 
   // 3. Reject non-anime Latin/English stems (animal, animals, animosity, etc.)
@@ -349,21 +352,38 @@ export function isAnimeTrack(track) {
 
   // 4. Must have verified anime opening/ending/soundtrack credentials:
   // a) Explicit English anime markers
-  const animeEnglishMarkers = /\b(?:tv\s*anime|anime\s*(?:version|ver|ed|op|best|shibari)|opening\s*theme|ending\s*theme|theme\s*song|original\s*soundtrack|\bost\b|tv\s*size|tv\s*version|tv\s*animation|anisong|gekiban)\b/i;
+  const animeEnglishMarkers = /\b(?:tv\s*anime|anime\s*(?:version|ver|ed|op|best|shibari)|tv\s*size|tv\s*version|tv\s*animation|anisong|gekiban)\b/i;
   if (animeEnglishMarkers.test(combined)) return true;
 
-  // b) Explicit Japanese kanji/kana anime markers
-  const animeJpMarkers = /(?:アニメ|主題歌|オープニング|エンディング|劇中歌|サントラ)/;
+  // b) Generic OST / Opening Theme markers require connection to anime or Japanese production
+  const genericThemeMarkers = /\b(?:opening\s*theme|ending\s*theme|theme\s*song|original\s*soundtrack|\bost\b)\b/i;
+  if (genericThemeMarkers.test(combined)) {
+    // Reject known Western indie/jazz/live score collisions
+    if (/^(?:alex\s+g|bouke|jan\s+savitt|krzysztof\s+komeda)\b/i.test(lowerArtist)) return false;
+    if (/quaker\s+city\s+jazz|see\s+see\s+rider|pink\s+opaque|opening\s+tomorrow/i.test(combined)) return false;
+    if (isJapaneseTrack(track) || /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(combined) || /\b(?:anime|manga|tokyo|japan|animation|studio\s*ghibli|ghibli|totoro)\b/i.test(combined)) {
+      return true;
+    }
+  }
+
+  // c) Explicit Japanese kanji/kana anime markers
+  const animeJpMarkers = /(?:\u30a2\u30cb\u30e1|\u4e3b\u984c\u6b4c|\u30aa\u30fc\u30d7\u30cb\u30f3\u30b0|\u30a8\u30f3\u30c7\u30a3\u30f3\u30b0|\u5287\u4e2d\u6b4c|\u30b5\u30f3\u30c8\u30e9)/;
   if (animeJpMarkers.test(combined)) return true;
 
-  // c) Explicit anime franchise in title or album
-  const animeFranchises = /\b(?:naruto|bleach|one\s*piece|attack\s*on\s*titan|shingeki|demon\s*slayer|kimetsu|jujutsu|evangelion|death\s*note|dragon\s*ball|daima|my\s*hero\s*academia|boku\s*no\s*hero|fullmetal|sword\s*art\s*online|sao|tokyo\s*ghoul|cowboy\s*bebop|frieren|bocchi|chainsaw\s*man|dandadan|oshi\s*no\s*ko|sailor\s*moon|inuyasha|hunter\s*x\s*hunter|haikyuu|spy\s*x\s*family|ghibli|totoro|spirited\s*away|howl'?s\s*moving\s*castle|mononoke|your\s*name|kimi\s*no\s*na\s*wa|suzume|weathering\s*with\s*you|akira|specialz|kaikai\s*kitan|gurenge|zankyosanka|unravel|silhouette|blue\s*bird|colors|go!!!)\b/i;
+  // d) Explicit anime franchise in title or album
+  const animeFranchises = /\b(?:naruto|bleach|one\s*piece|attack\s*on\s*titan|shingeki|demon\s*slayer|kimetsu|jujutsu|evangelion|death\s*note|dragon\s*ball|daima|my\s*hero\s*academia|boku\s*no\s*hero|fullmetal|sword\s*art\s*online|sao|tokyo\s*ghoul|cowboy\s*bebop|frieren|bocchi|chainsaw\s*man|dandadan|oshi\s*no\s*ko|sailor\s*moon|inuyasha|hunter\s*x\s*hunter|haikyuu|spy\s*x\s*family|ghibli|totoro|spirited\s*away|howl'?s\s*moving\s*castle|mononoke|your\s*name|kimi\s*no\s*na\s*wa|suzume|weathering\s*with\s*you|akira|specialz|kaikai\s*kitan|gurenge|zankyosanka|unravel|silhouette|blue\s*bird|colors|go!!!|fairy\s*tail|sakamoto\s*days)\b/i;
   if (animeFranchises.test(combined)) return true;
 
-  // d) Iconic anisong artist performing an authentic anime release
-  const anisongSpecialists = /^(?:flow|lisa|linked\s*horizon|yoko\s*takahashi|burnout\s*syndromes|claris)$/i;
+  // e) Iconic anisong artist performing an authentic anime release
+  const anisongSpecialists = /^(?:flow|linked\s*horizon|yoko\s*takahashi|burnout\s*syndromes|claris|aimer|radwimps|ikimonogakari)$/i;
   if (anisongSpecialists.test(lowerArtist)) {
     return true;
+  }
+  if (lowerArtist === 'lisa') {
+    const jpLisaRepertoire = /\b(?:gurenge|homura|crossing\s*field|oath\s*sign|catch\s*the\s*moment|adamas|unlasting|shirushi|rising\s*hope|best\s*day|demon\s*slayer|sword\s*art|sao|fate)\b/i;
+    if (jpLisaRepertoire.test(lowerTitle) || /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(`${lowerTitle} ${lowerAlbum}`)) {
+      return true;
+    }
   }
 
   return false;

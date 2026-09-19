@@ -236,13 +236,19 @@ export async function buildCrosswordFromCatalog({
       minPopularity: 0,
       limit: 80,
     });
+    const animeOpeningTracks = catalog.queryCatalogForCrossword({
+      text: 'Anime Opening',
+      variety: true,
+      minPopularity: 0,
+      limit: 60,
+    });
     const ostTokenTracks = catalog.queryCatalogForCrossword({
       text: 'Opening Theme',
       variety: true,
       minPopularity: 0,
       limit: 60,
     });
-    rawTracks = Array.from(new Set([...(animeGenreTracks || []), ...(animeTokenTracks || []), ...(ostTokenTracks || [])]));
+    rawTracks = Array.from(new Set([...(animeGenreTracks || []), ...(animeTokenTracks || []), ...(animeOpeningTracks || []), ...(ostTokenTracks || [])]));
   } else {
     rawTracks = catalog.queryCatalogForCrossword({
       artist: parsed.artist || '',
