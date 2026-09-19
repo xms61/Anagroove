@@ -326,7 +326,8 @@ async function main() {
 
   const initialDbStats = !isDryRun ? sqliteCatalog.getStats() : null;
   if (initialDbStats) {
-    console.log(`   Initial DB: ${initialDbStats.tracks.toLocaleString()} tracks | ${initialDbStats.artists.toLocaleString()} artists | ${initialDbStats.samples.toLocaleString()} samples`);
+    const samples = initialDbStats.audioSamples ?? initialDbStats.samples ?? 0;
+    console.log(`   Initial DB: ${(initialDbStats.tracks || 0).toLocaleString()} tracks | ${(initialDbStats.artists || 0).toLocaleString()} artists | ${samples.toLocaleString()} samples`);
   }
 
   const stats = {
@@ -383,11 +384,13 @@ async function main() {
 
     if (!isDryRun) {
       const finalStats = sqliteCatalog.getStats();
+      const finalSamples = finalStats.audioSamples ?? finalStats.samples ?? 0;
+      const finalCross = finalStats.crossReferencedTracks ?? finalStats.crossReferenced ?? 0;
       console.log(`\n📊 Final SQLite Catalog Status:`);
-      console.log(`   Total Canonical Tracks: ${finalStats.tracks.toLocaleString()}`);
-      console.log(`   Total Unique Artists: ${finalStats.artists.toLocaleString()}`);
-      console.log(`   Total Cross-Referenced: ${finalStats.crossReferenced.toLocaleString()}`);
-      console.log(`   Total Audio Samples: ${finalStats.samples.toLocaleString()}`);
+      console.log(`   Total Canonical Tracks: ${(finalStats.tracks || 0).toLocaleString()}`);
+      console.log(`   Total Unique Artists: ${(finalStats.artists || 0).toLocaleString()}`);
+      console.log(`   Total Cross-Referenced: ${finalCross.toLocaleString()}`);
+      console.log(`   Total Audio Samples: ${finalSamples.toLocaleString()}`);
     }
   } catch (err) {
     console.error(`\n❌ Ingestion failed: ${err.message}`);

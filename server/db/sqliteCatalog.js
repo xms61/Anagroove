@@ -636,8 +636,10 @@ export class SqliteCatalog {
       artists: Number(artistCount),
       tracks: Number(trackCount),
       audioSamples: Number(sampleCount),
+      samples: Number(sampleCount),
       providerLinks: Number(providerCount),
       crossReferencedTracks: Number(crossReferenced),
+      crossReferenced: Number(crossReferenced),
       languages: Number(languageCount),
       countryCodes: Number(countryCount),
     };

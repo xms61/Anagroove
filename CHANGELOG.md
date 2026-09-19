@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.1] - 2026-09-19
+
+### Fixed
+- **MusicMoveArr Ingestor Initial DB Stats Logging (`scripts/ingest_musicmovearr.js`)**:
+  - Resolved `TypeError: Cannot read properties of undefined (reading 'toLocaleString')` by aligning stats property access with `audioSamples` and `crossReferencedTracks`.
+  - Added backward-compatible alias properties (`samples`, `crossReferenced`) to `sqliteCatalog.getStats()` to ensure resilience across CLI commands and logging utilities.
+
+---
+
 ## [1.10.0] - 2026-09-19
 
 ### Added
