@@ -64,6 +64,7 @@ export class AnimeCatalog {
         season TEXT,
         mal_id INTEGER,
         anilist_id INTEGER,
+        image_url TEXT,
         original_file_path TEXT NOT NULL UNIQUE,
         duration_ms INTEGER DEFAULT 90000,
         popularity INTEGER DEFAULT 80,
@@ -87,6 +88,13 @@ export class AnimeCatalog {
       CREATE INDEX IF NOT EXISTS idx_anime_artist ON anime_tracks(canonical_artist_name);
       CREATE INDEX IF NOT EXISTS idx_anime_samples_track ON anime_samples(anime_track_id);
     `);
+
+    // Backward-compatible schema migration for image_url
+    try {
+      this.db.exec('ALTER TABLE anime_tracks ADD COLUMN image_url TEXT;');
+    } catch {
+      // Column already exists
+    }
   }
 
   upsertAnimeTrack(track) {
@@ -100,14 +108,14 @@ export class AnimeCatalog {
         song_title, canonical_song_title,
         artist_name, canonical_artist_name,
         theme_type, theme_number, theme_slug,
-        year, season, mal_id, anilist_id,
+        year, season, mal_id, anilist_id, image_url,
         original_file_path, duration_ms, popularity
       ) VALUES (
         ?, ?, ?,
         ?, ?,
         ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?
       )
       ON CONFLICT(original_file_path) DO UPDATE SET
@@ -125,6 +133,7 @@ export class AnimeCatalog {
         season = excluded.season,
         mal_id = excluded.mal_id,
         anilist_id = excluded.anilist_id,
+        image_url = COALESCE(excluded.image_url, anime_tracks.image_url),
         duration_ms = excluded.duration_ms,
         popularity = excluded.popularity
     `);
@@ -144,6 +153,7 @@ export class AnimeCatalog {
       track.season || null,
       track.malId || null,
       track.anilistId || null,
+      track.imageUrl || track.image_url || null,
       track.originalFilePath,
       track.durationMs || 90000,
       track.popularity || 80
@@ -151,6 +161,29 @@ export class AnimeCatalog {
 
     const row = this.db.prepare(`SELECT id FROM anime_tracks WHERE original_file_path = ?`).get(track.originalFilePath);
     return row?.id;
+  }
+
+  updateTrackImageUrl(id, imageUrl) {
+    if (!id || !imageUrl) return false;
+    try {
+      const stmt = this.db.prepare('UPDATE anime_tracks SET image_url = ? WHERE id = ?');
+      stmt.run(imageUrl, id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  updateAnimeCoverByTitle(animeTitle, imageUrl) {
+    if (!animeTitle || !imageUrl) return 0;
+    try {
+      const canonicalAnime = normalizeAnimeText(animeTitle);
+      const stmt = this.db.prepare('UPDATE anime_tracks SET image_url = ? WHERE canonical_anime_title = ?');
+      const result = stmt.run(imageUrl, canonicalAnime);
+      return result?.changes || 0;
+    } catch {
+      return 0;
+    }
   }
 
   insertSample({ animeTrackId, sampleIndex, samplePath, sampleUrl, offsetSeconds, durationSeconds = 20 }) {
@@ -253,6 +286,10 @@ export class AnimeCatalog {
         language: 'ja',
         popularity: r.popularity || 85,
         audioUrl: chosenSample ? chosenSample.sample_url : '',
+        albumArt: r.image_url || '',
+        imageUrl: r.image_url || '',
+        anilistId: r.anilist_id || null,
+        malId: r.mal_id || null,
         sampleVariations: samples.map(s => ({
           index: s.sample_index,
           url: s.sample_url,

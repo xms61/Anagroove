@@ -36,14 +36,15 @@ Use this skill when developing or debugging crossword puzzle generation, prompt 
    - Guard against name prefix collisions (e.g. `DJ AniMe` for anime prompts, `The Game` for gaming prompts, `The Japanese House` for Japanese City Pop).
    - Enforce storefront routing (e.g. `JP` for Japanese City Pop, `KR` for Korean Trot) to prevent western lookalike leakage.
 
-4. **Artist Directives & Clue Distribution**:
+4. **Artist Directives & Keyphrase Deduplication**:
    - If user asks for "songs by [Artist]", the engine must allow multiple songs from that artist.
    - For single-artist crosswords, enforce **0% "Artist name" clues** and **100% "Song title" or "Keyword" clues** (since all answers would otherwise be identical to the artist name).
+   - For custom prompts with specific keyphrases (e.g. `anime gundam` or `country songs by dolly parton`), multiple tracks from that franchise or artist are allowed without deduplication rejection (`isKeyphraseAnimeMatch`, `isTargetArtist`).
+   - The target keyphrase tokens (e.g. `GUNDAM`, `DOLLY`, `PARTON`) are blacklisted from grid answers in `seenAnswers` so the puzzle never asks for the franchise or artist name as a grid solution.
 
 5. **Zero-Spoiler Clue Discipline (`shared/clueGenerator.js`)**:
    - Clues must **never** leak the solution (`containsAnswerLeak()`).
-   - For Anime `Artist name` clues: Clue text mentions the anime series and theme slug (e.g., `Vocalist behind the ED1 of "Mahou Sensei Negima!"`), **never** the artist's name.
-   - For Anime `Song title` clues: Clue text mentions the theme slug, anime, and artist, **never** the song title.
+   - For Anime tracks: Strictly **0% "Artist name" clues** (100% "Song title" or "Song title keyword" clues) to avoid unengaging seiyuu guesses and spoilers. Clue text specifies the theme slug and anime franchise (e.g. `ED1 of "Jigoku Shoujo Futakomori" by Mamiko Noto (2006)`), never the song title answer.
    - For General `Artist name` clues: Clue text mentions the hit song title, **never** the artist name.
    - For General `Song title` clues: Clue text mentions the artist and release year, **never** the song title.
    - Universal fallback sanitizer (`sanitizeClue`): If any token of length >= 3 from the answer appears in the clue text, automatically fallback to a spoiler-free template.

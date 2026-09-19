@@ -37,6 +37,7 @@ npm run db:sanitize      # Live duplicate merging and invalid track/contaminatio
 npm run anime:sync       # Synchronize canonical anime opening/ending metadata from AnimeThemes
 npm run anime:samples    # Extract 20-second multi-sample clips via headless FFmpeg
 npm run anime:ingest     # Ingest themes and sample variations into server/data/anime_catalog.sqlite
+npm run anime:images     # Backfill AniList series cover images into anime_tracks (GraphQL API)
 ```
 
 ## Operational Rules & Invariants
@@ -58,6 +59,7 @@ npm run anime:ingest     # Ingest themes and sample variations into server/data/
    - Anime themes are isolated in `server/data/anime_catalog.sqlite` to prevent homonyms and Western collisions (e.g. DJ AniMe).
    - Tracks track `theme_type` (`OP`, `ED`, `insert`), `anime_title`, `year`, and multiple audio sample variations (`offset_seconds`, `duration_seconds`).
    - Sourced locally via `/audio/anime/...` static routes with multiple 20s offsets (e.g., 5s, 35s, 65s) for audio variety across crossword plays.
+   - Series cover art is resolved dynamically and backfilled via AniList's GraphQL API (`server/services/animeImageService.js`) and cached in `anime_tracks.image_url` for victory screen presentation.
 
 5. **Database Validation & Sanitization Engine (`server/db/catalogValidator.js`)**:
    - Executes structural integrity checks (`PRAGMA integrity_check`), foreign key checks, and orphan diagnostics.

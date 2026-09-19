@@ -289,6 +289,38 @@ export function generateThemeVariations(genre = '', decade = '') {
 }
 
 /**
+ * Extracts a specific anime franchise or series keyphrase from a prompt/genre,
+ * stripping out generic anime category and soundtrack filler words (anime, openings, endings, themes, ost, etc.).
+ *
+ * e.g.:
+ *   "anime gundam" -> "gundam"
+ *   "anime openings naruto" -> "naruto"
+ *   "gundam anime ost" -> "gundam"
+ *   "anime" -> ""
+ */
+export function extractAnimeKeyphrase(prompt = '', genre = '') {
+  const source = (prompt && typeof prompt === 'string' && prompt.trim())
+    ? prompt
+    : (genre && typeof genre === 'string' && genre !== 'all' ? genre : '');
+  if (!source) return '';
+
+  // Remove generic anime category words, soundtrack descriptors, and common prepositions
+  const cleaned = source
+    .replace(/\b(anime|animes|openings?|endings?|themes?|ost|soundtracks?|songs?|tracks?|music|series|op\d*|ed\d*)\b/gi, ' ')
+    .replace(/\b(from the|in the|of the|from|in|of|the|best|popular)\b/gi, ' ')
+    .replace(/[^\w\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // If after stripping, nothing is left or only temporal/decade words remain, return empty
+  if (!cleaned || /^\d{2,4}s?$/.test(cleaned)) {
+    return '';
+  }
+
+  return cleaned;
+}
+
+/**
  * Builds a query plan with search terms and filtering thresholds for Deezer and iTunes.
  */
 export function buildQueryPlan(userOptions = {}) {
@@ -319,6 +351,11 @@ export function buildQueryPlan(userOptions = {}) {
   };
   if (promptOptions.yearRange) {
     options.yearRange = promptOptions.yearRange;
+  }
+
+  const animeKeyphrase = extractAnimeKeyphrase(userOptions.prompt, effectiveGenre);
+  if (animeKeyphrase) {
+    options.targetAnimeKeyphrase = animeKeyphrase;
   }
 
   const popularity = options.popularity || 'balanced';
@@ -487,6 +524,7 @@ export function buildQueryPlan(userOptions = {}) {
     album,
     decade,
     yearRange: options.yearRange,
+    targetAnimeKeyphrase: options.targetAnimeKeyphrase || null,
     prompt,
     minFans,
     maxFans,

@@ -25,7 +25,8 @@ import {
   resetDeezerCachesForTesting,
 } from '../server/services/deezerMusicProvider.js';
 import { mapItunesTrack, detectStorefront } from '../server/services/itunesMusicProvider.js';
-import { parsePrompt, buildQueryPlan, generateThemeVariations } from '../server/services/queryBuilder.js';
+import { parsePrompt, buildQueryPlan, generateThemeVariations, extractAnimeKeyphrase } from '../server/services/queryBuilder.js';
+import { resolveAnimeCoverImages } from '../server/services/animeImageService.js';
 import {
   getRandomSongPool,
   setMusicProviderForTesting,
@@ -2022,6 +2023,126 @@ async function runClueSystemAndZeroLeakTests() {
   assert(true, 'Zero answer leaks across 500 randomized stress test generations');
 }
 
+async function runAnimeArtAndKeyphraseClueDisciplineTests() {
+  console.log('\n--- 12. Testing Anime Art Resolution, Keyphrase Duplication & Clue Discipline ---');
+
+  // 1. Anime Keyphrase Extraction
+  assert(extractAnimeKeyphrase('anime gundam') === 'gundam', 'extractAnimeKeyphrase extracts "gundam" from "anime gundam"');
+  assert(extractAnimeKeyphrase('anime openings naruto') === 'naruto', 'extractAnimeKeyphrase extracts "naruto" from "anime openings naruto"');
+  assert(extractAnimeKeyphrase('bleach anime ost') === 'bleach', 'extractAnimeKeyphrase extracts "bleach" from "bleach anime ost"');
+  assert(extractAnimeKeyphrase('anime') === '', 'extractAnimeKeyphrase returns empty string for generic "anime"');
+  assert(extractAnimeKeyphrase('anime from the 90s') === '', 'extractAnimeKeyphrase returns empty string for temporal "anime from the 90s"');
+
+  // 2. Query Plan carries targetAnimeKeyphrase
+  const gundamPlan = buildQueryPlan({ prompt: 'anime gundam' });
+  assert(gundamPlan.targetAnimeKeyphrase === 'gundam', 'buildQueryPlan attaches targetAnimeKeyphrase="gundam"');
+  const genericPlan = buildQueryPlan({ prompt: 'anime' });
+  assert(genericPlan.targetAnimeKeyphrase === null, 'buildQueryPlan leaves targetAnimeKeyphrase null for generic prompt');
+
+  // 3. Clue & Answer Discipline: Target Keyphrases blocked from grid solutions
+  const seenGundamAnswers = new Set();
+  const animeKeyphrase = 'gundam';
+  animeKeyphrase.split(/[^a-zA-Z0-9]+/).forEach(tok => {
+    if (tok.length >= 3) seenGundamAnswers.add(tok.toUpperCase());
+  });
+  assert(seenGundamAnswers.has('GUNDAM'), 'seenAnswers blacklists target anime keyphrase GUNDAM from grid solution');
+
+  const seenArtistAnswers = new Set();
+  const targetArtist = 'Dolly Parton';
+  targetArtist.split(/[^a-zA-Z0-9]+/).forEach(tok => {
+    if (tok.length >= 3) seenArtistAnswers.add(tok.toUpperCase());
+  });
+  assert(seenArtistAnswers.has('DOLLY'), 'seenAnswers blacklists first artist name token DOLLY');
+  assert(seenArtistAnswers.has('PARTON'), 'seenAnswers blacklists second artist name token PARTON');
+
+  // 4. Anime Crosswords Enforce 0% Artist Clues
+  const jigokuTrack = {
+    title: 'Aida',
+    song_title: 'Aida',
+    artist: 'Mamiko Noto',
+    artist_name: 'Mamiko Noto',
+    animeTitle: 'Jigoku Shoujo Futakomori',
+    themeType: 'ED',
+    themeSlug: 'ED1',
+    releaseYear: 2006,
+    isAnimeOped: true,
+  };
+
+  // 4a. Guaranteed 0% artist clues for anime: allowArtist=false
+  for (let i = 0; i < 20; i++) {
+    const kw = extractAnswerKeyword(jigokuTrack.title, jigokuTrack.artist, {
+      preferredType: i % 2 === 0 ? 'title' : 'keyword',
+      allowArtist: false,
+    });
+    assert(kw.clueType !== 'Artist name', 'Anime keyword extraction NEVER yields Artist name clue');
+    assert(kw.clueType === 'Song title' || kw.clueType === 'Song title keyword', 'Anime keyword extraction strictly yields Title or Keyword');
+  }
+
+  // 4b. Format realistic anime clue (reproducing user screenshot context)
+  const jigokuClue = formatCrosswordClue(jigokuTrack, {
+    answer: 'AIDA',
+    clueType: 'Song title',
+  });
+  assert(jigokuClue.includes('ED1'), 'Anime clue mentions theme slug ED1');
+  assert(jigokuClue.includes('Jigoku Shoujo Futakomori'), 'Anime clue mentions anime title');
+  assert(jigokuClue.includes('Mamiko Noto'), 'Anime clue safely credits artist without leaking song answer');
+  assert(!jigokuClue.toLowerCase().includes('aida'), 'Anime clue NEVER contains the song title answer');
+  assert(!jigokuClue.startsWith('[Anime]'), 'Anime clue eliminates bracketed [Anime] prefix');
+  assert(!containsAnswerLeak(jigokuClue, 'AIDA'), 'containsAnswerLeak confirms 0 spoiler on anime clue');
+
+  // 5. Victory Screen Image Persistence & Caching
+  const { AnimeCatalog } = await import('../server/db/animeCatalog.js');
+  const testAnimeDb = new AnimeCatalog(':memory:');
+
+  const trackId = testAnimeDb.upsertAnimeTrack({
+    animeTitle: 'Mobile Suit Gundam Wing',
+    songTitle: 'Just Communication',
+    artistName: 'TWO-MIX',
+    themeType: 'OP',
+    themeNumber: 1,
+    year: 1995,
+    originalFilePath: '/test/gundam_op1.webm',
+  });
+
+  testAnimeDb.insertSample({
+    animeTrackId: trackId,
+    sampleIndex: 1,
+    samplePath: '/test/samples/gundam_1.mp3',
+    sampleUrl: '/audio/anime/gundam_1.mp3',
+    offsetSeconds: 10,
+  });
+
+  // Initially has no image
+  const initialTracks = testAnimeDb.getRandomAnimeTracks({ count: 5 });
+  assert(initialTracks.length === 1, 'Returns upserted test track');
+  assert(initialTracks[0].albumArt === '', 'Track initially has empty albumArt');
+
+  // Update track image directly
+  const updateSuccess = testAnimeDb.updateTrackImageUrl(trackId, 'https://s4.anilist.co/file/gundam_wing.jpg');
+  assert(updateSuccess === true, 'updateTrackImageUrl returns true on success');
+
+  const hydratedTracks = testAnimeDb.getRandomAnimeTracks({ count: 5 });
+  assert(hydratedTracks[0].albumArt === 'https://s4.anilist.co/file/gundam_wing.jpg', 'getRandomAnimeTracks returns updated albumArt');
+  assert(hydratedTracks[0].imageUrl === 'https://s4.anilist.co/file/gundam_wing.jpg', 'getRandomAnimeTracks returns updated imageUrl');
+
+  // Update by series title
+  const bulkUpdated = testAnimeDb.updateAnimeCoverByTitle('Mobile Suit Gundam Wing', 'https://s4.anilist.co/file/gundam_series.jpg');
+  assert(bulkUpdated === 1, 'updateAnimeCoverByTitle updates 1 track matching series');
+
+  const seriesHydrated = testAnimeDb.getRandomAnimeTracks({ count: 5 });
+  assert(seriesHydrated[0].albumArt === 'https://s4.anilist.co/file/gundam_series.jpg', 'Bulk series update populates albumArt');
+
+  // 6. resolveAnimeCoverImages service handles existing albumArt gracefully
+  const mockAnimeTracks = [
+    { id: 'anime_1', animeTitle: 'Mobile Suit Gundam Wing', albumArt: 'https://s4.anilist.co/existing.jpg', isAnimeOped: true },
+    { id: 'anime_2', animeTitle: 'Non-anime', albumArt: 'https://example.com/cover.jpg', isAnimeOped: false },
+  ];
+  const resolvedResult = await resolveAnimeCoverImages(mockAnimeTracks, { animeDb: testAnimeDb });
+  assert(resolvedResult[0].albumArt === 'https://s4.anilist.co/existing.jpg', 'resolveAnimeCoverImages preserves pre-existing artwork');
+
+  testAnimeDb.close();
+}
+
 async function main() {
   console.log('🚀 Starting SpotySpice CI-Friendly Automated Test Suite...');
   const startTime = Date.now();
@@ -2035,6 +2156,7 @@ async function main() {
     await runCatalogValidatorTests();
     await runAnimeCatalogAndIsolationTests();
     await runClueSystemAndZeroLeakTests();
+    await runAnimeArtAndKeyphraseClueDisciplineTests();
   } catch (err) {
     console.error('Fatal test execution error:', err);
     failedCount++;

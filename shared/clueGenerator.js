@@ -127,6 +127,9 @@ export function formatCrosswordClue(track, keyword, _options = {}) {
     const animeTitle = track.animeTitle || track.album || 'Anime';
     const themeType = track.themeType || 'OP';
     const themeSlug = track.themeSlug || `${themeType} Theme`;
+    const validArtist = track.artist && !/^(unknown artist|various artists|ost|soundtrack)$/i.test(String(track.artist).trim())
+      ? String(track.artist).trim()
+      : '';
 
     if (clueType === 'Artist name') {
       // User is guessing the artist/performer. NEVER mention track.artist!
@@ -137,30 +140,26 @@ export function formatCrosswordClue(track, keyword, _options = {}) {
 
     if (clueType === 'Song title') {
       // User is guessing the song title. NEVER mention track.title or track.songTitle!
-      const fallback = `Theme title from this anime series${ansLen}`;
-      const hasArtistLeak = containsAnswerLeak(track.artist, answer, [track.title, track.song_title].filter(Boolean));
-
-      const candidateClue = hasArtistLeak
-        ? `${themeSlug} of "${animeTitle}"${yearSuffix}`
-        : `${themeSlug} of "${animeTitle}" by ${track.artist}${yearSuffix}`;
+      const fallback = `Theme title from "${animeTitle}"${ansLen}`;
+      const hasArtistLeak = validArtist ? containsAnswerLeak(validArtist, answer, [track.title, track.song_title].filter(Boolean)) : false;
+      const artistPart = validArtist && !hasArtistLeak ? ` by ${validArtist}` : '';
+      const candidateClue = `${themeSlug} of "${animeTitle}"${artistPart}${yearSuffix}`;
 
       return sanitizeClue(candidateClue, answer, fallback, [track.title, track.song_title].filter(Boolean));
     }
 
     if (clueType === 'Song title keyword') {
       // User is guessing a keyword from the song title.
-      const fallback = `Key word in this anime theme title${ansLen}`;
-      const hasArtistLeak = containsAnswerLeak(track.artist, answer);
-
-      const candidateClue = hasArtistLeak
-        ? `Key word in the ${themeSlug} of "${animeTitle}"`
-        : `Key word in the ${themeSlug} of "${animeTitle}" by ${track.artist}`;
+      const fallback = `Key word in theme title from "${animeTitle}"${ansLen}`;
+      const hasArtistLeak = validArtist ? containsAnswerLeak(validArtist, answer) : false;
+      const artistPart = validArtist && !hasArtistLeak ? ` by ${validArtist}` : '';
+      const candidateClue = `Key word in the ${themeSlug} of "${animeTitle}"${artistPart}`;
 
       return sanitizeClue(candidateClue, answer, fallback, [answer]);
     }
 
     // Default anime fallback
-    return `[Anime] Theme from "${animeTitle}"${ansLen}`;
+    return `Theme from "${animeTitle}"${ansLen}`;
   }
 
   // ---------------------------------------------------------------------------
