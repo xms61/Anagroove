@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.7] - 2026-09-19
+
+### Added
+- **Agent Guidelines & Repository Manual (`agents.md`)**:
+  - Created comprehensive agent operations manual detailing branching/PR discipline, version synchronization rules, secrets security, and SQLite concurrency/WAL invariants.
+  - Documented crawler discovery vectors, two-tier deduplication, authenticity filtering, and live multiplayer WebSocket protocols.
+  - Included a structured pre-commit checklist for automated AI agent sessions.
+- **Agent Skills (`.agents/skills/`)**:
+  - Added `catalog-crawler` skill (`.agents/skills/catalog-crawler/SKILL.md`) for crawler management, status inspection, and WAL compaction.
+  - Added `crossword-engine` skill (`.agents/skills/crossword-engine/SKILL.md`) for crossword layout placement, answer extraction, and homonym protection.
+  - Added `release-discipline` skill (`.agents/skills/release-discipline/SKILL.md`) for enforcing git hygiene, version bumps, test verification, and PR creation.
+- **Git Hygiene (`.gitignore`)**:
+  - Added `.gemini/` to `.gitignore` to prevent local AI runtime state from leaking into version control.
+
+---
+
 ## [1.9.6] - 2026-09-19
 
 ### Added

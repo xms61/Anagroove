@@ -193,6 +193,9 @@ npm run crawl:status
 
 ```
 SpotySpice/
+├── .agents/                    # Specialized AI agent skills
+│   └── skills/                 # Crawler, crossword engine & release discipline skills
+├── agents.md                   # Agent guidelines, invariants & pre-commit checklist
 ├── data/                       # Master music pools & metadata
 │   ├── master_song_pool.json
 │   └── music_pool.json
