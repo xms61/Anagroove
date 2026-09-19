@@ -40,6 +40,9 @@ import {
 import { createLivePuzzleStore, server } from '../server/server.js';
 import { db } from '../server/db.js';
 import { SqliteCatalog, normalizeDedupeTitle, normalizeDedupeArtist } from '../server/db/sqliteCatalog.js';
+import { CatalogValidator } from '../server/db/catalogValidator.js';
+import { AnimeCatalog } from '../server/db/animeCatalog.js';
+import { isAnimeTarget, getAnimeThemeType } from '../server/services/musicService.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
 import { TokenBucketRateLimiter } from '../server/crawler/rateLimiter.js';
 import {
@@ -1599,6 +1602,264 @@ async function runCrosswordJudgeAndCulturalGuardsTests() {
   assert(multiJudge.repetitiveness.avgJaccard === 1, 'Computes Jaccard 1.0 for completely identical generations');
 }
 
+async function runCatalogValidatorTests() {
+  console.log('\n--- 9. Testing Database Validation Engine, Dupe Detection & Diagnostics ---');
+
+  const memCatalog = new SqliteCatalog(':memory:');
+  const validator = new CatalogValidator(memCatalog.db);
+
+  // 1. Pragmas check
+  const pragmas = validator.checkPragmas();
+  assert(pragmas.integrityOk === true, 'In-memory catalog passes integrity check');
+  assert(pragmas.foreignKeysOk === true, 'In-memory catalog has zero foreign key violations');
+
+  // 2. Populate test data with duplicates and anomalies
+  // Track 1
+  memCatalog.upsertTrack({
+    title: 'Starboy',
+    artist: 'The Weeknd',
+    isrc: 'USUM71607007',
+    album: 'Starboy',
+    durationMs: 230000,
+    popularity: 950000,
+    provider: 'deezer',
+    providerTrackId: '138597793',
+    sampleUrl: 'https://cdns-preview.deezer.com/preview-1.mp3',
+    releaseYear: 2016,
+    artistMetadata: { genres: ['Pop', 'R&B'] },
+  });
+
+  // Track 2: Soft duplicate of Track 1 (same artist, same canonical title, duration delta = 1000ms)
+  memCatalog.db.prepare(`
+    INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date, country_code, language, popularity, is_explicit)
+    VALUES ('USUM71607008', 'starboy', 'Starboy', 1, 'Starboy (Deluxe)', 231000, 2016, '2016-11-25', 'US', 'en', 900000, 1)
+  `).run();
+
+  // Track 3: Contaminated audiobook track
+  memCatalog.upsertTrack({
+    title: 'Kapitel 1 - Das Schloss',
+    artist: 'Gruselkabinett',
+    isrc: 'DEUM71600001',
+    album: 'Folge 01',
+    durationMs: 120000,
+    popularity: 50000,
+    provider: 'deezer',
+    providerTrackId: '999999',
+    sampleUrl: 'https://cdns-preview.deezer.com/preview-audiobook.mp3',
+    releaseYear: 2010,
+    artistMetadata: { genres: ['Spoken Word'] },
+  });
+
+  // Track 4: Short duration anomaly (< 15s)
+  memCatalog.upsertTrack({
+    title: 'Intro SFX',
+    artist: 'Sound Effects FX',
+    isrc: 'USFX71600001',
+    album: 'Effects',
+    durationMs: 8000,
+    popularity: 10000,
+    provider: 'deezer',
+    providerTrackId: '888888',
+    sampleUrl: 'https://cdns-preview.deezer.com/preview-sfx.mp3',
+    releaseYear: 2021,
+  });
+
+  // 3. Test findDuplicates
+  const dupes = validator.findDuplicates();
+  assert(dupes.softDuplicateClustersCount === 1, 'Detects exactly 1 soft duplicate cluster');
+  assert(dupes.softDuplicatesSample[0].artist === 'The Weeknd', 'Identifies duplicate artist as The Weeknd');
+
+  // 4. Test findDataAnomalies
+  const anomalies = validator.findDataAnomalies();
+  assert(anomalies.durationAnomalies.tooShortCount === 1, 'Detects track under 15 seconds');
+  assert(anomalies.contamination.audiobooksCount === 1, 'Detects Gruselkabinett audiobook contamination');
+  assert(anomalies.contamination.totalContaminatedCount === 1, 'Tallies total contaminated tracks');
+
+  // 5. Test generateStatistics
+  const stats = validator.generateStatistics();
+  assert(stats.overview.totalTracks === 4, 'Counts 4 total tracks in test database');
+  assert(stats.overview.totalArtists === 3, 'Counts 3 distinct artists in test database');
+  assert(stats.overview.sampleCoveragePct === 75, 'Computes 75% audio sample coverage (3/4 tracks with samples)');
+  assert(stats.popularity.normalizedAvgPop > 0, 'Computes normalized average popularity');
+
+  // 6. Test Dry Run Sanitization
+  const dryRunSanitize = validator.sanitize({ dryRun: true });
+  assert(dryRunSanitize.dryRun === true, 'Sanitization honors dryRun flag');
+  assert(dryRunSanitize.proposedActions.softDuplicatesToMerge === 1, 'Dry run proposes merging 1 soft duplicate');
+
+  // 7. Test Live Sanitization (Merge Duplicates + Purge Contamination)
+  const liveSanitize = validator.sanitize({
+    dryRun: false,
+    mergeSoftDuplicates: true,
+    removeOrphans: true,
+    purgeContamination: true,
+  });
+  assert(liveSanitize.actionsExecuted.duplicatesMerged === 1, 'Live sanitize merges 1 duplicate cluster');
+  assert(liveSanitize.actionsExecuted.contaminatedPurged === 1, 'Live sanitize purges 1 contaminated track');
+
+  // 8. Verify post-sanitization state
+  const postStats = validator.generateStatistics();
+  assert(postStats.overview.totalTracks === 2, '2 canonical tracks remain after merging and purging');
+  const postDupes = validator.findDuplicates();
+  assert(postDupes.softDuplicateClustersCount === 0, 'Zero duplicate clusters remain after sanitization');
+
+  // 9. Test Report Generation
+  const reportMd = validator.generateMarkdownReport({
+    pragmas,
+    orphans: validator.findOrphans(),
+    duplicates: postDupes,
+    anomalies: validator.findDataAnomalies(),
+    stats: postStats,
+    sanitization: liveSanitize,
+  });
+  assert(typeof reportMd === 'string' && reportMd.includes('# SpotySpice Database Validation'), 'Generates valid markdown report string');
+}
+
+async function runAnimeCatalogAndIsolationTests() {
+  console.log('\n--- 10. Testing Dedicated Anime OP/ED Catalog, Variations & Sourcing Isolation ---');
+
+  // 1. Anime Target Detection & Theme Type Isolation
+  assert(isAnimeTarget('anime', '') === true, 'isAnimeTarget detects "anime" genre');
+  assert(isAnimeTarget('anime openings', '') === true, 'isAnimeTarget detects "anime openings"');
+  assert(isAnimeTarget('all', 'anime ed') === true, 'isAnimeTarget detects "anime ed" in prompt');
+  assert(isAnimeTarget('japanese', '') === false, 'isAnimeTarget rejects bare "japanese" genre (stays in general music catalog)');
+  assert(isAnimeTarget('Japanese City Pop', '') === false, 'isAnimeTarget rejects "Japanese City Pop" (stays in general music catalog)');
+  assert(isAnimeTarget('rock', 'j-rock hits') === false, 'isAnimeTarget rejects "j-rock hits"');
+
+  assert(getAnimeThemeType('anime openings', '') === 'OP', 'getAnimeThemeType detects OP');
+  assert(getAnimeThemeType('anime endings', '') === 'ED', 'getAnimeThemeType detects ED');
+  assert(getAnimeThemeType('anime', '') === null, 'getAnimeThemeType returns null for general anime (both OP & ED)');
+
+  // 2. In-Memory Anime Catalog Creation & Schema
+  const animeDb = new AnimeCatalog(':memory:');
+  const trackId1 = animeDb.upsertAnimeTrack({
+    animeTitle: 'Neon Genesis Evangelion',
+    songTitle: 'A Cruel Angel\'s Thesis',
+    artistName: 'Yoko Takahashi',
+    themeType: 'OP',
+    themeNumber: 1,
+    themeSlug: 'OP1',
+    year: 1995,
+    season: 'Fall',
+    malId: 30,
+    anilistId: 30,
+    originalFilePath: '1995/Fall/Evangelion-OP1.ogg',
+    durationMs: 90000,
+    popularity: 98,
+  });
+  assert(trackId1 === 1, 'Successfully upserted anime track 1');
+
+  const trackId2 = animeDb.upsertAnimeTrack({
+    animeTitle: 'Cowboy Bebop',
+    songTitle: 'Tank!',
+    artistName: 'SEATBELTS',
+    themeType: 'OP',
+    themeNumber: 1,
+    themeSlug: 'OP1',
+    year: 1998,
+    season: 'Spring',
+    malId: 1,
+    anilistId: 1,
+    originalFilePath: '1998/Spring/CowboyBebop-OP1.ogg',
+    durationMs: 90000,
+    popularity: 99,
+  });
+  assert(trackId2 === 2, 'Successfully upserted anime track 2');
+
+  const trackId3 = animeDb.upsertAnimeTrack({
+    animeTitle: 'Cowboy Bebop',
+    songTitle: 'The Real Folk Blues',
+    artistName: 'The Seatbelts ft. Mai Yamane',
+    themeType: 'ED',
+    themeNumber: 1,
+    themeSlug: 'ED1',
+    year: 1998,
+    season: 'Spring',
+    malId: 1,
+    anilistId: 1,
+    originalFilePath: '1998/Spring/CowboyBebop-ED1.ogg',
+    durationMs: 90000,
+    popularity: 95,
+  });
+  assert(trackId3 === 3, 'Successfully upserted anime track 3');
+
+  // 3. Insert 20-second sample variations
+  animeDb.insertSample({
+    animeTrackId: trackId1,
+    sampleIndex: 1,
+    samplePath: 'data/anime_samples/1995/Fall/Evangelion-OP1_s1.ogg',
+    sampleUrl: '/audio/anime/1995/Fall/Evangelion-OP1_s1.ogg',
+    offsetSeconds: 5,
+    durationSeconds: 20,
+  });
+  animeDb.insertSample({
+    animeTrackId: trackId1,
+    sampleIndex: 2,
+    samplePath: 'data/anime_samples/1995/Fall/Evangelion-OP1_s2.ogg',
+    sampleUrl: '/audio/anime/1995/Fall/Evangelion-OP1_s2.ogg',
+    offsetSeconds: 35,
+    durationSeconds: 20,
+  });
+  animeDb.insertSample({
+    animeTrackId: trackId1,
+    sampleIndex: 3,
+    samplePath: 'data/anime_samples/1995/Fall/Evangelion-OP1_s3.ogg',
+    sampleUrl: '/audio/anime/1995/Fall/Evangelion-OP1_s3.ogg',
+    offsetSeconds: 65,
+    durationSeconds: 20,
+  });
+
+  const samples = animeDb.getSamplesForTrack(trackId1);
+  assert(samples.length === 3, 'Track 1 has exactly 3 sample variations');
+  assert(samples[0].offset_seconds === 5 && samples[0].duration_seconds === 20, 'Sample 1 has offset 5s and duration 20s');
+  assert(samples[1].offset_seconds === 35 && samples[1].duration_seconds === 20, 'Sample 2 has offset 35s and duration 20s');
+  assert(samples[2].offset_seconds === 65 && samples[2].duration_seconds === 20, 'Sample 3 has offset 65s and duration 20s');
+
+  // 4. Sampleless track isolation (requireSamples)
+  const tracksWithSamples = animeDb.getRandomAnimeTracks({ count: 10, requireSamples: true });
+  assert(tracksWithSamples.length === 1, 'Only track with verified audio samples is returned when requireSamples=true');
+  assert(tracksWithSamples[0].id === 'anime:1', 'Returned track matches trackId 1');
+  assert(tracksWithSamples[0].audioUrl.startsWith('/audio/anime/'), 'audioUrl uses local /audio/anime mount path');
+  assert(tracksWithSamples[0].sampleVariations.length === 3, 'Returns all 3 sample variations for playback rotation');
+
+  // Add samples for track 2 and track 3
+  animeDb.insertSample({
+    animeTrackId: trackId2,
+    sampleIndex: 1,
+    samplePath: 'data/anime_samples/1998/Spring/CowboyBebop-OP1_s1.ogg',
+    sampleUrl: '/audio/anime/1998/Spring/CowboyBebop-OP1_s1.ogg',
+    offsetSeconds: 5,
+    durationSeconds: 20,
+  });
+  animeDb.insertSample({
+    animeTrackId: trackId3,
+    sampleIndex: 1,
+    samplePath: 'data/anime_samples/1998/Spring/CowboyBebop-ED1_s1.ogg',
+    sampleUrl: '/audio/anime/1998/Spring/CowboyBebop-ED1_s1.ogg',
+    offsetSeconds: 5,
+    durationSeconds: 20,
+  });
+
+  // 5. Query Filtering: Type ('OP' vs 'ED')
+  const opTracks = animeDb.getRandomAnimeTracks({ count: 10, type: 'OP' });
+  assert(opTracks.length === 2 && opTracks.every(t => t.themeType === 'OP'), 'type="OP" strictly returns only openings');
+
+  const edTracks = animeDb.getRandomAnimeTracks({ count: 10, type: 'ED' });
+  assert(edTracks.length === 1 && edTracks[0].themeType === 'ED', 'type="ED" strictly returns only endings');
+
+  // 6. Query Filtering: Search keyword
+  const searched = animeDb.getRandomAnimeTracks({ count: 10, search: 'Bebop' });
+  assert(searched.length === 2 && searched.every(t => t.animeTitle === 'Cowboy Bebop'), 'Search keyword matches anime title');
+
+  // 7. Stats
+  const stats = animeDb.getStats();
+  assert(stats.totalTracks === 3, 'Stats report total 3 tracks');
+  assert(stats.totalOps === 2, 'Stats report total 2 OPs');
+  assert(stats.totalEds === 1, 'Stats report total 1 ED');
+  assert(stats.tracksWithSamples === 3, 'Stats report 3 tracks with samples');
+  assert(stats.minYear === 1995 && stats.maxYear === 1998, 'Stats report correct year range');
+}
+
 async function main() {
   console.log('🚀 Starting SpotySpice CI-Friendly Automated Test Suite...');
   const startTime = Date.now();
@@ -1609,6 +1870,8 @@ async function main() {
     await runSqliteCatalogTests();
     await runMusicMoveArrAndLazyResolverTests();
     await runCrosswordJudgeAndCulturalGuardsTests();
+    await runCatalogValidatorTests();
+    await runAnimeCatalogAndIsolationTests();
   } catch (err) {
     console.error('Fatal test execution error:', err);
     failedCount++;

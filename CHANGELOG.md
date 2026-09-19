@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.12.0] - 2026-09-19
+
+### Added
+- **Dedicated Anime OP/ED Sourcing & Catalog Engine (`server/db/animeCatalog.js`, `server/services/musicService.js`)**:
+  - Independent SQLite schema (`anime_catalog.sqlite`) managing authentic anime openings (OP), endings (ED), and insert tracks.
+  - Sourcing isolation: Dedicated routing via `isAnimeTarget()` and `getAnimeThemeType()` ensures anime puzzle requests bypass external general-music collisions.
+  - Multi-sample variations: Supports multiple 20-second playback segments (e.g., 5s, 35s, 65s offsets) per track for dynamic playback variation.
+  - Local preview delivery: Express static file route at `/audio/anime` for serving locally verified OP/ED preview clips.
+- **FFmpeg Preview Pipeline & Batch Generator (`server/services/ffmpegHelper.js`, `scripts/generate_anime_samples.js`)**:
+  - Robust FFmpeg utility extracting precise 20-second audio clips at key chorus/hook timestamps without external API dependencies.
+  - `npm run anime:samples`: Configurable batch generator with concurrent workers and duration validation.
+- **Anime Catalog Sync & Ingest Scripts (`scripts/sync_anime_metadata.js`, `scripts/ingest_anime_catalog.js`)**:
+  - `npm run anime:sync`: Synchronizes anime theme metadata including series titles, season years, artists, and media sources.
+  - `npm run anime:ingest`: Ingests mapped themes and audio variations into the SQLite anime catalog.
+- **Database Validation, Deduplication & Sanitization Engine (`server/db/catalogValidator.js`, `scripts/validate_and_sanitize_db.js`)**:
+  - Structural and relational integrity audits via `PRAGMA integrity_check` and foreign key constraint validation.
+  - Semantic duplicate clustering detecting identical tracks across normalized tokens and +/- 3-second duration variance.
+  - Contamination detection purging corrupt audio entries, tracks < 15 seconds, and audiobook contaminations.
+  - Added `npm run db:validate` and `npm run db:sanitize` CLI workflows with automated Markdown reporting (`reports/database_validation_report.md`).
+- **Automated Test Expansion (`scripts/run_tests.js`)**:
+  - Added Suites 9 and 10 testing catalog validation, duplicate deduplication, contamination purging, and isolated anime OP/ED routing, expanding automated coverage to **396 passing tests**.
+
+### Changed
+- **Git Hygiene & Media Safeguards (`.gitignore`)**:
+  - Comprehensive blanket exclusions for raw audio media (`*.mp3`, `*.aac`, `*.m4a`, `*.wav`, `*.flac`, `*.ogg`, `*.opus`, `*.webm`), local sample folders (`data/anime_samples/`, `**/samples/`), and SQLite binaries (`*.sqlite*`, `*.db*`).
+
+---
+
 ## [1.11.0] - 2026-09-19
 
 ### Added

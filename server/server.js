@@ -160,6 +160,10 @@ app.use('/api', generalApiLimiter);
 app.use('/api/music/random', musicApiLimiter);
 app.use('/api/puzzles/live', musicApiLimiter);
 
+// Local audio preview streaming for generated anime OP/ED samples
+const ANIME_SAMPLES_DIR = path.join(__dirname, '../data/anime_samples');
+app.use('/audio/anime', express.static(ANIME_SAMPLES_DIR));
+
 // Public health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });

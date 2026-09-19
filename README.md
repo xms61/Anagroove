@@ -206,6 +206,29 @@ SpotySpice features a hybrid high-performance music ingestion architecture:
 | `--dry-run` | `false` | Parse and evaluate candidates without writing to SQLite. |
 | `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, country codes, languages, and cross-referenced merges without crawling. |
 
+#### Database Validation & Sanitization
+Run automated health diagnostics, soft-duplicate clustering, and contamination cleanup:
+```bash
+# Validate structural integrity, foreign keys, duplicates, and coverage
+npm run db:validate
+
+# Execute live deduplication and purge invalid audio or audiobook contaminations
+npm run db:sanitize
+```
+
+#### Dedicated Anime Catalog & Preview Pipeline
+Manage isolated anime OP/ED themes, metadata syncing, and FFmpeg multi-sample extraction:
+```bash
+# Synchronize canonical anime opening/ending themes
+npm run anime:sync
+
+# Generate 20-second audio clips via headless FFmpeg
+npm run anime:samples
+
+# Ingest themes into isolated SQLite anime catalog
+npm run anime:ingest
+```
+
 #### Deduplication & Integrity
 - **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks without verified 30-second audio previews are automatically rejected.
 - **Country & Language Tagging**: Standard 12-character ISRCs automatically populate the 2-letter ISO country code (`country_code`). Song titles and artist names are analyzed via Unicode scripts and linguistic markers to populate detected languages (`language`).
@@ -326,7 +349,7 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 Run automated CI-friendly test suites and linters:
 
 ```bash
-# Run the complete automated test suite (155 unit & integration tests)
+# Run the complete automated test suite (396 unit & integration tests)
 npm test
 
 # Run the live multi-prompt crossword verification suite (14 diverse genres, eras, temporal windows & single-artist puzzles)
