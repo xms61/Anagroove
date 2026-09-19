@@ -1,12 +1,13 @@
 import crypto from 'crypto';
-import { extractAnswerKeyword, splitArtistNames } from '../../shared/musicKeywords.js';
+import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.js';
 import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
-import { buildQueryPlan } from './queryBuilder.js';
+import { buildQueryPlan, extractAnimeKeyphrase } from './queryBuilder.js';
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.js';
+import { resolveAnimeCoverImages } from './animeImageService.js';
 import { batchResolvePreviews } from './previewResolver.js';
 import { logger } from '../logger.js';
 
@@ -577,16 +578,31 @@ export async function getRandomSongPool({
   // 1. Candidate harvesting across providers
   const candidateTasks = [];
   const isAnimeTheme = isAnimeTarget(queryPlan.genre, prompt);
+  const animeKeyphrase = queryPlan.targetAnimeKeyphrase || extractAnimeKeyphrase(prompt, queryPlan.genre);
+  const isTargetingAnimeKeyphrase = Boolean(isAnimeTheme && animeKeyphrase);
+
+  // Clue & Answer Discipline: Prevent prompt target keyphrases from appearing as grid solutions
+  if (queryPlan.artist) {
+    queryPlan.artist.split(/[^a-zA-Z0-9]+/).forEach(token => {
+      if (token.length >= 3) seenAnswers.add(token.toUpperCase());
+    });
+  }
+  if (isTargetingAnimeKeyphrase && animeKeyphrase) {
+    animeKeyphrase.split(/[^a-zA-Z0-9]+/).forEach(token => {
+      if (token.length >= 3) seenAnswers.add(token.toUpperCase());
+    });
+  }
 
   if (isAnimeTheme) {
     // Dedicated Anime OP/ED catalog isolated from standard music providers
     const themeType = getAnimeThemeType(queryPlan.genre, prompt);
     try {
+      const cleanAnimeSearch = animeKeyphrase || (prompt && !/^(anime|anime openings?|anime endings?|anime themes?|anime ost)$/i.test(prompt.trim()) ? prompt : null);
       const animeCandidates = animeCatalog.getRandomAnimeTracks({
         count: limit,
         yearRange: queryPlan.yearRange,
         type: themeType,
-        search: prompt && !/^(anime|anime openings?|anime endings?|anime themes?|anime ost)$/i.test(prompt.trim()) ? prompt : null,
+        search: cleanAnimeSearch,
         requireSamples: true,
       });
       if (animeCandidates && animeCandidates.length > 0) {
@@ -763,15 +779,17 @@ export async function getRandomSongPool({
         continue;
       }
 
-      // Unless the user explicitly asked for a single artist, enforce max 1 track per artist
+      // Unless the user explicitly asked for a single artist or anime franchise, enforce max 1 track per artist
       const targetArtistKey = queryPlan.artist ? canonicalArtistKey(queryPlan.artist) : '';
       const isTargetArtist = isTargetingSingleArtist && (
         artistIdentity.includes(targetArtistKey) ||
         targetArtistKey.includes(artistIdentity)
       );
 
+      const isKeyphraseAnimeMatch = isTargetingAnimeKeyphrase && Boolean(track.isAnimeOped);
+
       const artistNames = splitArtistNames(track.artist);
-      const isDuplicateArtist = !isTargetArtist && (
+      const isDuplicateArtist = !isTargetArtist && !isKeyphraseAnimeMatch && (
         seenArtists.has(artistIdentity) ||
         artistNames.some(name => seenArtists.has(canonicalArtistKey(name)))
       );
@@ -782,10 +800,12 @@ export async function getRandomSongPool({
       }
 
       // Clue type selection:
-      // When targeting a single artist, NEVER use 'Artist name' clues (every clue must be Song title or Keyword)
-      const allowArtist = !isTargetingSingleArtist;
+      // When targeting a single artist or anime themes, NEVER use 'Artist name' clues
+      // (every clue must be Song title or Keyword, as the performer/anime is already identified in the clue)
+      const isAnimeTrack = Boolean(track.isAnimeOped);
+      const allowArtist = !isTargetingSingleArtist && !isAnimeTrack;
       let preferredType;
-      if (isTargetingSingleArtist) {
+      if (isTargetingSingleArtist || isAnimeTrack) {
         preferredType = (targetList.length % 2 === 0) ? 'title' : 'keyword';
       } else {
         preferredType = PREFERRED_CLUE_ROTATION[targetList.length % PREFERRED_CLUE_ROTATION.length];
@@ -825,7 +845,7 @@ export async function getRandomSongPool({
       // Guardrail against generic 2-letter soundtrack abbreviations (TV, OP, ED, OST, BGM)
       // unless the answer is for an authentic artist name
       if (['TV', 'OP', 'ED', 'OST', 'BGM'].includes(keyword.answer) && keyword.clueType !== 'Artist name') {
-        const altKeyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, seenAnswers, targetLengthBucket });
+        const altKeyword = extractAnswerKeyword(track.title, track.artist, { preferredType: allowArtist ? 'artist' : 'title', allowArtist, seenAnswers, targetLengthBucket });
         if (altKeyword && !['TV', 'OP', 'ED', 'OST', 'BGM'].includes(altKeyword.answer)) {
           keyword = altKeyword;
         } else {
@@ -849,9 +869,7 @@ export async function getRandomSongPool({
       else if (keyword.clueType === 'Artist name') clueStats.artist++;
       else clueStats.keyword++;
 
-      const clueText = track.isAnimeOped
-        ? `[Anime] ${track.themeSlug || 'Theme'} of "${track.animeTitle || track.album}" by ${track.artist}`
-        : keyword.clueText;
+      const clueText = formatCrosswordClue(track, keyword);
 
       targetList.push({
         ...track,
@@ -878,6 +896,15 @@ export async function getRandomSongPool({
   // Pass 4: Last resort fallback to prevent complete failure on tiny catalogs
   if (songs.length < 6) {
     trySelectTracks(tier3Plus, Infinity);
+  }
+
+  // 3b. JIT Lazy Anime Cover Artwork Resolution
+  if (isAnimeTheme && songs.some(s => s.isAnimeOped)) {
+    try {
+      await resolveAnimeCoverImages(songs, animeCatalog);
+    } catch (err) {
+      logger.warn('music_service', `Anime cover art resolution error: ${err.message}`);
+    }
   }
 
   // 4. JIT Lazy Preview Hydration for tracks lacking verified audio previews

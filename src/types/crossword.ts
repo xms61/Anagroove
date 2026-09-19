@@ -12,6 +12,11 @@ export interface Song {
   audioUrl: string;
   spotifyUrl?: string;
   providerUrl?: string;
+  animeTitle?: string;
+  themeSlug?: string;
+  themeType?: string;
+  isAnimeOped?: boolean;
+  imageUrl?: string;
   selection?: {
     source: string;
     rank: number;

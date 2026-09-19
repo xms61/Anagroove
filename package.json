@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.12.0",
+  "version": "1.12.2",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"vite\"",
@@ -28,6 +28,7 @@
     "anime:sync": "node scripts/sync_anime_metadata.js",
     "anime:samples": "node scripts/generate_anime_samples.js",
     "anime:ingest": "node scripts/ingest_anime_catalog.js",
+    "anime:images": "node scripts/backfill_anime_images.js",
     "fetch:datasets": "node scripts/fetch_datasets.js",
     "ingest:dataset": "node scripts/ingest_musicmovearr.js",
     "generate": "node scripts/generate_puzzles.js",

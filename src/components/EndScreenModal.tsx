@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Puzzle } from '../types/crossword';
-import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban, Loader2 } from 'lucide-react';
+import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban, Loader2, Music } from 'lucide-react';
 import { Song } from '../types/crossword';
 
 interface EndScreenModalProps {
@@ -25,6 +25,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   isLoading = false,
 }) => {
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const getSavedVolume = () => {
@@ -114,6 +115,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
         <div className="flex-1 overflow-y-auto my-4 pr-1 divide-y divide-white/5">
           {uniqueSongs.map(({ song, answer }) => {
             const isCurrentPlaying = playingSongId === song.id;
+            const hasValidImage = Boolean(song.albumArt && song.albumArt.startsWith('http') && !failedImages[song.id]);
 
             return (
               <div
@@ -123,12 +125,29 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                 {/* Left: Artwork & Metadata */}
                 <div className="flex items-center gap-3.5 min-w-0">
                   <div className="relative w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-black/40 shadow-md group border border-white/10">
-                    <img
-                      src={song.albumArt}
-                      alt={song.title}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
+                    {hasValidImage ? (
+                      <img
+                        src={song.albumArt}
+                        alt={song.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={() => setFailedImages(prev => ({ ...prev, [song.id]: true }))}
+                      />
+                    ) : (
+                      <div className={`w-full h-full flex flex-col items-center justify-center p-1 text-center select-none ${
+                        song.isAnimeOped
+                          ? 'bg-gradient-to-br from-indigo-950 via-purple-900 to-rose-950 border border-purple-500/20'
+                          : 'bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50'
+                      }`}>
+                        {song.themeSlug ? (
+                          <span className="text-[11px] font-black tracking-wider text-amber-300 drop-shadow">
+                            {song.themeSlug}
+                          </span>
+                        ) : (
+                          <Music className="w-5 h-5 text-slate-400" />
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => handlePlayAudio(song.id, song.audioUrl)}
@@ -150,9 +169,16 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     <span className="text-xs text-amber-200/90 break-words font-medium mt-0.5">
                       {song.artist}
                     </span>
-                    <span className="text-[10.5px] text-slate-500 truncate mt-0.5 font-mono">
-                      {song.album}
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                      {song.themeSlug && (
+                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          {song.themeSlug}
+                        </span>
+                      )}
+                      <span className="text-[10.5px] text-slate-500 truncate font-mono">
+                        {song.animeTitle || song.album}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

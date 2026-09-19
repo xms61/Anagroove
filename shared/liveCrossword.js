@@ -169,6 +169,11 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
             language: item.language,
             release_year: item.release_year || item.releaseYear,
             popularity: item.popularity !== undefined ? item.popularity : (item.selection?.rank || 50),
+            animeTitle: item.animeTitle,
+            themeSlug: item.themeSlug,
+            themeType: item.themeType,
+            isAnimeOped: item.isAnimeOped,
+            imageUrl: item.imageUrl || item.albumArt,
           },
         });
       }

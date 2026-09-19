@@ -63,6 +63,16 @@
 - **🧩 Dense Interlocking Layout Engine & Varied Answer Lengths**:
   - Multi-crossing layout optimization creates compact, tightly woven puzzles maximizing interlocking letters.
   - Dynamic answer lengths (2 to 14 letters) with rotating short (3–5), medium (6–8), and long (9–14) answer buckets.
+- **🎯 Zero-Spoiler Clue Discipline & 0% Artist Anime Clues**:
+  - Clue generation guarantees 0 answer leaks (`containsAnswerLeak`).
+  - For anime crosswords, clues enforce **0% Artist name clues** and **100% Song title or Keyword clues** (e.g. `ED1 of "Jigoku Shoujo Futakomori" by Mamiko Noto (2006)` for song title `AIDA`). The performer is credited cleanly for context, avoiding obscure seiyuu name puzzles.
+- **✨ Targeted Keyphrase Deduplication & Solution Blacklisting**:
+  - Prompts targeting specific franchises or artists (e.g. `anime gundam`, `country songs by dolly parton`) permit multiple tracks without deduplication rejection.
+  - The target keyphrase tokens (e.g. `GUNDAM`, `DOLLY`, `PARTON`) are blacklisted from grid answers in `seenAnswers` so players are never asked to solve the prompt itself.
+- **🎨 Anime Victory Screen Artwork & AniList GraphQL Integration**:
+  - Dynamic JIT cover art resolution via AniList GraphQL batch queries (`https://graphql.anilist.co`), cached directly in SQLite `anime_tracks.image_url`.
+  - Offline-safe victory modal featuring theme badges (`OP1`, `ED1`), full artist credits, and stylized card fallbacks.
+  - Dedicated CLI backfill utility: `npm run anime:images`.
 - **🎬 Dedicated Anime OP/ED Sourcing & Local Multi-Sample Pipeline**:
   - Independent SQLite engine isolating authentic anime openings (OP) and endings (ED) from general-music catalog collisions.
   - Slices high-fidelity 20s preview segments across multiple song timestamps (e.g. 5s, 35s, 65s offsets) via headless FFmpeg for varied playback rotation.

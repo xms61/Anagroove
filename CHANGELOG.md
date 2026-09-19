@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.12.2] - 2026-09-19
+
+### Added
+- **AniList GraphQL Artwork Pipeline (`server/services/animeImageService.js`, `scripts/backfill_anime_images.js`)**:
+  - Automated AniList GraphQL batch resolver (`Media(id: ..., type: ANIME)`) fetching high-res cover images (`coverImage.large`) for anime series.
+  - SQLite migration: Added `image_url TEXT` column to `anime_tracks` with indexed lookups.
+  - Just-In-Time (JIT) cover art hydration in `server/services/musicService.js` before returning anime puzzle song pools.
+  - Added `npm run anime:images` backfill script for offline catalog artwork synchronization.
+- **Anime Victory Screen Presentation & Visual Fallbacks (`src/components/EndScreenModal.tsx`)**:
+  - Passed `animeTitle`, `themeSlug`, `themeType`, `imageUrl`, and `isAnimeOped` to client song list.
+  - Added graceful `onError` fallback cards featuring stylized gradient backgrounds, vinyl icons, and `OP1`/`ED1` theme badges when images are loading or unavailable.
+- **Targeted Keyphrase Deduplication & Solution Blacklisting (`server/services/queryBuilder.js`, `server/services/musicService.js`)**:
+  - Implemented `extractAnimeKeyphrase` extracting specific target phrases (e.g., `gundam` from `anime gundam`, `naruto` from `anime openings naruto`).
+  - Relaxes artist/franchise deduplication for targeted keyphrases (allowing multiple Gundam tracks or multiple Dolly Parton tracks on dedicated prompts).
+  - Blacklists target keyphrase tokens ($\ge 3$ characters) from `seenAnswers` so players are never asked to solve the prompt itself as a grid word.
+
+### Changed
+- **Strict 0% Artist Clues for Anime Tracks (`server/services/musicService.js`)**:
+  - Anime tracks strictly alternate between `Song title` and `Song title keyword` clues (`allowArtist: false`), eliminating unengaging seiyuu name guesses and spoilers while retaining clean context formatting (e.g. `ED1 of "Jigoku Shoujo Futakomori" by Mamiko Noto (2006)`).
+- **Comprehensive Test Suite 12 (`scripts/run_tests.js`)**:
+  - Added Suite 12 verifying keyphrase extraction, target deduplication rules, prompt solution blacklisting, 0% artist clue distribution, and anime cover artwork SQLite persistence (expanding test suite to **486 passing tests**).
+
+---
+
+## [1.12.1] - 2026-09-19
+
+### Fixed
+- **Anime Audio Preview in Dev Mode (`vite.config.ts`)**:
+  - Added `/audio` route proxying in Vite development configuration, forwarding local anime audio preview requests (`/audio/anime/...`) from port `3010` to the Express backend (`3011`). Resolves the `⚠️ Preview unavailable` badge during `npm run dev`.
+- **Zero-Spoiler Clue System Overhaul (`shared/clueGenerator.js`, `server/services/musicService.js`)**:
+  - Eliminated answer leakage where anime artist clues previously output `by ${track.artist}` (e.g., displaying the solution when asking for "Artist name").
+  - Context-aware clue templates for Anime OP/ED:
+    - Artist clues: `Vocalist / musical act behind the {themeSlug} of "{animeTitle}" ({year})` (never discloses artist name).
+    - Song title clues: `{themeSlug} of "{animeTitle}" by {artist} ({year})` (never discloses song title).
+    - Keyword clues: `Key word in the {themeSlug} of "{animeTitle}"` (never discloses keyword).
+  - Universal Zero-Leak Sanitizer (`containsAnswerLeak`, `sanitizeClue`): Validates every generated clue against normalized answer strings and component tokens ($\ge 3$ characters), automatically falling back to non-spoilered descriptive templates if any leak is detected.
+  - Added Suite 11 to test suite (`scripts/run_tests.js`), verifying audio proxy rules, zero leakage across 500 randomized stress test generations, and expanding test suite to **423 passing tests**.
+
+---
+
 ## [1.12.0] - 2026-09-19
 
 ### Added
