@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.0] - 2026-09-19
+
+### Added
+- **Automated Crossword Judgment Suite (`server/services/crosswordJudge.js`)**:
+  - `judgePuzzle(puzzle, context)`: Evaluates grid integrity, language compliance (with culturally bounded exemptions for K-Pop, Anime, Japanese, Latin, and Bossa Nova), single-artist thematic fidelity (0 leaked artist-name clues), and authenticity (rejection of covers, instrumentals, karaoke, and audio utilities).
+  - `judgeMultiGenerationSuite(prompt, puzzles, context)`: Aggregates N generations per prompt to measure Jaccard similarity overlap, unique track ratios, popularity distribution (High, Mid, Catalog tiers), and length variety shares.
+- **Cultural and Linguistic Guardrails (`server/services/musicService.js`)**:
+  - `isAnimeTrack(track)`: Strictly validates authentic anime opening, ending, and soundtrack themes, guarding against Western collisions (e.g. DJ AniMe, Ben Mazué, French/Latin homonyms).
+  - `isJapaneseTrack(track)`: Authenticates verified Japanese artists and City Pop icons while rejecting Western homonyms (e.g. The Japanese House, Aneka).
+  - Expanded cover and audio modification rejection filters: filters out YouTube guitar/piano/harp covers (e.g. Fonzi M), backing tracks, and workout mixes.
+- **Answer Word Length Variance & Stratified Querying (`server/services/queryFactory.js`, `server/db/sqliteCatalog.js`)**:
+  - `LENGTH_ROTATION` ensures high-frequency injection of short (3-5 letter) words across all archetypes, achieving 48% to 94% short word representation across crosswords.
+  - Stratified 10-tier popularity retrieval with random sampling (`CAST(t.popularity / 100000 AS INT) DESC, RANDOM()`) maximizes track diversity across queries.
+- **Large-Scale Evaluation Suite (`scripts/eval_crossword_factory.js`, `npm run eval:crosswords`)**:
+  - Scales generation trials to 150-300 per puzzle and runs 138 crossword executions (46 prompts x 3 generations) across Dense, Small, Themed, Custom, and Edge-Case suites.
+  - Automatically produces detailed markdown evaluation report at `reports/crossword_evaluation_report.md`.
+- **Comprehensive Unit Tests (`scripts/run_tests.js`)**:
+  - Added 25 unit and integration tests for anime/Japanese separation, authenticity filtering, judge metrics, and multi-generation aggregation, expanding the automated suite to 350 passing tests.
+
+### Changed
+- **Placement Engine Trials Default (`shared/liveCrossword.js`)**:
+  - Increased placement attempts from 50/80 to 150/300 trials with typed `options.trials` support.
+
+---
+
 ## [1.10.2] - 2026-09-19
 
 ### Added

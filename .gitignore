@@ -27,6 +27,7 @@ data/changes/*
 !data/changes/.gitkeep
 data/downloads/
 data/*.csv
+!data/most_streamed_artists.csv
 data/*.tsv
 data/*.sql
 data/*.sql.gz

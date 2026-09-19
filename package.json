@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.10.2",
+  "version": "1.11.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"vite\"",
@@ -15,9 +15,11 @@
     "format": "prettier --write .",
     "test": "node scripts/run_tests.js",
     "test:prompts": "node scripts/test_prompts_crossword_suite.js",
+    "eval:crosswords": "node scripts/eval_crossword_factory.js",
     "test:all": "npm test && npm run test:prompts",
     "test:ci": "npm run lint && npm run test",
     "crawl": "node scripts/crawl_catalog.js",
+    "crawl:artists": "node scripts/crawl_catalog.js --playlists=0 --decades=0 --artists=500 --lexicon=0",
     "crawl:playlists": "node scripts/crawl_catalog.js --playlists-only",
     "crawl:top10k": "node scripts/ingest_annas_spotify.js --min-popularity=31",
     "crawl:status": "node scripts/crawl_catalog.js --status",

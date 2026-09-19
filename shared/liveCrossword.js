@@ -1,6 +1,6 @@
 import { shuffleArray } from './shuffle.js';
 
-function evaluatePlacement(grid, placedWords, word, row, col, direction) {
+function evaluatePlacement(grid, placedWords, word, row, col, direction, options = {}) {
   const size = grid.length;
   const horizontal = direction === 'across';
   if (row < 0 || col < 0) return null;
@@ -65,6 +65,13 @@ function evaluatePlacement(grid, placedWords, word, row, col, direction) {
   const boundingArea = (maxRow - minRow + 1) * (maxCol - minCol + 1);
   const aspectPenalty = Math.abs((maxRow - minRow + 1) - (maxCol - minCol + 1)) * 3;
 
+  if (options.archetype === 'small') {
+    const maxSmall = options.maxSmallBounds || 9;
+    if ((maxRow - minRow + 1) > maxSmall || (maxCol - minCol + 1) > maxSmall) {
+      return null;
+    }
+  }
+
   // Placement scoring:
   // - High reward for 2 and 3 intersections (generates authentic lattice interlocking)
   // - Balance bonus: reward crossing words that currently have only 1 crossing to elevate them to 2
@@ -72,6 +79,12 @@ function evaluatePlacement(grid, placedWords, word, row, col, direction) {
   for (const cw of crossedWords) {
     if (cw.currentCrossings === 1) balanceBonus += 60;
     if (cw.currentCrossings === 2) balanceBonus += 40;
+  }
+
+  if (options.archetype === 'dense') {
+    let denseScore = (intersections * 180) + (intersections === 2 ? 220 : 0) + (intersections === 3 ? 350 : 0);
+    denseScore += balanceBonus - (boundingArea * 4) - (aspectPenalty * 1.5);
+    return { row, col, direction, intersections, crossedWords, score: denseScore };
   }
 
   const score = (intersections * 100) + (intersections === 2 ? 140 : 0) + (intersections === 3 ? 200 : 0) + balanceBonus - boundingArea - aspectPenalty;
@@ -153,6 +166,9 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
             audioUrl: item.audioUrl,
             providerUrl: item.providerUrl,
             selection: item.selection,
+            language: item.language,
+            release_year: item.release_year || item.releaseYear,
+            popularity: item.popularity !== undefined ? item.popularity : (item.selection?.rank || 50),
           },
         });
       }
@@ -178,15 +194,36 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
  * Actively optimizes word crossings (1 to 3 crossings each) and lattice variety
  * to produce engaging, organic, tightly woven crossword grids.
  */
-export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targetWords = 10) {
-  const eligible = (songs || []).filter(song => /^[A-Z0-9]{2,20}$/.test(song.answer || ''));
-  if (eligible.length < 6) return null;
+export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targetWords = 10, options = {}) {
+  if (typeof targetWords === 'object' && targetWords !== null) {
+    options = targetWords;
+    targetWords = options.targetWords || 10;
+  }
+  const archetype = options?.archetype || 'standard';
+  const maxSmallBounds = options?.maxSmallBounds || 9;
+  const placementOpts = { archetype, maxSmallBounds };
+
+  let eligible = (songs || []).filter(song => /^[A-Z0-9]{2,20}$/.test(song.answer || ''));
+  if (archetype === 'small') {
+    const maxLen = options.maxAnswerLength || 7;
+    const minLen = options.minAnswerLength || 3;
+    const shortEligible = eligible.filter(s => s.answer.length >= minLen && s.answer.length <= maxLen);
+    if (shortEligible.length >= 5) {
+      eligible = shortEligible;
+    }
+    targetWords = Math.min(targetWords, 7);
+  }
+
+  const requiredMin = archetype === 'small' ? 5 : 6;
+  if (eligible.length < requiredMin) return null;
 
   let bestPuzzle = null;
   let bestTrialScore = -Infinity;
+  const defaultTrials = archetype === 'dense' ? 300 : (archetype === 'small' ? 150 : 150);
+  const trialsCount = options?.trialsCount || options?.trials || defaultTrials;
 
-  for (let trial = 0; trial < 50; trial++) {
-    const size = 24;
+  for (let trial = 0; trial < trialsCount; trial++) {
+    const size = archetype === 'small' ? 16 : 24;
     const grid = Array.from({ length: size }, () => Array(size).fill(null));
     const placedWords = [];
 
@@ -225,7 +262,7 @@ export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targe
               if (item.answer[itemIndex] !== existing.answer[existingIndex]) continue;
               const row = existing.direction === 'across' ? existing.row - itemIndex : existing.row + existingIndex;
               const col = existing.direction === 'across' ? existing.col + existingIndex : existing.col - itemIndex;
-              const evaluation = evaluatePlacement(grid, placedWords, item.answer, row, col, targetDirection);
+              const evaluation = evaluatePlacement(grid, placedWords, item.answer, row, col, targetDirection, placementOpts);
               if (evaluation) {
                 validPlacements.push(evaluation);
               }
@@ -246,7 +283,7 @@ export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targe
       }
     }
 
-    const minWords = Math.min(6, targetWords, eligible.length);
+    const minWords = archetype === 'small' ? Math.min(5, targetWords, eligible.length) : Math.min(6, targetWords, eligible.length);
     if (placedWords.length >= minWords) {
       const crossingCounts = placedWords.map(w => w.currentCrossings);
       const count1 = crossingCounts.filter(c => c === 1).length;
@@ -279,7 +316,22 @@ export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targe
         varietyScore -= (oneRatio - 0.5) * 800;
       }
 
-      const trialScore = (placedWords.length * 1200) + varietyScore - (currentRows * currentCols * 3) - Math.abs(currentRows - currentCols) * 25;
+      let trialScore = (placedWords.length * 1200) + varietyScore - (currentRows * currentCols * 3) - Math.abs(currentRows - currentCols) * 25;
+
+      if (archetype === 'dense') {
+        const totalLetters = placedWords.reduce((sum, w) => sum + w.length, 0);
+        const density = totalLetters / (currentRows * currentCols);
+        let densityBonus = 0;
+        if (density >= 0.35) densityBonus += 1200;
+        else if (density >= 0.28) densityBonus += 600;
+        trialScore = (placedWords.length * 1500) + (varietyScore * 1.5) + densityBonus - (currentRows * currentCols * 5) - Math.abs(currentRows - currentCols) * 35;
+      } else if (archetype === 'small') {
+        if (currentRows <= maxSmallBounds && currentCols <= maxSmallBounds) {
+          trialScore += 2500 - (currentRows * currentCols * 10);
+        } else {
+          trialScore -= 5000;
+        }
+      }
 
       if (trialScore > bestTrialScore) {
         bestTrialScore = trialScore;

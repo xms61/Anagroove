@@ -21,8 +21,19 @@ export interface LiveSong {
   clueText: string;
 }
 
+export interface LiveCrosswordOptions {
+  archetype?: 'dense' | 'small' | 'standard';
+  targetWords?: number;
+  maxSmallBounds?: number;
+  minAnswerLength?: number;
+  maxAnswerLength?: number;
+  trials?: number;
+  trialsCount?: number;
+}
+
 export declare function generateLiveCrossword(
   songs: LiveSong[],
   title?: string,
-  targetWords?: number
+  targetWords?: number | LiveCrosswordOptions,
+  options?: LiveCrosswordOptions
 ): Puzzle | null;

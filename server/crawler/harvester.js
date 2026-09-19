@@ -1,6 +1,7 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { isAuthenticCandidate } from './authenticityFilter.js';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
+import { STREAMED_ARTIST_NAMES } from './artistBaseline.js';
 import { logger } from '../logger.js';
 
 // Comprehensive dictionary of 350+ high-frequency music words across decades & languages
@@ -56,8 +57,8 @@ export const MUSIC_LEXICON_SEEDS = [
   'tokyo', 'hikari', 'yume', 'sakura', 'kokoro', 'mirai', 'tsuki', 'densetsu', 'seoul', 'sarang'
 ];
 
-// Curated foundation of 200+ foundational artists across diverse genres and decades
-export const FOUNDATION_ARTISTS = [
+// Curated heritage and genre foundation artists to complement the streaming roster
+export const HERITAGE_ARTISTS = [
   // Classic Rock / Hard Rock / Progressive Rock
   'Queen', 'The Beatles', 'Led Zeppelin', 'Pink Floyd', 'The Rolling Stones', 'Fleetwood Mac',
   'David Bowie', 'The Who', 'The Doors', 'Jimi Hendrix', 'Creedence Clearwater Revival', 'Deep Purple',
@@ -123,6 +124,13 @@ export const FOUNDATION_ARTISTS = [
   'Nina Simone', 'Norah Jones', 'Herbie Hancock', 'B.B. King', 'Muddy Waters', 'Stevie Ray Vaughan',
   'Johnny Cash', 'Willie Nelson', 'Dolly Parton', 'Shania Twain', 'Chris Stapleton', 'Luke Combs'
 ];
+
+// Baseline foundation artist roster: Prioritizes 500 Most Streamed Artists on Spotify + Heritage anchors
+export const FOUNDATION_ARTISTS = Array.from(new Set([
+  ...STREAMED_ARTIST_NAMES,
+  ...HERITAGE_ARTISTS,
+]));
+
 
 // High-yield curated playlist searches across genres & eras
 export const CURATED_PLAYLIST_SEEDS = [
