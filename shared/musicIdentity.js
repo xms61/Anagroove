@@ -63,7 +63,14 @@ export function toCrosswordAnswer(displayName, { minLength = 2, maxLength = 20 }
   const input = asString(displayName);
   if (!input) return null;
 
-  const expanded = input
+  const unescaped = input
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+
+  const expanded = unescaped
     .replace(/&/g, ' and ')
     .replace(/\+/g, ' and ');
 

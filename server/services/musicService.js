@@ -285,24 +285,113 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
  * and sped-up/slowed-down audio modifications.
  */
 export function isAuthenticTrack(track) {
-  const artist = String(track?.artist || '').trim();
-  const title = String(track?.title || '').trim();
+  const artist = String(track?.artist || track?.display_name || '').trim();
+  const title = String(track?.title || track?.display_title || '').trim();
+  const album = String(track?.album || track?.album_name || track?.collectionName || '').trim();
   const lowerArtist = artist.toLowerCase();
   const lowerTitle = title.toLowerCase();
+  const lowerAlbum = album.toLowerCase();
 
   // 1. Generic compilation/workout/soundalike artists and unofficial YouTube/fan cover artists
-  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew|music\s*box\s*(ensemble|lullaby|collection|band)|lullaby\s*(baby|ensemble|band)|pellek|little\s*v\.?|shironeko|jonathan\s*young|natewantstobattle|tsuko\s*g\.?|richaadeb|rainych|amalee)\b/i;
+  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew|music\s*box\s*(ensemble|lullaby|collection|band)|lullaby\s*(baby|ensemble|band)|pellek|little\s*v\.?|shironeko|jonathan\s*young|natewantstobattle|tsuko\s*g\.?|richaadeb|rainych|amalee|cao|fonzi\s*m)\b/i;
   if (fakeArtistPatterns.test(lowerArtist)) {
     return false;
   }
 
-  // 2. Audio modifications and utility releases in titles
-  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|music\s*box|musicbox|lullaby|bgm\s+cover|fan\s*cover|metal\s*cover|rock\s*cover|guitar\s*cover|violin\s*cover|piano\s*cover|synth\s*cover|lo-?fi\s*remix|phonk\s*remix|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental\s+version|piano\s+version|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by)\b/i;
+  // 2. Audio modifications, covers, karaoke, and utility releases in titles
+  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|music\s*box|musicbox|lullaby|bgm\s+cover|fan\s*cover|metal\s*cover|rock\s*cover|guitar\s*cover|guitar\s+version|violin\s*cover|piano\s*cover|piano\s+version|acoustic\s+version|harp\s+version|synth\s*cover|lo-?fi\s*remix|phonk\s*remix|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental(?:\s+version)?|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by|karaoke(?:\s+version)?|backing\s+track|sans\s+paroles)\b/i;
   if (audioModPatterns.test(lowerTitle)) {
     return false;
   }
 
+  // 3. Covers or tribute compilations in album title
+  if (lowerAlbum) {
+    const fakeAlbumPatterns = /\b(?:cover\s+music\s+selection|cover\s+versions?|tribute\s+album|karaoke|music\s*box|lullaby|8-?bit|workout\s+music|fitness\s+beats)\b/i;
+    if (fakeAlbumPatterns.test(lowerAlbum)) {
+      return false;
+    }
+  }
+
   return true;
+}
+
+/**
+ * Distinguishes authentic anime openings, endings, insert songs, and official anime soundtracks
+ * from generic Japanese pop/rock or foreign homonym collisions.
+ */
+export function isAnimeTrack(track) {
+  if (!track) return false;
+  if (!isAuthenticTrack(track)) return false;
+
+  const title = String(track.title || track.display_title || '').trim();
+  const artist = String(track.artist || track.display_name || '').trim();
+  const album = String(track.album || track.album_name || '').trim();
+  const lowerTitle = title.toLowerCase();
+  const lowerArtist = artist.toLowerCase();
+  const lowerAlbum = album.toLowerCase();
+  const combined = `${lowerTitle} ${lowerAlbum} ${lowerArtist}`;
+
+  // 1. Strict homonym, foreign language, and Latin collision rejection
+  if (/^(?:dj\s+)?anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) return false;
+  if (/^(?:\u00e9dith\s+piaf|ben\s+mazu\u00e9|les\s+goldies)\b/i.test(lowerArtist)) return false;
+  if (/\b(?:le\s+coeur\s+nous\s+anime|dessin\s+anim\u00e9)\b/i.test(lowerTitle)) return false;
+
+  // 2. Reject Western pop/rap acts with accidental "anime" stem or collision
+  if (/\b(?:rockstar|lalisa|sa-wa-di-ka|sawadika|money)\b/i.test(lowerTitle) && /lisa/i.test(lowerArtist)) return false;
+  if (/eve/i.test(lowerArtist) && /\b(?:blow\s+ya\s+mind|who'?s\s+that\s+girl|ruff\s+ryders|gangsta\s+lovin)\b/i.test(lowerTitle)) return false;
+
+  // 3. Reject non-anime Latin/English stems (animal, animals, animosity, etc.)
+  if (/\b(?:animals?|animais|animosity|animate|animated|animation|animatrix|anima)\b/i.test(`${lowerArtist} ${lowerTitle}`)) {
+    if (!/(?:ost|opening|ending|theme|soundtrack|naruto|bleach|one\s*piece|attack\s*on\s*titan)/i.test(combined)) {
+      return false;
+    }
+  }
+
+  // 4. Must have verified anime opening/ending/soundtrack credentials:
+  // a) Explicit English anime markers
+  const animeEnglishMarkers = /\b(?:tv\s*anime|anime\s*(?:version|ver|ed|op|best|shibari)|opening\s*theme|ending\s*theme|theme\s*song|original\s*soundtrack|\bost\b|tv\s*size|tv\s*version|tv\s*animation|anisong|gekiban)\b/i;
+  if (animeEnglishMarkers.test(combined)) return true;
+
+  // b) Explicit Japanese kanji/kana anime markers
+  const animeJpMarkers = /(?:アニメ|主題歌|オープニング|エンディング|劇中歌|サントラ)/;
+  if (animeJpMarkers.test(combined)) return true;
+
+  // c) Explicit anime franchise in title or album
+  const animeFranchises = /\b(?:naruto|bleach|one\s*piece|attack\s*on\s*titan|shingeki|demon\s*slayer|kimetsu|jujutsu|evangelion|death\s*note|dragon\s*ball|daima|my\s*hero\s*academia|boku\s*no\s*hero|fullmetal|sword\s*art\s*online|sao|tokyo\s*ghoul|cowboy\s*bebop|frieren|bocchi|chainsaw\s*man|dandadan|oshi\s*no\s*ko|sailor\s*moon|inuyasha|hunter\s*x\s*hunter|haikyuu|spy\s*x\s*family|ghibli|totoro|spirited\s*away|howl'?s\s*moving\s*castle|mononoke|your\s*name|kimi\s*no\s*na\s*wa|suzume|weathering\s*with\s*you|akira|specialz|kaikai\s*kitan|gurenge|zankyosanka|unravel|silhouette|blue\s*bird|colors|go!!!)\b/i;
+  if (animeFranchises.test(combined)) return true;
+
+  // d) Iconic anisong artist performing an authentic anime release
+  const anisongSpecialists = /^(?:flow|lisa|linked\s*horizon|yoko\s*takahashi|burnout\s*syndromes|claris)$/i;
+  if (anisongSpecialists.test(lowerArtist)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Verifies that a candidate track represents authentic Japanese music
+ * while rejecting western homonyms and foreign collisions.
+ */
+export function isJapaneseTrack(track) {
+  if (!track) return false;
+  if (!isAuthenticTrack(track)) return false;
+
+  const title = String(track.title || track.display_title || '').trim();
+  const artist = String(track.artist || track.display_name || '').trim();
+  const lowerArtist = artist.toLowerCase();
+  const lowerTitle = title.toLowerCase();
+
+  // Reject Western homonyms and novelty acts
+  if (/^(?:the\s+)?japanese\s+(?:house|popstars|breakfast|brothers|band)\b/i.test(lowerArtist)) return false;
+  if (/\b(?:the\s+japanese\s+house|japanese\s+boy|japanese\s+porn)\b/i.test(`${lowerArtist} ${lowerTitle}`)) return false;
+
+  // Language must be Japanese ('ja') or have Japanese characters or belong to recognized Japanese artist roster
+  if (track.language === 'ja') return true;
+  if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(`${title} ${artist}`)) return true;
+
+  const japaneseArtists = /\b(?:tatsuro\s*yamashita|miki\s*matsubara|mariya\s*takeuchi|anri|taeko\s*onuki|junko\s*ohashi|toshiki\s*kadomatsu|takako\s*mamiya|tomoko\s*aran|meiko\s*nakahara|minako\s*yoshida|hiroshi\s*satoh|one\s*ok\s*rock|radwimps|king\s*gnu|kenshi\s*yonezu|official\s*hige\s*dandism|yoasobi|aimer|flow|lisa)\b/i;
+  return japaneseArtists.test(lowerArtist);
 }
 
 /**
@@ -313,9 +402,9 @@ export function isTemporalPermitted(track, yearRange) {
   if (!yearRange || (yearRange.start === undefined && yearRange.end === undefined)) {
     return true;
   }
-  const dateStr = track?.releaseDate || track?.selection?.releaseDate || '';
-  let year = null;
-  if (dateStr) {
+  const dateStr = track?.releaseDate || track?.selection?.releaseDate || track?.release_date || '';
+  let year = track?.release_year ? Number(track.release_year) : null;
+  if (!year && dateStr) {
     const match = String(dateStr).match(/\b(\d{4})\b/);
     if (match) {
       year = parseInt(match[1], 10);

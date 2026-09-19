@@ -125,9 +125,16 @@ export function extractAllAnswerCandidates(title, artist) {
   // Thoroughly strip featured artists and parenthetical annotations from song title
   // e.g. "APT. (feat. Bruno Mars)" -> "APT."
   // or "APT. feat. Bruno Mars" -> "APT."
-  const cleanTitle = String(title)
+  const unescapedTitle = String(title)
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+
+  const cleanTitle = unescapedTitle
     .replace(/\s*[([](?:feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
-    .replace(/\s*[([][^)\]]*[)\]]/g, '')
+    .replace(/\s*[([][^)\\]]*[)\\]]/g, '')
     .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.*$/i, '')
     .trim();
 

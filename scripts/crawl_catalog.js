@@ -14,7 +14,7 @@ const lexiconArg = args.find(a => a.startsWith('--lexicon='));
 const targetTracks = targetArg ? parseInt(targetArg.split('=')[1], 10) : 500000;
 const playlistsLimit = playlistsArg ? parseInt(playlistsArg.split('=')[1], 10) : (isPlaylistsOnly ? 100 : 100);
 const decadesLimit = decadesArg ? parseInt(decadesArg.split('=')[1], 10) : (isPlaylistsOnly ? 0 : 105);
-const artistsLimit = artistsArg ? parseInt(artistsArg.split('=')[1], 10) : (isPlaylistsOnly ? 0 : 250);
+const artistsLimit = artistsArg ? parseInt(artistsArg.split('=')[1], 10) : (isPlaylistsOnly ? 0 : 500);
 const lexiconLimit = lexiconArg ? parseInt(lexiconArg.split('=')[1], 10) : (isPlaylistsOnly ? 0 : 1500);
 
 function printStats(stats) {

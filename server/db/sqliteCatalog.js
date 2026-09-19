@@ -617,6 +617,116 @@ export class SqliteCatalog {
   }
 
   /**
+   * Advanced multi-attribute search for crossword puzzle candidate retrieval.
+   * Matches artists, genres, text tokens, temporal bounds, and answer length constraints.
+   */
+  queryCatalogForCrossword({
+    artist = '',
+    text = '',
+    genres = [],
+    language = null,
+    yearRange = null,
+    minPopularity = 0,
+    answerLength = null,
+    allowSampleless = true,
+    requireSample = false,
+    variety = false,
+    limit = 60,
+  } = {}) {
+    let query = `
+      SELECT t.id, t.isrc, t.language, t.display_title as title, a.display_name as artist,
+             t.album_name as album, t.duration_ms, t.release_year, t.popularity,
+             s.provider, s.provider_track_id, s.sample_url, s.audio_codec,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id
+      FROM tracks t
+      JOIN artists a ON t.artist_id = a.id
+      ${requireSample || !allowSampleless ? 'INNER' : 'LEFT'} JOIN track_samples s ON t.id = s.track_id
+      WHERE 1=1
+    `;
+
+    const params = [];
+
+    if (requireSample || !allowSampleless) {
+      query += ' AND s.sample_url IS NOT NULL AND s.http_status = 200';
+    }
+
+    if (artist && typeof artist === 'string' && artist.trim()) {
+      const canonical = normalizeDedupeArtist(artist);
+      query += ' AND (a.canonical_name = ? OR a.display_name = ? OR a.display_name LIKE ? OR a.display_name LIKE ?)';
+      params.push(canonical, artist.trim(), `${artist.trim()} %`, `${artist.trim()} &%`);
+    }
+
+    if (text && typeof text === 'string' && text.trim()) {
+      const term = `%${text.trim()}%`;
+      query += ' AND (t.canonical_title LIKE ? OR t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)';
+      params.push(term, term, term, term);
+    }
+
+    if (Array.isArray(genres) && genres.length > 0) {
+      const genreClauses = genres.map(() => 'a.genres_json LIKE ?').join(' OR ');
+      query += ` AND (${genreClauses})`;
+      for (const g of genres) {
+        params.push(`%${g.trim()}%`);
+      }
+    }
+
+    if (language) {
+      if (Array.isArray(language) && language.length > 0) {
+        const langClauses = language.map(() => 't.language = ?').join(' OR ');
+        query += ` AND (${langClauses})`;
+        params.push(...language);
+      } else if (typeof language === 'string' && language.trim()) {
+        query += ' AND (t.language = ? OR t.language IS NULL)';
+        params.push(language.trim());
+      }
+    }
+
+    if (minPopularity > 0) {
+      query += ' AND t.popularity >= ?';
+      params.push(minPopularity);
+    }
+
+    if (yearRange && typeof yearRange === 'object') {
+      if (yearRange.start !== undefined) {
+        query += ' AND t.release_year >= ?';
+        params.push(yearRange.start);
+      }
+      if (yearRange.end !== undefined) {
+        query += ' AND t.release_year <= ?';
+        params.push(yearRange.end);
+      }
+    }
+
+    if (answerLength) {
+      if (typeof answerLength === 'object') {
+        if (answerLength.min !== undefined) {
+          query += ' AND (LENGTH(t.canonical_title) >= ? OR LENGTH(a.canonical_name) >= ?)';
+          params.push(answerLength.min, answerLength.min);
+        }
+        if (answerLength.max !== undefined) {
+          query += ' AND (LENGTH(t.canonical_title) <= ? OR LENGTH(a.canonical_name) <= ?)';
+          params.push(answerLength.max, answerLength.max);
+        }
+      } else if (typeof answerLength === 'number') {
+        query += ' AND (LENGTH(t.canonical_title) <= ? OR LENGTH(a.canonical_name) <= ?)';
+        params.push(answerLength, answerLength);
+      }
+    }
+
+    // Prioritize tracks with active previews, then popularity, with randomized tie-breaking
+    if (variety) {
+      query += ' ORDER BY (CASE WHEN s.sample_url IS NOT NULL THEN 1 ELSE 0 END) DESC, CAST(t.popularity / 100000 AS INT) DESC, RANDOM() LIMIT ?';
+    } else {
+      query += ' ORDER BY (CASE WHEN s.sample_url IS NOT NULL THEN 1 ELSE 0 END) DESC, t.popularity DESC, RANDOM() LIMIT ?';
+    }
+    params.push(limit);
+
+    return this.db.prepare(query).all(...params);
+  }
+
+  /**
    * Returns high-level catalog statistics.
    */
   getStats() {
