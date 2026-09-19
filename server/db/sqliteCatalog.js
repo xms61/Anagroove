@@ -91,12 +91,14 @@ export class SqliteCatalog {
 
     this.db = new DatabaseSync(this.dbPath);
 
-    // Enable WAL mode, busy timeout, and foreign key constraints
+    // Enable WAL mode, busy timeout, foreign keys, memory-mapped I/O, and cache tuning
     try {
       this.db.exec('PRAGMA journal_mode = WAL;');
       this.db.exec('PRAGMA synchronous = NORMAL;');
       this.db.exec('PRAGMA busy_timeout = 10000;');
       this.db.exec('PRAGMA foreign_keys = ON;');
+      this.db.exec('PRAGMA mmap_size = 2147483648;'); // 2GB memory-mapped I/O
+      this.db.exec('PRAGMA cache_size = -64000;');    // 64MB memory page cache
     } catch {
       // Memory DBs or certain environments ignore pragma journal_mode
     }
@@ -187,7 +189,11 @@ export class SqliteCatalog {
       CREATE INDEX IF NOT EXISTS idx_tracks_lookup ON tracks(artist_id, canonical_title, duration_ms);
       CREATE INDEX IF NOT EXISTS idx_tracks_year ON tracks(release_year);
       CREATE INDEX IF NOT EXISTS idx_tracks_pop ON tracks(popularity DESC);
+      CREATE INDEX IF NOT EXISTS idx_tracks_pop_year ON tracks(popularity DESC, release_year);
+      CREATE INDEX IF NOT EXISTS idx_tracks_lang_country ON tracks(language, country_code);
       CREATE INDEX IF NOT EXISTS idx_samples_track ON track_samples(track_id);
+      CREATE INDEX IF NOT EXISTS idx_providers_lookup ON track_providers(track_id, provider);
+      CREATE INDEX IF NOT EXISTS idx_providers_provider_id ON track_providers(provider, provider_track_id);
       CREATE INDEX IF NOT EXISTS idx_queue_poll ON crawl_queue(status, next_run_at, priority DESC);
     `);
 
@@ -528,26 +534,65 @@ export class SqliteCatalog {
   }
 
   /**
-   * Retrieves random playable tracks with verified audio samples from SQLite.
-   * Perfect for instantaneous, zero-latency crossword generation!
+   * Inserts or updates an audio sample for a track in SQLite.
+   * Enables persistent caching of on-the-fly lazy preview resolutions.
+   */
+  insertSample(trackId, {
+    provider = 'deezer',
+    providerTrackId = '',
+    sampleUrl,
+    audioCodec = 'mp3',
+    sampleDurationSec = 30,
+    httpStatus = 200,
+  } = {}) {
+    if (!trackId || !sampleUrl) return false;
+    try {
+      this.stmtInsertSample.run(
+        Number(trackId),
+        String(provider || 'deezer'),
+        String(providerTrackId || ''),
+        String(sampleUrl),
+        String(audioCodec || 'mp3'),
+        Number(sampleDurationSec || 30),
+        Number(httpStatus || 200)
+      );
+      return true;
+    } catch (err) {
+      logger.warn('sqlite_catalog', `Failed to insert sample for track ${trackId}: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Retrieves random playable tracks from SQLite.
+   * By default returns tracks with verified audio samples (zero-latency).
+   * When allowSampleless is true, also returns candidate tracks needing JIT lazy preview hydration.
    */
   getRandomPlayableTracks({
     count = 10,
     minPopularity = 0,
     yearRange = null,
+    allowSampleless = false,
     limit = 50,
   } = {}) {
     let query = `
       SELECT t.id, t.isrc, t.display_title as title, a.display_name as artist,
              t.album_name as album, t.duration_ms, t.release_year, t.popularity,
-             s.provider, s.provider_track_id, s.sample_url, s.audio_codec
+             s.provider, s.provider_track_id, s.sample_url, s.audio_codec,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id
       FROM tracks t
       JOIN artists a ON t.artist_id = a.id
-      JOIN track_samples s ON t.id = s.track_id
-      WHERE s.sample_url IS NOT NULL AND s.http_status = 200
+      ${allowSampleless ? 'LEFT' : 'INNER'} JOIN track_samples s ON t.id = s.track_id
+      WHERE 1=1
     `;
 
     const params = [];
+
+    if (!allowSampleless) {
+      query += ' AND s.sample_url IS NOT NULL AND s.http_status = 200';
+    }
 
     if (minPopularity > 0) {
       query += ' AND t.popularity >= ?';
@@ -591,8 +636,10 @@ export class SqliteCatalog {
       artists: Number(artistCount),
       tracks: Number(trackCount),
       audioSamples: Number(sampleCount),
+      samples: Number(sampleCount),
       providerLinks: Number(providerCount),
       crossReferencedTracks: Number(crossReferenced),
+      crossReferenced: Number(crossReferenced),
       languages: Number(languageCount),
       countryCodes: Number(countryCount),
     };

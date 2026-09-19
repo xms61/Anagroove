@@ -162,14 +162,34 @@ node scripts/crawl_catalog.js --target=500000
 # 5. Playlists-only crawl: Harvest curated genre & historical playlists exclusively
 npm run crawl:playlists
 
-# 6. Ingest Anna's Archive Spotify Top 10k: Harvest top Spotify songs (popularity > 30)
+# 6. Prepare and fetch dataset files (Anna's Top 10k & directories setup)
+npm run fetch:datasets
+
+# 7. Ingest Anna's Archive Spotify Top 10k: Harvest top Spotify songs (popularity > 30)
 npm run crawl:top10k
 
-# 7. Inspect database status (including country codes & detected languages)
+# 8. Ingest MusicMoveArr Datasets (Scenario C + Lazy JIT Preview Hydration)
+# Stream-ingest bulk base CSV dumps or incremental SQL diffs (popularity > 30):
+npm run ingest:dataset -- --csv-file=./data/deezer_tracks.csv --provider=deezer
+# or stream compressed incremental diffs:
+npm run ingest:dataset -- --sql-file=./data/changes_2026_03.sql.gz --provider=deezer
+# or batch-ingest an entire directory of base tables:
+npm run ingest:dataset -- --base-dir=./data/base_tables/ --min-popularity=31
+
+# 9. Inspect database status (including country codes & detected languages)
 npm run crawl:status
 ```
 
-#### Crawler Flags & Options
+#### MusicMoveArr Ingestion & Lazy JIT Preview Hydration
+SpotySpice features a hybrid high-performance music ingestion architecture:
+- **Scenario C Ingestion**: Stream-ingest millions of tracks from the [MusicMoveArr Datasets](https://github.com/MusicMoveArr/Datasets) (Deezer, Spotify, Tidal, MusicBrainz base dumps and compressed incremental diffs) with zero RAM bloat.
+- **Popularity & Authenticity Filtering**: Ingests high-quality music filtered strictly by `popularity > 30` (or configurable `--min-popularity=31`) and `isAuthenticCandidate`, preventing amateur covers, karaoke, and noise from polluting the database.
+- **Lazy JIT Preview Hydration**: To eliminate the prohibitive bandwidth and latency of downloading millions of audio previews upfront, tracks are ingested with instant metadata (`sample_url = NULL`). When players generate a crossword puzzle:
+  1. SpotySpice selects candidate songs from SQLite in `< 10ms`.
+  2. The **Preview Resolver** (`server/services/previewResolver.js`) rapidly resolves 30-second playable audio previews in parallel (~150ms) using the Deezer track API fast-path (`deezer_id`) with automatic fallback to iTunes API.
+  3. Previews are cached in-memory and asynchronously persisted into `track_samples` in SQLite. Future games featuring those tracks enjoy instant, zero-latency playback!
+
+#### Crawler & Ingestion Flags
 | Flag | Default | Description |
 | :--- | :--- | :--- |
 | `--target=<n>` | `500000` | Stops crawling as soon as the total canonical track count in SQLite reaches `<n>`. |
@@ -178,7 +198,12 @@ npm run crawl:status
 | `--decades=<n>` | `105` | Maximum decade × genre queries to spider (Vector 2). Set to `0` to skip. |
 | `--artists=<n>` | `250` | Maximum foundation artists to spider discographies and related artist graphs for (Vector 3). |
 | `--lexicon=<n>` | `1500` | Maximum high-frequency vocabulary keywords to sweep across paginated offsets (Vector 4). |
-| `--min-popularity=<n>` | `31` | Minimum track popularity score for Spotify top tracks ingestion (`popularity > 30`). |
+| `--min-popularity=<n>` | `31` | Minimum track popularity score for Spotify/MusicMoveArr ingestion (`popularity > 30`). |
+| `--csv-file=<path>` | `null` | Path to CSV/TSV table file for MusicMoveArr streaming ingestion. |
+| `--sql-file=<path>` | `null` | Path to plain `.sql` or compressed `.sql.gz` incremental diff file. |
+| `--base-dir=<dir>` | `null` | Directory containing base CSV/TSV tables to ingest sequentially. |
+| `--incremental-dir=<dir>` | `null` | Directory containing incremental `.sql.gz` diffs. |
+| `--dry-run` | `false` | Parse and evaluate candidates without writing to SQLite. |
 | `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, country codes, languages, and cross-referenced merges without crawling. |
 
 #### Deduplication & Integrity
@@ -204,16 +229,15 @@ SpotySpice/
 │   ├── crawl_catalog.js        # Multi-vector SQLite catalog crawler CLI
 │   ├── fetch_all_previews.js
 │   ├── generate_all_themes.js
-│   ├── run_tests.js            # Automated test suite (280 passing tests)
+│   ├── run_tests.js            # Automated test suite (321 passing tests)
 │   ├── test_features.js        # Core API & persistence tests
 │   ├── test_multiplayer_live_sync.js # E2E two-player live sync test
 │   └── test_randomizer.js      # Recognizable pool entropy test
-├── server/                     # Express & WebSocket backend
-│   ├── config.js               # Environment loader & API key manager
-│   ├── crawler/                # Multi-provider crawler & harvester
-│   │   ├── authenticityFilter.js # Covers, karaoke, tribute & soundalike filter
-│   │   ├── harvester.js        # Discography spider & lexicon sweeper
-│   │   └── rateLimiter.js      # Token-bucket throttlers (Deezer & iTunes)
+├── server/                     # Node.js backend
+│   ├── crawler/                # Autonomous multi-vector SQLite crawler
+│   │   ├── authenticityFilter.js # Quality filters
+│   │   ├── harvester.js        # Discovery vectors & spiders
+│   │   └── rateLimiter.js      # Polite token bucket rate limiter
 │   ├── data/
 │   │   ├── catalog.sqlite      # Native SQLite database (Node.js 24 node:sqlite)
 │   │   ├── recognized_artists.json # 105+ iconic artists with >= 250k fans
@@ -228,6 +252,7 @@ SpotySpice/
 │       ├── deezerMusicProvider.js # Deezer candidate harvesting & catalog taxonomy
 │       ├── itunesMusicProvider.js # iTunes candidate harvesting & fallback previews
 │       ├── musicService.js     # Unified random pool, variety & seed selection
+│       ├── previewResolver.js  # JIT Lazy preview hydration & SQLite persistence
 │       └── queryBuilder.js     # Prompt parser & multi-endpoint query planner
 ├── shared/                     # Cross-environment shared logic
 │   ├── liveCrossword.js        # On-the-fly crossword grid layout algorithm

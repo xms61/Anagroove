@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.9.7",
+  "version": "1.10.2",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"vite\"",
@@ -21,6 +21,8 @@
     "crawl:playlists": "node scripts/crawl_catalog.js --playlists-only",
     "crawl:top10k": "node scripts/ingest_annas_spotify.js --min-popularity=31",
     "crawl:status": "node scripts/crawl_catalog.js --status",
+    "fetch:datasets": "node scripts/fetch_datasets.js",
+    "ingest:dataset": "node scripts/ingest_musicmovearr.js",
     "generate": "node scripts/generate_puzzles.js",
     "generate:themes": "node scripts/generate_all_themes.js"
   },

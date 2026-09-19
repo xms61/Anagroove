@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.2] - 2026-09-19
+
+### Added
+- **Dataset Preparation & Download Utility (`scripts/fetch_datasets.js`, `npm run fetch:datasets`)**:
+  - Automatically fetches Anna's Archive Spotify Top 10k table into local `data/spotify_top10k.html`.
+  - Scans and validates local `data/base_tables/` and `data/changes/` directories.
+  - Comprehensive CLI guide and download links for MusicMoveArr datasets and incremental MEGA diffs.
+- **Local File Fast-Path in Anna's Ingestor (`scripts/ingest_annas_spotify.js`)**:
+  - Added support for `--file=...` and automatic fallback to `data/spotify_top10k.html`, enabling instant offline re-ingestion in under 2 seconds.
+
+### Changed
+- **Git Hygiene**:
+  - Updated `.gitignore` to strictly exclude dataset dumps (`*.csv`, `*.tsv`, `*.sql`, `*.sql.gz`, `*.html`, `*.gz`, `*.tar*`, `data/downloads/`) while preserving tracked pools and directory structure (`.gitkeep`).
+
+---
+
+## [1.10.1] - 2026-09-19
+
+### Fixed
+- **MusicMoveArr Ingestor Initial DB Stats Logging (`scripts/ingest_musicmovearr.js`)**:
+  - Resolved `TypeError: Cannot read properties of undefined (reading 'toLocaleString')` by aligning stats property access with `audioSamples` and `crossReferencedTracks`.
+  - Added backward-compatible alias properties (`samples`, `crossReferenced`) to `sqliteCatalog.getStats()` to ensure resilience across CLI commands and logging utilities.
+
+---
+
+## [1.10.0] - 2026-09-19
+
+### Added
+- **MusicMoveArr Dataset Streaming Ingestor (`scripts/ingest_musicmovearr.js`, `npm run ingest:dataset`)**:
+  - Implemented streaming ingestion engine for the [MusicMoveArr Datasets](https://github.com/MusicMoveArr/Datasets) (Deezer, Spotify, Tidal, MusicBrainz base dumps and compressed incremental `.sql.gz` diffs from MEGA).
+  - Enforces Scenario C filtering: strict `popularity > 30` (default `--min-popularity=31`) and `isAuthenticCandidate({ requireSample: false })`, pruning noise, amateur covers, and karaoke.
+  - Memory-safe stream processing using Node.js `readline` and `zlib.createGunzip()`, batching 2,000 tracks per SQLite transaction via `sqliteCatalog.upsertBatch()`.
+  - Automatic WAL journal compaction (`PRAGMA wal_checkpoint(TRUNCATE)`) every 100,000 tracks to keep disk footprint strictly controlled.
+- **On-the-Fly Lazy JIT Preview Hydration Engine (`server/services/previewResolver.js`)**:
+  - Implemented on-demand audio preview resolution: tracks ingested from MusicMoveArr start with instant metadata (`sample_url = NULL`) and are resolved JIT when selected for live gameplay.
+  - Multi-tiered resolution pipeline:
+    1. Instant existing URL hit (`sample_url` or `audioUrl`).
+    2. Fast-path Deezer Track API lookup via stored `deezer_id` (sub-150ms).
+    3. Fallback Deezer artist + title search.
+    4. Fallback iTunes Search API lookup (by ISRC or artist + title).
+  - Parallel batch resolution via `batchResolvePreviews(tracks)` using `Promise.allSettled`.
+  - Asynchronously persists verified audio previews into SQLite `track_samples` table (`sqliteCatalog.insertSample`), turning first-time resolutions into zero-latency future cache hits.
+  - Bounded in-memory preview cache (`inMemoryPreviewCache`) to eliminate redundant external API requests during active gameplay sessions.
+- **High-Performance SQLite Engine (`server/db/sqliteCatalog.js`)**:
+  - Configured `PRAGMA mmap_size = 2147483648;` (2GB memory-mapped I/O) and `PRAGMA cache_size = -64000;` (64MB page cache) enabling sub-10ms queries across millions of tracks.
+  - Added covering indexes: `idx_tracks_pop_year`, `idx_tracks_lang_country`, `idx_providers_lookup`, `idx_providers_provider_id`.
+  - Added `sqliteCatalog.insertSample(trackId, sampleData)` for runtime sample persistence.
+  - Extended `sqliteCatalog.getRandomPlayableTracks({ allowSampleless: true })` to harvest sampleless candidate tracks and attach provider IDs (`deezer_id`, `spotify_id`, `itunes_id`).
+- **Music Service Candidate Harvesting & JIT Hydration (`server/services/musicService.js`)**:
+  - Integrated local SQLite candidate harvesting directly into candidate tasks when generating puzzles.
+  - Embedded JIT Lazy Preview Hydration before crossword layout generation, filtering for 100% playable tracks with verified audio previews.
+- **Automated Test Suite Expansion (`scripts/run_tests.js`)**:
+  - Added 30 new tests covering CSV/TSV parsing, SQL tuple parsing, candidate mapping, numeric track ID extraction, preview resolution, batch resolution, and SQLite sampleless/lazy hydration workflows (total: 321 passing tests).
+
+---
+
 ## [1.9.7] - 2026-09-19
 
 ### Added

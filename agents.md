@@ -72,13 +72,22 @@ Tracks are deduplicated inside [`sqliteCatalog.upsertTrack`](file:///C:/Users/xm
 - **Country Codes**: Extracted from the 2-letter ISO 3166-1 prefix of 12-character ISRCs (`country_code`).
 - **Language Detection**: Automated Unicode script classification (`ko`, `ja`, `zh`, `ru`, `ar`) and linguistic regex markers (`es`, `fr`, `de`, `it`, `pt`, `en`) populated in `language`.
 
+### 3.5 MusicMoveArr Ingestion & Lazy JIT Preview Hydration
+- **Scenario C Stream Ingestor** (`scripts/ingest_musicmovearr.js`):
+  - Streams massive MusicMoveArr dumps (Deezer, Spotify, Tidal, MusicBrainz) and compressed PostgreSQL diffs (`changes_*.sql.gz`) with strict `popularity > 30` (or `--min-popularity=31`) and `isAuthenticCandidate({ requireSample: false })`.
+  - Avoids memory bloat via Node.js `readline` and `zlib.createGunzip()`, batching 2,000 records per transaction.
+- **Just-In-Time (JIT) Preview Resolver** (`server/services/previewResolver.js`):
+  - Ingested tracks enter SQLite with instant metadata (`sample_url = NULL`).
+  - Previews are lazily resolved in parallel (~150ms) during gameplay via Deezer track API fast-path (`deezer_id`) with iTunes API fallback.
+  - Successfully resolved previews are cached in-memory and asynchronously written to `track_samples` (`sqliteCatalog.insertSample`), providing instant zero-latency playback on subsequent plays.
+
 ---
 
 ## 4. Key Scripts & CLI Reference
 
 | Command | Description |
 | :--- | :--- |
-| `npm test` | Runs the automated test suite in [`scripts/run_tests.js`](file:///C:/Users/xms/Documents/Projects/SpotySpice/scripts/run_tests.js) (291+ tests). |
+| `npm test` | Runs the automated test suite in [`scripts/run_tests.js`](file:///C:/Users/xms/Documents/Projects/SpotySpice/scripts/run_tests.js) (321 passing tests). |
 | `npm run test:prompts` | Runs prompt steering and theme precision tests. |
 | `npm run test:all` | Runs both `npm test` and `npm run test:prompts`. |
 | `npm run lint` | Runs ESLint across all JavaScript and TypeScript files. |
@@ -87,6 +96,7 @@ Tracks are deduplicated inside [`sqliteCatalog.upsertTrack`](file:///C:/Users/xm
 | `npm run crawl` | Runs autonomous catalog crawler toward target goal (default: 500,000 tracks). |
 | `npm run crawl:playlists` | Spider curated genre & historical playlists exclusively (`--playlists-only`). |
 | `npm run crawl:top10k` | Streams and ingests Anna's Archive Spotify Top 10k songs (`popularity > 30`). |
+| `npm run ingest:dataset` | Streams and ingests MusicMoveArr datasets and incremental `.sql.gz` diffs. |
 | `npm run crawl:status` | Prints formatted catalog metrics (artists, tracks, samples, countries, languages, merges). |
 | `npm run generate:themes` | Precomputes static crossword themes into `data/`. |
 

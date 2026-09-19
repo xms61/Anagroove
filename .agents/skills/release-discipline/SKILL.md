@@ -21,7 +21,7 @@ Use this skill when preparing, committing, pushing, and raising Pull Requests in
    - Ensure `server/data/catalog.sqlite`, `server/data/catalog.sqlite-wal`, and `server/data/catalog.sqlite-shm` are untracked and gitignored.
 
 4. **Version Synchronization**:
-   - Every commit / PR must bump either a **patch** (e.g. `1.9.6` -> `1.9.7`) or **minor** (e.g. `1.9.6` -> `1.10.0`) version.
+   - Every commit / PR must bump either a **patch** (e.g. `1.9.6` -> `1.9.7`) or **minor** (e.g. `1.9.6` -> `1.10.0`) or **major** (e.g. `1.0.0` -> `2.0.0`) version.
    - Files to update:
      - `package.json` (`"version"`)
      - `package-lock.json` (`"version"` and top-level package version)
