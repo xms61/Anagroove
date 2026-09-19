@@ -1267,7 +1267,7 @@ async function runSqliteCatalogTests() {
   assert(MUSIC_LEXICON_SEEDS.length >= 250, 'Music lexicon contains >= 250 high-frequency seeds');
   assert(STREAMED_ARTISTS.length === 500, 'Streamed artists dataset loads all 500 most-streamed Spotify artists');
   assert(STREAMED_ARTIST_NAMES[0] === 'Drake', 'First streamed artist is Drake ordered by total streams');
-  assert(STREAMED_ARTISTS[0].totalStreams > 100000, 'Artist metadata contains numeric stream counts');
+  assert((STREAMED_ARTISTS[0]?.totalStreams || 0) > 100000, 'Artist metadata contains numeric stream counts');
   assert(FOUNDATION_ARTISTS.length >= 500, 'Foundation artists roster incorporates 500 most-streamed baseline');
   assert(FOUNDATION_ARTISTS.includes('Taylor Swift') && FOUNDATION_ARTISTS.includes('Queen'), 'Foundation roster contains modern streaming giants and heritage icons');
 
