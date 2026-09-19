@@ -6,6 +6,7 @@ import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
 import { buildQueryPlan } from './queryBuilder.js';
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
+import { animeCatalog } from '../db/animeCatalog.js';
 import { batchResolvePreviews } from './previewResolver.js';
 import { logger } from '../logger.js';
 
@@ -18,11 +19,36 @@ export function setMusicProviderForTesting(provider) {
 }
 
 /**
+ * Checks if a genre or query prompt specifically targets authentic Anime OP/ED themes.
+ */
+export function isAnimeTarget(genre = '', prompt = '') {
+  const combined = `${genre || ''} ${prompt || ''}`.toLowerCase();
+  return /\b(anime|animes|anime opening|anime openings|anime ending|anime endings|anime ost|anime themes?)\b/i.test(combined);
+}
+
+/**
+ * Resolves whether an anime query targets Openings ('OP'), Endings ('ED'), or both (null).
+ */
+export function getAnimeThemeType(genre = '', prompt = '') {
+  const combined = `${genre || ''} ${prompt || ''}`.toLowerCase();
+  const hasOp = /\b(openings?|op)\b/i.test(combined);
+  const hasEd = /\b(endings?|ed)\b/i.test(combined);
+  if (hasOp && !hasEd) return 'OP';
+  if (hasEd && !hasOp) return 'ED';
+  return null;
+}
+
+/**
  * Language Policy: Enforces English for Western mainstream categories,
  * with explicit exemption for non-English cultural genres and prompts
  * (Japanese/Anime, City Pop, K-Pop, Latin, Reggaeton, etc.).
  */
 export function isLanguagePermitted(track, genre = 'all', prompt = '') {
+  // Anime OP/ED tracks from the dedicated anime catalog are always permitted
+  if (track?.isAnimeOped) {
+    return true;
+  }
+
   const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
   const title = String(track?.title || '');
   const artist = String(track?.artist || '');
@@ -549,66 +575,88 @@ export async function getRandomSongPool({
   const limit = Math.min(250, Math.max(120, count * 10));
 
   // 1. Candidate harvesting across providers
-  const candidateTasks = [
-    musicProvider.getCandidateTracks({
-      genre: queryPlan.genre,
-      minFans: queryPlan.minFans,
-      maxFans: queryPlan.maxFans,
-      minRank: queryPlan.minRank,
-      maxRank: queryPlan.maxRank,
-      searches: queryPlan.deezerSearches,
-      offset: queryPlan.randomOffset,
-      popularity: queryPlan.popularity,
-      limit,
-    }),
-  ];
+  const candidateTasks = [];
+  const isAnimeTheme = isAnimeTarget(queryPlan.genre, prompt);
 
-  // If using live default provider (not a unit test mock), fetch iTunes candidates too
-  if (musicProvider === deezerMusicProvider && queryPlan.itunesSearches.length > 0) {
-    for (const term of queryPlan.itunesSearches.slice(0, 4)) {
-      candidateTasks.push(
-        itunesMusicProvider.getCandidateTracks({ query: term, limit: 100 })
-          .catch(err => {
-            console.warn('[MusicService] iTunes harvesting error:', err.message);
-            return [];
-          })
-      );
-    }
-  }
-
-  // If using live default provider (not a unit test mock), also harvest candidates from local SQLite catalog
-  if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.getRandomPlayableTracks === 'function') {
+  if (isAnimeTheme) {
+    // Dedicated Anime OP/ED catalog isolated from standard music providers
+    const themeType = getAnimeThemeType(queryPlan.genre, prompt);
     try {
-      const localTracks = sqliteCatalog.getRandomPlayableTracks({
-        count: Math.min(60, limit),
-        minPopularity: queryPlan.popularity || 0,
-        yearRange: queryPlan.yearRange || null,
-        allowSampleless: true,
+      const animeCandidates = animeCatalog.getRandomAnimeTracks({
+        count: limit,
+        yearRange: queryPlan.yearRange,
+        type: themeType,
+        search: prompt && !/^(anime|anime openings?|anime endings?|anime themes?|anime ost)$/i.test(prompt.trim()) ? prompt : null,
+        requireSamples: true,
       });
-      if (localTracks && localTracks.length > 0) {
-        const mappedLocal = localTracks.map(t => ({
-          id: `sqlite:${t.id}`,
-          catalogTrackId: t.id,
-          provider: t.provider || 'deezer',
-          providerTrackId: t.provider_track_id || t.deezer_id || String(t.id),
-          deezer_id: t.deezer_id,
-          spotify_id: t.spotify_id,
-          itunes_id: t.itunes_id,
-          title: t.title,
-          artist: t.artist,
-          album: t.album || 'Single',
-          audioUrl: t.sample_url || '',
-          sample_url: t.sample_url || '',
-          duration_ms: t.duration_ms,
-          isrc: t.isrc,
-          release_year: t.release_year,
-          releaseDate: t.release_date || (t.release_year ? `${t.release_year}-01-01` : null),
-          popularity: t.popularity,
-        }));
-        candidateTasks.push(Promise.resolve(mappedLocal));
+      if (animeCandidates && animeCandidates.length > 0) {
+        candidateTasks.push(Promise.resolve(animeCandidates));
       }
-    } catch {
-      // Non-fatal if sqliteCatalog is not yet initialized or in an isolated test
+    } catch (err) {
+      logger.warn('music_service', `Anime catalog candidate harvest failed: ${err.message}`);
+    }
+  } else {
+    candidateTasks.push(
+      musicProvider.getCandidateTracks({
+        genre: queryPlan.genre,
+        minFans: queryPlan.minFans,
+        maxFans: queryPlan.maxFans,
+        minRank: queryPlan.minRank,
+        maxRank: queryPlan.maxRank,
+        searches: queryPlan.deezerSearches,
+        offset: queryPlan.randomOffset,
+        popularity: queryPlan.popularity,
+        limit,
+      })
+    );
+
+    // If using live default provider (not a unit test mock), fetch iTunes candidates too
+    if (musicProvider === deezerMusicProvider && queryPlan.itunesSearches.length > 0) {
+      for (const term of queryPlan.itunesSearches.slice(0, 4)) {
+        candidateTasks.push(
+          itunesMusicProvider.getCandidateTracks({ query: term, limit: 100 })
+            .catch(err => {
+              console.warn('[MusicService] iTunes harvesting error:', err.message);
+              return [];
+            })
+        );
+      }
+    }
+
+    // If using live default provider (not a unit test mock), also harvest candidates from local SQLite catalog
+    if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.getRandomPlayableTracks === 'function') {
+      try {
+        const localTracks = sqliteCatalog.getRandomPlayableTracks({
+          count: Math.min(60, limit),
+          minPopularity: queryPlan.popularity || 0,
+          yearRange: queryPlan.yearRange || null,
+          allowSampleless: true,
+        });
+        if (localTracks && localTracks.length > 0) {
+          const mappedLocal = localTracks.map(t => ({
+            id: `sqlite:${t.id}`,
+            catalogTrackId: t.id,
+            provider: t.provider || 'deezer',
+            providerTrackId: t.provider_track_id || t.deezer_id || String(t.id),
+            deezer_id: t.deezer_id,
+            spotify_id: t.spotify_id,
+            itunes_id: t.itunes_id,
+            title: t.title,
+            artist: t.artist,
+            album: t.album || 'Single',
+            audioUrl: t.sample_url || '',
+            sample_url: t.sample_url || '',
+            duration_ms: t.duration_ms,
+            isrc: t.isrc,
+            release_year: t.release_year,
+            releaseDate: t.release_date || (t.release_year ? `${t.release_year}-01-01` : null),
+            popularity: t.popularity,
+          }));
+          candidateTasks.push(Promise.resolve(mappedLocal));
+        }
+      } catch {
+        // Non-fatal if sqliteCatalog is not yet initialized or in an isolated test
+      }
     }
   }
 
@@ -801,11 +849,15 @@ export async function getRandomSongPool({
       else if (keyword.clueType === 'Artist name') clueStats.artist++;
       else clueStats.keyword++;
 
+      const clueText = track.isAnimeOped
+        ? `[Anime] ${track.themeSlug || 'Theme'} of "${track.animeTitle || track.album}" by ${track.artist}`
+        : keyword.clueText;
+
       targetList.push({
         ...track,
         answer: keyword.answer,
         clueType: keyword.clueType,
-        clueText: keyword.clueText,
+        clueText,
       });
     }
   }
@@ -829,13 +881,13 @@ export async function getRandomSongPool({
   }
 
   // 4. JIT Lazy Preview Hydration for tracks lacking verified audio previews
-  const needsPreview = songs.filter(s => !s.audioUrl || !s.audioUrl.startsWith('http'));
+  const needsPreview = songs.filter(s => !s.audioUrl || (!s.audioUrl.startsWith('http') && !s.audioUrl.startsWith('/audio/')));
   if (needsPreview.length > 0 && musicProvider === deezerMusicProvider) {
     try {
       const { resolvedTracks } = await batchResolvePreviews(needsPreview);
       const resolvedMap = new Map(resolvedTracks.map(t => [t.id, t.audioUrl]));
       for (const song of songs) {
-        if ((!song.audioUrl || !song.audioUrl.startsWith('http')) && resolvedMap.has(song.id)) {
+        if ((!song.audioUrl || (!song.audioUrl.startsWith('http') && !song.audioUrl.startsWith('/audio/'))) && resolvedMap.has(song.id)) {
           song.audioUrl = resolvedMap.get(song.id);
           song.sample_url = song.audioUrl;
         }
@@ -848,7 +900,11 @@ export async function getRandomSongPool({
   // Filter out any songs that could not resolve an audio preview in live mode
   const playableSongs = songs.filter(s => {
     if (musicProvider !== deezerMusicProvider) return true;
-    return s.audioUrl && typeof s.audioUrl === 'string' && s.audioUrl.startsWith('http');
+    const hasAudio = s.audioUrl && typeof s.audioUrl === 'string' && (s.audioUrl.startsWith('http') || s.audioUrl.startsWith('/audio/'));
+    if (!hasAudio) {
+      logger.warn('music_service', `Filtered out track "${s.artist} - ${s.title}" due to missing audio preview`);
+    }
+    return hasAudio;
   });
 
   logger.sampling(orderedCandidates.length, playableSongs.length, clueStats, rejections);

@@ -28,6 +28,15 @@ node scripts/ingest_annas_spotify.js --min-popularity=31
 
 # Targeted decade or artist discovery runs
 node scripts/crawl_catalog.js --playlists=0 --decades=105 --artists=250 --lexicon=0
+
+# Database Health, Integrity & Deduplication Sanitizer
+npm run db:validate      # Non-destructive integrity, foreign keys, and soft duplicates check
+npm run db:sanitize      # Live duplicate merging and invalid track/contamination purging
+
+# Dedicated Anime OP/ED Catalog & Audio Sample Pipeline
+npm run anime:sync       # Synchronize canonical anime opening/ending metadata from AnimeThemes
+npm run anime:samples    # Extract 20-second multi-sample clips via headless FFmpeg
+npm run anime:ingest     # Ingest themes and sample variations into server/data/anime_catalog.sqlite
 ```
 
 ## Operational Rules & Invariants
@@ -45,17 +54,29 @@ node scripts/crawl_catalog.js --playlists=0 --decades=105 --artists=250 --lexico
    - **Tier 2**: Exact `artist_id` + normalized `canonical_title` + duration delta $\le 3000\text{ ms}$.
    - Never insert a separate canonical track when ISRC or Tier 2 match exists; merge provider links and samples instead.
 
-4. **Rate Limiting**:
+4. **Dedicated Anime OP/ED Catalog Engine (`server/db/animeCatalog.js`)**:
+   - Anime themes are isolated in `server/data/anime_catalog.sqlite` to prevent homonyms and Western collisions (e.g. DJ AniMe).
+   - Tracks track `theme_type` (`OP`, `ED`, `insert`), `anime_title`, `year`, and multiple audio sample variations (`offset_seconds`, `duration_seconds`).
+   - Sourced locally via `/audio/anime/...` static routes with multiple 20s offsets (e.g., 5s, 35s, 65s) for audio variety across crossword plays.
+
+5. **Database Validation & Sanitization Engine (`server/db/catalogValidator.js`)**:
+   - Executes structural integrity checks (`PRAGMA integrity_check`), foreign key checks, and orphan diagnostics.
+   - Detects and merges soft-duplicate clusters across normalized token fingerprints and duration windows ($\le 3$s).
+   - Automatically identifies and purges short audio fragments (< 15s) and audio-drama contaminations (e.g., Gruselkabinett audiobook entries).
+   - Generates formatted markdown audit reports in `reports/database_validation_report.md`.
+
+6. **Rate Limiting**:
    - Deezer: max 5 req/sec (`deezerRateLimiter`).
    - iTunes: max 15-20 req/min (`itunesRateLimiter`).
    - Spotify: max 10-20 req/sec (`spotifyRateLimiter`).
 
-5. **Database WAL Compaction**:
+7. **Database WAL Compaction**:
    - After completing ingestion batches, run:
      ```sql
      PRAGMA wal_checkpoint(TRUNCATE);
      ```
    - This folds `-wal` logs back into `catalog.sqlite` and resets the WAL file.
 
-6. **Git Safety**:
-   - Never stage or commit `server/data/catalog.sqlite`, `catalog.sqlite-wal`, or `catalog.sqlite-shm`.
+8. **Git Safety & Zero Media Bloat**:
+   - **Never** stage or commit `*.sqlite*`, `*.db*`, `catalog.sqlite*`, or `anime_catalog.sqlite*`.
+   - **Never** stage or commit raw audio files (`*.mp3`, `*.aac`, `*.wav`, `*.ogg`, `*.opus`, `*.m4a`) or sample folders (`data/anime_samples/`).

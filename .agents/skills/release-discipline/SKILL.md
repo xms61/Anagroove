@@ -17,8 +17,9 @@ Use this skill when preparing, committing, pushing, and raising Pull Requests in
    - Never stage `.env` or files containing secret keys (`GEMINI_API_KEY`, `SPOTIFY_CLIENT_SECRET`, etc.).
    - Always check `git status` before `git add` to verify no credentials or SQLite database files are staged.
 
-3. **SQLite Database Exclusions**:
-   - Ensure `server/data/catalog.sqlite`, `server/data/catalog.sqlite-wal`, and `server/data/catalog.sqlite-shm` are untracked and gitignored.
+3. **SQLite Database & Audio Media Exclusions**:
+   - Ensure `*.sqlite*`, `*.db*`, `catalog.sqlite*`, and `anime_catalog.sqlite*` remain strictly untracked and gitignored.
+   - Ensure raw audio files (`*.mp3`, `*.aac`, `*.m4a`, `*.wav`, `*.flac`, `*.ogg`, `*.opus`, `*.webm`) and sample directories (`data/anime_samples/`, `**/samples/`) are never staged or committed.
 
 4. **Version Synchronization**:
    - Every commit / PR must bump either a **patch** (e.g. `1.9.6` -> `1.9.7`) or **minor** (e.g. `1.9.6` -> `1.10.0`) or **major** (e.g. `1.0.0` -> `2.0.0`) version.

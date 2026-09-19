@@ -63,6 +63,13 @@
 - **🧩 Dense Interlocking Layout Engine & Varied Answer Lengths**:
   - Multi-crossing layout optimization creates compact, tightly woven puzzles maximizing interlocking letters.
   - Dynamic answer lengths (2 to 14 letters) with rotating short (3–5), medium (6–8), and long (9–14) answer buckets.
+- **🎬 Dedicated Anime OP/ED Sourcing & Local Multi-Sample Pipeline**:
+  - Independent SQLite engine isolating authentic anime openings (OP) and endings (ED) from general-music catalog collisions.
+  - Slices high-fidelity 20s preview segments across multiple song timestamps (e.g. 5s, 35s, 65s offsets) via headless FFmpeg for varied playback rotation.
+  - Zero external API downtime: Serves instant local static streaming via `/audio/anime/...`.
+- **🛡️ SQLite Database Health, Integrity & Sanitization Engine**:
+  - Automated relational and structural audits (`PRAGMA integrity_check`, foreign key validation, soft-duplicate cluster merging, contamination purging).
+  - Generates comprehensive markdown audit reports (`reports/database_validation_report.md`) detailing 500k+ canonical tracks and 99.36% verified sample coverage.
   - Staggered spring bounce celebration animation when a typed word matches correctly (with toggle switch in settings).
   - Generation era parsing for K-Pop (*"new gen kpop"*, *"4th gen"*, *"3rd gen"*) and authentic soundalike/workout remix filtration.
 - **🎵 Seamless Word Field Audio Integration**:
@@ -206,6 +213,29 @@ SpotySpice features a hybrid high-performance music ingestion architecture:
 | `--dry-run` | `false` | Parse and evaluate candidates without writing to SQLite. |
 | `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, country codes, languages, and cross-referenced merges without crawling. |
 
+#### Database Validation & Sanitization
+Run automated health diagnostics, soft-duplicate clustering, and contamination cleanup:
+```bash
+# Validate structural integrity, foreign keys, duplicates, and coverage
+npm run db:validate
+
+# Execute live deduplication and purge invalid audio or audiobook contaminations
+npm run db:sanitize
+```
+
+#### Dedicated Anime Catalog & Preview Pipeline
+Manage isolated anime OP/ED themes, metadata syncing, and FFmpeg multi-sample extraction:
+```bash
+# Synchronize canonical anime opening/ending themes
+npm run anime:sync
+
+# Generate 20-second audio clips via headless FFmpeg
+npm run anime:samples
+
+# Ingest themes into isolated SQLite anime catalog
+npm run anime:ingest
+```
+
 #### Deduplication & Integrity
 - **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks without verified 30-second audio previews are automatically rejected.
 - **Country & Language Tagging**: Standard 12-character ISRCs automatically populate the 2-letter ISO country code (`country_code`). Song titles and artist names are analyzed via Unicode scripts and linguistic markers to populate detected languages (`language`).
@@ -227,12 +257,17 @@ SpotySpice/
 ├── scripts/                    # Generation, crawl & verification scripts
 │   ├── build_recognized_artists.js
 │   ├── crawl_catalog.js        # Multi-vector SQLite catalog crawler CLI
+│   ├── eval_crossword_factory.js # Large-scale evaluation & benchmark runner
 │   ├── fetch_all_previews.js
 │   ├── generate_all_themes.js
-│   ├── run_tests.js            # Automated test suite (321 passing tests)
+│   ├── generate_anime_samples.js # FFmpeg 20s multi-sample audio generator
+│   ├── ingest_anime_catalog.js  # Dedicated anime SQLite catalog ingestor
+│   ├── run_tests.js            # Automated test suite (396 passing tests)
+│   ├── sync_anime_metadata.js   # Canonical anime theme metadata synchronizer
 │   ├── test_features.js        # Core API & persistence tests
 │   ├── test_multiplayer_live_sync.js # E2E two-player live sync test
-│   └── test_randomizer.js      # Recognizable pool entropy test
+│   ├── test_randomizer.js      # Recognizable pool entropy test
+│   └── validate_and_sanitize_db.js # DB health, integrity, duplicate & purge runner
 ├── server/                     # Node.js backend
 │   ├── crawler/                # Autonomous multi-vector SQLite crawler
 │   │   ├── authenticityFilter.js # Quality filters
@@ -244,12 +279,16 @@ SpotySpice/
 │   │   ├── store.json          # Anonymous user session store
 │   │   └── tracks_cache.json   # Cached preview URLs & track rank
 │   ├── db/
-│   │   └── sqliteCatalog.js    # SQLite schema, FTS5 & deterministic deduplicator
-│   ├── db.js                   # JSON persistence helper
+│   │   ├── animeCatalog.js     # Dedicated anime OP/ED SQLite database engine
+│   │   ├── catalogValidator.js # Database health, structural integrity & sanitizer
+│   │   ├── sqliteCatalog.js    # SQLite schema, FTS5 & deterministic deduplicator
+│   │   └── db.js               # JSON persistence helper
 │   ├── server.js               # REST endpoints & WebSocket room manager
 │   ├── validators.js           # Endpoint and WebSocket payload validators
 │   └── services/
+│       ├── crosswordJudge.js   # Automated crossword evaluation and judgment engine
 │       ├── deezerMusicProvider.js # Deezer candidate harvesting & catalog taxonomy
+│       ├── ffmpegHelper.js     # Headless FFmpeg clip extractor utility
 │       ├── itunesMusicProvider.js # iTunes candidate harvesting & fallback previews
 │       ├── musicService.js     # Unified random pool, variety & seed selection
 │       ├── previewResolver.js  # JIT Lazy preview hydration & SQLite persistence
@@ -326,7 +365,7 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 Run automated CI-friendly test suites and linters:
 
 ```bash
-# Run the complete automated test suite (155 unit & integration tests)
+# Run the complete automated test suite (396 unit & integration tests)
 npm test
 
 # Run the live multi-prompt crossword verification suite (14 diverse genres, eras, temporal windows & single-artist puzzles)

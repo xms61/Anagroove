@@ -156,6 +156,9 @@ export function extractAllAnswerCandidates(title, artist) {
 
   for (let i = 0; i < artistNames.length; i++) {
     const name = artistNames[i];
+    if (/^(unknown(\s+artist)?|various(\s+artists)?|soundtrack)$/i.test(name.trim())) {
+      continue;
+    }
     const answer = toCrosswordAnswer(name, { minLength: 2, maxLength: 14 });
     if (answer) {
       artistCandidates.push({
