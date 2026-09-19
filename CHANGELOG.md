@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.6] - 2026-09-19
+
+### Added
+- **Anna's Archive Spotify Top 10k Ingestor (`scripts/ingest_annas_spotify.js`)**:
+  - Implemented streaming HTML table parser that downloads and ingests the top 10,000 songs by popularity from Anna's Archive (`https://annas-archive.gl/blog/spotify/spotify-top-10k-songs-table.html`).
+  - Added strict `popularity > 30` filtering and multi-artist, ISRC, and explicit flag parsing.
+  - Added `npm run crawl:top10k` script for one-command execution.
+- **Dedicated Playlist Crawling Script (`npm run crawl:playlists` / `--playlists-only`)**:
+  - Added `--playlists-only` CLI flag to `scripts/crawl_catalog.js` allowing dedicated playlist harvesting without running decades, artists, or lexicon vectors.
+  - Added `npm run crawl:playlists` script to `package.json`.
+
+### Improved
+- **Authenticity Candidate Filter (`server/crawler/authenticityFilter.js`)**:
+  - Added configurable `{ requireSample = true }` option to `isAuthenticCandidate` to allow ingesting high-reputation metadata records (e.g., Spotify top tracks) for subsequent iTunes/cross-provider preview backfills while filtering noise and tributes.
+- **Crawler Batch Summary (`scripts/crawl_catalog.js`)**:
+  - Extended crawl completion summary to report `yearGenreQueriesCrawled` and `bigramsCrawled`.
+
+---
+
 ## [1.9.5] - 2026-09-19
 
 ### Improved

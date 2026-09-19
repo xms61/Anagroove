@@ -68,7 +68,8 @@ const EXCLUDED_ALBUM_PATTERNS = [
   /\bcovers\b/i,
 ];
 
-export function isAuthenticCandidate(rawTrack = {}) {
+export function isAuthenticCandidate(rawTrack = {}, options = {}) {
+  const { requireSample = true } = options;
   const title = (
     typeof rawTrack.title === 'string' ? rawTrack.title :
     typeof rawTrack.trackName === 'string' ? rawTrack.trackName :
@@ -92,8 +93,8 @@ export function isAuthenticCandidate(rawTrack = {}) {
   // Must have non-empty title and artist
   if (!title || !artist) return false;
 
-  // Must have active, valid preview URL
-  if (!sampleUrl || typeof sampleUrl !== 'string' || !sampleUrl.startsWith('http')) {
+  // Must have active, valid preview URL (if requireSample is true)
+  if (requireSample && (!sampleUrl || typeof sampleUrl !== 'string' || !sampleUrl.startsWith('http'))) {
     return false;
   }
 
