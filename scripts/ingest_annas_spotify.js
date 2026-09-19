@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import https from 'https';
 import http from 'http';
+import fs from 'fs';
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
 
@@ -10,6 +11,10 @@ const ANNAS_ARCHIVE_URL =
 const args = process.argv.slice(2);
 const minPopularityArg = args.find(a => a.startsWith('--min-popularity='));
 const minPopularity = minPopularityArg ? parseInt(minPopularityArg.split('=')[1], 10) : 31; // strictly > 30
+
+const fileArg = args.find(a => a.startsWith('--file='));
+const defaultLocalFile = 'data/spotify_top10k.html';
+const localFilePath = fileArg ? fileArg.split('=')[1] : (fs.existsSync(defaultLocalFile) ? defaultLocalFile : null);
 
 function cleanHtmlEntities(str = '') {
   return str
@@ -137,8 +142,11 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
 
   console.log('\n================================================================');
   console.log('  SPOTYSPICE - ANNA\'S ARCHIVE SPOTIFY TOP 10K INGESTOR');
+  const targetFile = options.file ?? localFilePath;
+  const sourceLabel = targetFile ? `Local File (${targetFile})` : ANNAS_ARCHIVE_URL;
+
   console.log('================================================================');
-  console.log(`  Source:           ${ANNAS_ARCHIVE_URL}`);
+  console.log(`  Source:           ${sourceLabel}`);
   console.log(`  Filter:           popularity >= ${minPop} (popularity > 30)`);
   console.log(`  Authenticity:     Excluded covers, white noise, lullaby & tribute patterns`);
   console.log(`  Starting Tracks:  ${initialStats.tracks.toLocaleString()}`);
@@ -160,26 +168,15 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
   }
 
   await new Promise((resolve, reject) => {
-    const client = ANNAS_ARCHIVE_URL.startsWith('https') ? https : http;
-    const req = client.get(ANNAS_ARCHIVE_URL, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    }, (res) => {
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        return reject(new Error(`HTTP ${res.statusCode} from ${ANNAS_ARCHIVE_URL}`));
-      }
-
+    function handleStream(stream) {
       let buffer = '';
-
-      res.on('data', (chunk) => {
+      stream.on('data', (chunk) => {
         buffer += chunk.toString('utf8');
 
         let trStart = buffer.indexOf('<tr>');
         while (trStart !== -1) {
           const trEnd = buffer.indexOf('</tr>', trStart);
-          if (trEnd === -1) break; // Incomplete row, wait for more data
+          if (trEnd === -1) break;
 
           const rowHtml = buffer.slice(trStart, trEnd + 5);
           buffer = buffer.slice(trEnd + 5);
@@ -207,19 +204,37 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
         }
       });
 
-      res.on('end', () => {
+      stream.on('end', () => {
         flushBatch();
         resolve();
       });
 
-      res.on('error', (err) => {
+      stream.on('error', (err) => {
         reject(err);
       });
-    });
+    }
 
-    req.on('error', (err) => {
-      reject(err);
-    });
+    if (targetFile && fs.existsSync(targetFile)) {
+      const fileStream = fs.createReadStream(targetFile);
+      handleStream(fileStream);
+    } else {
+      const client = ANNAS_ARCHIVE_URL.startsWith('https') ? https : http;
+      const req = client.get(ANNAS_ARCHIVE_URL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+      }, (res) => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode} from ${ANNAS_ARCHIVE_URL}`));
+        }
+        handleStream(res);
+      });
+
+      req.on('error', (err) => {
+        reject(err);
+      });
+    }
   });
 
   const finalStats = sqliteCatalog.getStats();

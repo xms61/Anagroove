@@ -162,10 +162,13 @@ node scripts/crawl_catalog.js --target=500000
 # 5. Playlists-only crawl: Harvest curated genre & historical playlists exclusively
 npm run crawl:playlists
 
-# 6. Ingest Anna's Archive Spotify Top 10k: Harvest top Spotify songs (popularity > 30)
+# 6. Prepare and fetch dataset files (Anna's Top 10k & directories setup)
+npm run fetch:datasets
+
+# 7. Ingest Anna's Archive Spotify Top 10k: Harvest top Spotify songs (popularity > 30)
 npm run crawl:top10k
 
-# 7. Ingest MusicMoveArr Datasets (Scenario C + Lazy JIT Preview Hydration)
+# 8. Ingest MusicMoveArr Datasets (Scenario C + Lazy JIT Preview Hydration)
 # Stream-ingest bulk base CSV dumps or incremental SQL diffs (popularity > 30):
 npm run ingest:dataset -- --csv-file=./data/deezer_tracks.csv --provider=deezer
 # or stream compressed incremental diffs:
@@ -173,7 +176,7 @@ npm run ingest:dataset -- --sql-file=./data/changes_2026_03.sql.gz --provider=de
 # or batch-ingest an entire directory of base tables:
 npm run ingest:dataset -- --base-dir=./data/base_tables/ --min-popularity=31
 
-# 8. Inspect database status (including country codes & detected languages)
+# 9. Inspect database status (including country codes & detected languages)
 npm run crawl:status
 ```
 

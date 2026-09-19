@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.2] - 2026-09-19
+
+### Added
+- **Dataset Preparation & Download Utility (`scripts/fetch_datasets.js`, `npm run fetch:datasets`)**:
+  - Automatically fetches Anna's Archive Spotify Top 10k table into local `data/spotify_top10k.html`.
+  - Scans and validates local `data/base_tables/` and `data/changes/` directories.
+  - Comprehensive CLI guide and download links for MusicMoveArr datasets and incremental MEGA diffs.
+- **Local File Fast-Path in Anna's Ingestor (`scripts/ingest_annas_spotify.js`)**:
+  - Added support for `--file=...` and automatic fallback to `data/spotify_top10k.html`, enabling instant offline re-ingestion in under 2 seconds.
+
+### Changed
+- **Git Hygiene**:
+  - Updated `.gitignore` to strictly exclude dataset dumps (`*.csv`, `*.tsv`, `*.sql`, `*.sql.gz`, `*.html`, `*.gz`, `*.tar*`, `data/downloads/`) while preserving tracked pools and directory structure (`.gitkeep`).
+
+---
+
 ## [1.10.1] - 2026-09-19
 
 ### Fixed
