@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.12.1] - 2026-09-19
+
+### Fixed
+- **Anime Audio Preview in Dev Mode (`vite.config.ts`)**:
+  - Added `/audio` route proxying in Vite development configuration, forwarding local anime audio preview requests (`/audio/anime/...`) from port `3010` to the Express backend (`3011`). Resolves the `⚠️ Preview unavailable` badge during `npm run dev`.
+- **Zero-Spoiler Clue System Overhaul (`shared/clueGenerator.js`, `server/services/musicService.js`)**:
+  - Eliminated answer leakage where anime artist clues previously output `by ${track.artist}` (e.g., displaying the solution when asking for "Artist name").
+  - Context-aware clue templates for Anime OP/ED:
+    - Artist clues: `Vocalist / musical act behind the {themeSlug} of "{animeTitle}" ({year})` (never discloses artist name).
+    - Song title clues: `{themeSlug} of "{animeTitle}" by {artist} ({year})` (never discloses song title).
+    - Keyword clues: `Key word in the {themeSlug} of "{animeTitle}"` (never discloses keyword).
+  - Universal Zero-Leak Sanitizer (`containsAnswerLeak`, `sanitizeClue`): Validates every generated clue against normalized answer strings and component tokens ($\ge 3$ characters), automatically falling back to non-spoilered descriptive templates if any leak is detected.
+  - Added Suite 11 to test suite (`scripts/run_tests.js`), verifying audio proxy rules, zero leakage across 500 randomized stress test generations, and expanding test suite to **423 passing tests**.
+
+---
+
 ## [1.12.0] - 2026-09-19
 
 ### Added

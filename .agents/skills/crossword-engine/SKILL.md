@@ -40,9 +40,17 @@ Use this skill when developing or debugging crossword puzzle generation, prompt 
    - If user asks for "songs by [Artist]", the engine must allow multiple songs from that artist.
    - For single-artist crosswords, enforce **0% "Artist name" clues** and **100% "Song title" or "Keyword" clues** (since all answers would otherwise be identical to the artist name).
 
-5. **Testing Procedures**:
+5. **Zero-Spoiler Clue Discipline (`shared/clueGenerator.js`)**:
+   - Clues must **never** leak the solution (`containsAnswerLeak()`).
+   - For Anime `Artist name` clues: Clue text mentions the anime series and theme slug (e.g., `Vocalist behind the ED1 of "Mahou Sensei Negima!"`), **never** the artist's name.
+   - For Anime `Song title` clues: Clue text mentions the theme slug, anime, and artist, **never** the song title.
+   - For General `Artist name` clues: Clue text mentions the hit song title, **never** the artist name.
+   - For General `Song title` clues: Clue text mentions the artist and release year, **never** the song title.
+   - Universal fallback sanitizer (`sanitizeClue`): If any token of length >= 3 from the answer appears in the clue text, automatically fallback to a spoiler-free template.
+
+6. **Testing Procedures**:
    ```bash
-   # Run full unit and integration test suite (396 tests)
+   # Run full unit and integration test suite (423 tests)
    npm test
 
    # Run prompt steering and theme generator test suite

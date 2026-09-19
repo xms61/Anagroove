@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { extractAnswerKeyword, splitArtistNames } from '../../shared/musicKeywords.js';
+import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.js';
 import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
@@ -849,9 +849,7 @@ export async function getRandomSongPool({
       else if (keyword.clueType === 'Artist name') clueStats.artist++;
       else clueStats.keyword++;
 
-      const clueText = track.isAnimeOped
-        ? `[Anime] ${track.themeSlug || 'Theme'} of "${track.animeTitle || track.album}" by ${track.artist}`
-        : keyword.clueText;
+      const clueText = formatCrosswordClue(track, keyword);
 
       targetList.push({
         ...track,

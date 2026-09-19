@@ -348,3 +348,11 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   if (candidates.keyword) return candidates.keyword;
   return null;
 }
+
+export {
+  formatCrosswordClue,
+  sanitizeClue,
+  containsAnswerLeak,
+  cleanClueTitle
+} from './clueGenerator.js';
+
