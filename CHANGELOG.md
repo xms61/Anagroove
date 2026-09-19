@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.6] - 2026-09-19
+
+### Added
+- **Anna's Archive Spotify Top 10k Ingestor (`scripts/ingest_annas_spotify.js`)**:
+  - Implemented streaming HTML table parser that downloads and ingests the top 10,000 songs by popularity from Anna's Archive (`https://annas-archive.gl/blog/spotify/spotify-top-10k-songs-table.html`).
+  - Added strict `popularity > 30` filtering and multi-artist, ISRC, and explicit flag parsing.
+  - Added `npm run crawl:top10k` script for one-command execution.
+- **Dedicated Playlist Crawling Script (`npm run crawl:playlists` / `--playlists-only`)**:
+  - Added `--playlists-only` CLI flag to `scripts/crawl_catalog.js` allowing dedicated playlist harvesting without running decades, artists, or lexicon vectors.
+  - Added `npm run crawl:playlists` script to `package.json`.
+
+### Improved
+- **Authenticity Candidate Filter (`server/crawler/authenticityFilter.js`)**:
+  - Added configurable `{ requireSample = true }` option to `isAuthenticCandidate` to allow ingesting high-reputation metadata records (e.g., Spotify top tracks) for subsequent iTunes/cross-provider preview backfills while filtering noise and tributes.
+- **Crawler Batch Summary (`scripts/crawl_catalog.js`)**:
+  - Extended crawl completion summary to report `yearGenreQueriesCrawled` and `bigramsCrawled`.
+
+---
+
+## [1.9.5] - 2026-09-19
+
+### Improved
+- **SQLite Concurrency & Lock Resilience (`server/db/sqliteCatalog.js`)**:
+  - Configured `PRAGMA busy_timeout = 10000;` on SQLite initialization.
+  - Automatically handles concurrent transaction retries up to 10 seconds, eliminating `database is locked` exceptions under heavy asynchronous ingestion.
+
+---
+
+## [1.9.4] - 2026-09-19
+
+### Added
+- **Decade/Genre Crawler Control (`--decades=<n>`)**:
+  - Added `decadesLimit` option to `musicHarvester.runFullHarvest` and `--decades=<n>` CLI argument in `scripts/crawl_catalog.js`.
+  - Enables skipping or scoping Vector 2 (e.g. `--decades=0`) when running targeted high-speed crawler runs.
+  - Documented `--decades=<n>` in the `README.md` flags table.
+
+---
+
+## [1.9.3] - 2026-09-19
+
+### Added
+- **Country Code & Language Tracking (`server/db/sqliteCatalog.js`)**:
+  - Added `country_code TEXT` and `language TEXT` columns with dedicated B-tree indexes (`idx_tracks_country`, `idx_tracks_lang`) to the `tracks` schema.
+  - Implemented `extractIsrcCountryCode` to automatically extract the ISO 3166-1 2-letter country code from the standard 12-character ISRC registration prefix.
+  - Implemented `detectTrackLanguage` to detect language tags (`en`, `es`, `fr`, `de`, `it`, `pt`, `ja`, `ko`, `zh`, `ru`, `ar`) via Unicode script analysis and linguistic markers.
+  - Added automated non-blocking migration and fast backfill across all existing catalog tracks.
+- **500,000 Tracks Discovery Vectors (`server/crawler/harvester.js`, `scripts/crawl_catalog.js`)**:
+  - Added **Vector 5: Fine-Grained Year (1960–2026) $\times$ Genre Matrix (`YEAR_GENRE_SEEDS`)** generating over 1,600 highly targeted historical and contemporary discography queries.
+  - Added **Vector 6: High-Yield Bigram Sweeper (`BIGRAM_SEEDS`)** covering 60+ top musical n-grams.
+  - Expanded `MUSIC_LEXICON_SEEDS` with 500+ rich musical, emotional, atmospheric, and multilingual vocabulary seeds.
+  - Updated default `--target` to `500000` and added Country Code and Language counts to `crawl:status` output.
+
+---
+
 ## [1.9.2] - 2026-09-18
 
 ### Changed

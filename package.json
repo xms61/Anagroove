@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.9.2",
+  "version": "1.9.6",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"vite\"",
@@ -18,6 +18,8 @@
     "test:all": "npm test && npm run test:prompts",
     "test:ci": "npm run lint && npm run test",
     "crawl": "node scripts/crawl_catalog.js",
+    "crawl:playlists": "node scripts/crawl_catalog.js --playlists-only",
+    "crawl:top10k": "node scripts/ingest_annas_spotify.js --min-popularity=31",
     "crawl:status": "node scripts/crawl_catalog.js --status",
     "generate": "node scripts/generate_puzzles.js",
     "generate:themes": "node scripts/generate_all_themes.js"

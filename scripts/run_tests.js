@@ -43,6 +43,8 @@ import {
   MusicHarvester,
   CURATED_PLAYLIST_SEEDS,
   DECADE_GENRE_SEEDS,
+  YEAR_GENRE_SEEDS,
+  BIGRAM_SEEDS,
   MUSIC_LEXICON_SEEDS,
   FOUNDATION_ARTISTS,
 } from '../server/crawler/harvester.js';
@@ -1245,6 +1247,8 @@ async function runSqliteCatalogTests() {
   // 4. Multi-Vector Catalog Harvester Seeds Tests
   assert(CURATED_PLAYLIST_SEEDS.length >= 35, 'Curated playlist seeds catalog contains >= 35 high-yield queries');
   assert(DECADE_GENRE_SEEDS.length === 105, 'Decade x Genre matrix contains exactly 105 combinations (7 decades x 15 genres)');
+  assert(YEAR_GENRE_SEEDS.length >= 1500, 'Year x Genre matrix contains >= 1500 combinations');
+  assert(BIGRAM_SEEDS.length >= 50, 'Bigram seeds roster contains >= 50 high-frequency bigrams');
   assert(MUSIC_LEXICON_SEEDS.length >= 250, 'Music lexicon contains >= 250 high-frequency seeds');
   assert(FOUNDATION_ARTISTS.length >= 150, 'Foundation artists roster contains >= 150 foundational artists');
 
@@ -1273,6 +1277,9 @@ async function runSqliteCatalogTests() {
     artistMetadata: { deezerId: 27, fansCount: 4000000 },
   });
   assert(res1 && res1.isNew === true && res1.isMerged === false, 'First track inserted as new canonical track');
+  const insertedTrackRow = memCatalog.db.prepare('SELECT country_code, language FROM tracks WHERE id = ?').get(res1.trackId);
+  assert(insertedTrackRow.country_code === 'US', 'ISRC country code correctly extracted as US');
+  assert(insertedTrackRow.language === 'en', 'English language accurately tagged');
 
   // Ingest Spotify Track with identical ISRC (Tier 1 100% Master Match)
   const res2 = memCatalog.upsertTrack({

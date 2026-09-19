@@ -154,24 +154,37 @@ node scripts/crawl_catalog.js --target=5000
 # 3. Standard catalog: Ingest 25,000 canonical tracks (~2 minutes)
 node scripts/crawl_catalog.js --target=25000
 
-# 4. Massive full catalog: Ingest 100,000+ canonical tracks (~4–5 minutes)
+# 4. Massive 100k-500k catalog: Ingest hundreds of thousands of tracks
 npm run crawl
-# or with explicit CLI arguments:
-node scripts/crawl_catalog.js --target=100000 --playlists=40 --artists=200 --lexicon=350
+# or with explicit CLI target:
+node scripts/crawl_catalog.js --target=500000
+
+# 5. Playlists-only crawl: Harvest curated genre & historical playlists exclusively
+npm run crawl:playlists
+
+# 6. Ingest Anna's Archive Spotify Top 10k: Harvest top Spotify songs (popularity > 30)
+npm run crawl:top10k
+
+# 7. Inspect database status (including country codes & detected languages)
+npm run crawl:status
 ```
 
 #### Crawler Flags & Options
 | Flag | Default | Description |
 | :--- | :--- | :--- |
-| `--target=<n>` | `100000` | Stops crawling as soon as the total canonical track count in SQLite reaches `<n>`. |
-| `--playlists=<n>` | `40` | Maximum number of curated genre & historical playlists to spider (Vector 1). Set to `0` to skip. |
-| `--artists=<n>` | `150` | Maximum foundation artists to spider discographies and related artist graphs for (Vector 3). |
-| `--lexicon=<n>` | `350` | Maximum high-frequency vocabulary keywords to sweep across paginated offsets (Vector 4). |
-| `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, and cross-referenced merges without crawling. |
+| `--target=<n>` | `500000` | Stops crawling as soon as the total canonical track count in SQLite reaches `<n>`. |
+| `--playlists-only` | `false` | Spider curated playlists exclusively (skips decades, artists, and lexicon vectors). |
+| `--playlists=<n>` | `100` | Maximum number of curated genre & historical playlists to spider (Vector 1). Set to `0` to skip. |
+| `--decades=<n>` | `105` | Maximum decade × genre queries to spider (Vector 2). Set to `0` to skip. |
+| `--artists=<n>` | `250` | Maximum foundation artists to spider discographies and related artist graphs for (Vector 3). |
+| `--lexicon=<n>` | `1500` | Maximum high-frequency vocabulary keywords to sweep across paginated offsets (Vector 4). |
+| `--min-popularity=<n>` | `31` | Minimum track popularity score for Spotify top tracks ingestion (`popularity > 30`). |
+| `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, country codes, languages, and cross-referenced merges without crawling. |
 
 #### Deduplication & Integrity
 - **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks without verified 30-second audio previews are automatically rejected.
-- **Master Deduplication**: Tracks are merged across Deezer, Spotify, and Apple Music via ISRC (Tier 1) and acoustic duration matching ($\le 3$s delta) with title/artist normalization (Tier 2). Radio edit suffixes (`(?:radio\s+)?edit`) and feature tags are stripped to unify duplicate releases.
+- **Country & Language Tagging**: Standard 12-character ISRCs automatically populate the 2-letter ISO country code (`country_code`). Song titles and artist names are analyzed via Unicode scripts and linguistic markers to populate detected languages (`language`).
+- **Master Deduplication**: Tracks are merged across Deezer, Spotify, and Apple Music via ISRC (Tier 1) and acoustic duration matching ($\le 3$s delta) with title/artist normalization (Tier 2). Radio edit suffixes and feature tags are stripped to unify duplicate releases.
 - **WAL Journal Compaction**: The crawler folds runtime journals into `catalog.sqlite` via `PRAGMA wal_checkpoint(TRUNCATE)` to keep the database file compact.
 
 ---

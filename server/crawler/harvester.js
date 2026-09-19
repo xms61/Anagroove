@@ -32,7 +32,28 @@ export const MUSIC_LEXICON_SEEDS = [
   'give', 'take', 'keep', 'let', 'make', 'build', 'heal', 'drive', 'ride', 'jump',
   'shake', 'spin', 'turn', 'stop', 'start', 'begin', 'end', 'wait', 'close', 'open',
   'high', 'wild', 'free', 'heavy', 'fast', 'slow', 'sweet', 'sugar', 'honey', 'candy',
-  'amor', 'noche', 'cielo', 'sol', 'luna', 'vida', 'alma', 'corazon', 'sueno', 'fiesta'
+  'amor', 'noche', 'cielo', 'sol', 'luna', 'vida', 'alma', 'corazon', 'sueno', 'fiesta',
+  // Expanded Musical, Emotional & Atmospheric Lexicon
+  'sing', 'shiver', 'breathe', 'crawl', 'drift', 'float', 'bleed', 'escape', 'fade', 'chase',
+  'crash', 'glow', 'heal', 'melt', 'rush', 'sinking', 'surrender', 'tremble', 'wander', 'ignite',
+  'spark', 'stumble', 'collide', 'rebound', 'deliver', 'explode', 'drown', 'resurrect', 'vanish',
+  'bliss', 'sorrow', 'ecstasy', 'desire', 'passion', 'rage', 'fury', 'guilt', 'envy', 'jealousy',
+  'lonely', 'anxiety', 'panic', 'nostalgia', 'euphoria', 'madness', 'delirium', 'comfort', 'peaceful',
+  'tender', 'wicked', 'fierce', 'relentless', 'reckless', 'restless', 'timeless', 'hopeless', 'boundless',
+  'galaxy', 'cosmos', 'planet', 'orbit', 'eclipse', 'nebula', 'asteroid', 'comet', 'horizon', 'twilight',
+  'aurora', 'tempest', 'tornado', 'blizzard', 'tsunami', 'earthquake', 'avalanche', 'crystal', 'emerald',
+  'sapphire', 'obsidian', 'amethyst', 'diamond', 'marble', 'velvet', 'silk', 'leather', 'denim', 'satin',
+  'boulevard', 'downtown', 'subway', 'neon', 'skyscraper', 'alley', 'concrete', 'asphalt', 'traffic',
+  'billboard', 'motel', 'penthouse', 'rooftop', 'discotheque', 'saloon', 'casino', 'carnival', 'parade',
+  'bass', 'synth', 'treble', 'tempo', 'echo', 'reverb', 'chorus', 'verse', 'harmony', 'symphony',
+  'sonata', 'serenade', 'ballad', 'anthem', 'riff', 'solo', 'acoustic', 'electric', 'amplifier', 'vinyl',
+  'cassette', 'turntable', 'needle', 'groove', 'speaker', 'headphone', 'frequency', 'vibration', 'static',
+  'bailar', 'fuego', 'cancion', 'beso', 'loco', 'loca', 'mujer', 'hombre', 'playa', 'mar',
+  'solitario', 'estrella', 'esperanza', 'camino', 'reina', 'rey', 'silencio', 'lagrimas',
+  'reve', 'coeur', 'soleil', 'lumiere', 'monde', 'musique', 'danse', 'adieu', 'toujours', 'voyage',
+  'etoile', 'chemin', 'femme', 'voler', 'pleurer', 'chanter', 'esperance',
+  'liebe', 'sonne', 'traum', 'herz', 'welt', 'sturm', 'tanzen', 'atemlos', 'ewigkeit', 'sehnsucht',
+  'tokyo', 'hikari', 'yume', 'sakura', 'kokoro', 'mirai', 'tsuki', 'densetsu', 'seoul', 'sarang'
 ];
 
 // Curated foundation of 200+ foundational artists across diverse genres and decades
@@ -124,6 +145,27 @@ for (const d of DECADES) {
     DECADE_GENRE_SEEDS.push(`${d} ${g}`);
   }
 }
+
+// Fine-grained Year (1960-2026) x Genre Matrix yielding 1,600+ rich queries
+export const YEAR_GENRE_SEEDS = [];
+const EXTENDED_GENRES = [
+  'rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie',
+  'metal', 'latin', 'reggae', 'country', 'funk', 'punk', 'house', 'techno',
+  'blues', 'folk', 'ambient', 'synthwave', 'k-pop', 'afrobeats', 'disco', 'alternative'
+];
+for (let yr = 1960; yr <= 2026; yr++) {
+  for (const g of EXTENDED_GENRES) {
+    YEAR_GENRE_SEEDS.push(`${yr} ${g}`);
+  }
+}
+
+// High-frequency musical 2-letter bigram seeds for sweeping all chart tiers
+export const BIGRAM_SEEDS = [
+  'th', 'he', 'in', 'er', 'an', 're', 'on', 'at', 'en', 'nd', 'ti', 'es', 'or', 'te', 'of',
+  'ed', 'is', 'it', 'al', 'ar', 'st', 'to', 'nt', 'ng', 'se', 'ha', 'as', 'ou', 'io', 'le',
+  've', 'co', 'me', 'de', 'hi', 'ri', 'ro', 'ic', 'ne', 'ea', 'ra', 'ce', 'li', 'ch', 'll',
+  'be', 'ma', 'si', 'om', 'ur', 'ca', 'el', 'ta', 'la', 'ns', 'di', 'fo', 'ho', 'pe', 'ec'
+];
 
 export class MusicHarvester {
   constructor(catalog = sqliteCatalog) {
@@ -512,6 +554,7 @@ export class MusicHarvester {
   async runFullHarvest({
     targetTracks = 100000,
     playlistsLimit = 40,
+    decadesLimit = 105,
     artistsLimit = 150,
     lexiconLimit = 350,
     onProgress = () => {},
@@ -520,17 +563,17 @@ export class MusicHarvester {
 
     const stats = {
       playlistsCrawled: 0,
+      decadeQueriesCrawled: 0,
       artistsCrawled: 0,
       lexiconWordsCrawled: 0,
-      decadeQueriesCrawled: 0,
       totalInserted: 0,
       totalMerged: 0,
     };
 
     const isTargetReached = () => this.catalog.getStats().tracks >= targetTracks;
 
-    // Vector 1: Curated Playlists
-    if (!isTargetReached() && !this.abortRequested) {
+    // Vector 1: Curated Genre & Historical Playlists Spidering
+    if (playlistsLimit > 0 && !isTargetReached() && !this.abortRequested) {
       const playlistsToCrawl = CURATED_PLAYLIST_SEEDS.slice(0, playlistsLimit);
       for (const plQuery of playlistsToCrawl) {
         if (this.abortRequested || isTargetReached()) break;
@@ -545,8 +588,9 @@ export class MusicHarvester {
     }
 
     // Vector 2: Decade & Genre Cross-Product Matrix
-    if (!isTargetReached() && !this.abortRequested) {
-      for (const query of DECADE_GENRE_SEEDS) {
+    if (decadesLimit > 0 && !isTargetReached() && !this.abortRequested) {
+      const queriesToCrawl = DECADE_GENRE_SEEDS.slice(0, decadesLimit);
+      for (const query of queriesToCrawl) {
         if (this.abortRequested || isTargetReached()) break;
         const res = await this.harvestDeezerQuery(query, 2);
         stats.decadeQueriesCrawled++;
@@ -592,6 +636,30 @@ export class MusicHarvester {
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
         onProgress({ ...stats, currentAction: `Vocabulary: "${word}"`, currentStats: this.catalog.getStats() });
+      }
+    }
+
+    // Vector 5: Comprehensive Year (1960-2026) x Genre Matrix Sweep
+    if (!isTargetReached() && !this.abortRequested) {
+      for (const query of YEAR_GENRE_SEEDS) {
+        if (this.abortRequested || isTargetReached()) break;
+        const res = await this.harvestDeezerQuery(query, 3);
+        stats.yearGenreQueriesCrawled = (stats.yearGenreQueriesCrawled || 0) + 1;
+        stats.totalInserted += res.harvested;
+        stats.totalMerged += res.merged;
+        onProgress({ ...stats, currentAction: `Year/Genre: "${query}"`, currentStats: this.catalog.getStats() });
+      }
+    }
+
+    // Vector 6: High-Yield Bigram Sweeper
+    if (!isTargetReached() && !this.abortRequested) {
+      for (const bigram of BIGRAM_SEEDS) {
+        if (this.abortRequested || isTargetReached()) break;
+        const res = await this.harvestDeezerQuery(bigram, 3);
+        stats.bigramsCrawled = (stats.bigramsCrawled || 0) + 1;
+        stats.totalInserted += res.harvested;
+        stats.totalMerged += res.merged;
+        onProgress({ ...stats, currentAction: `Bigram: "${bigram}"`, currentStats: this.catalog.getStats() });
       }
     }
 
