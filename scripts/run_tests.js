@@ -1,3 +1,13 @@
+// TODO: This monolithic test runner (2000+ lines) should be split into per-module test files.
+// Recommended structure:
+//   scripts/tests/test_crossword_engine.js  — crossword generation, grid placement, scoring
+//   scripts/tests/test_music_keywords.js    — keyword extraction, answer candidates, clue types
+//   scripts/tests/test_query_builder.js     — prompt parsing, decade/artist/genre detection
+//   scripts/tests/test_music_identity.js    — canonical keys, transliteration, blacklist matching
+//   scripts/tests/test_authenticity.js      — isAuthenticTrack, cover/karaoke/workout rejection
+//   scripts/tests/test_validators.js        — server-side input validation
+//   scripts/tests/test_websocket.js         — multiplayer room lifecycle, race/coop sync
+//   scripts/run_tests.js (this file)        — orchestrator that runs all test modules
 import fs from 'node:fs';
 import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
@@ -1153,10 +1163,11 @@ async function runIntegrationTests() {
               const guestMsg = JSON.parse(rawGuest.toString());
               if (guestMsg.type === 'room_joined') {
                 assert(guestMsg.room && guestMsg.room.players?.length === 2, 'Player 2 successfully joins room');
-                // Host starts the game
+                // Host starts the game (must send playerId to prove they are the room host)
                 hostWs.send(JSON.stringify({
                   action: 'start_game',
-                  roomCode
+                  roomCode,
+                  playerId: testUserId
                 }));
               }
 
@@ -1937,7 +1948,8 @@ async function runClueSystemAndZeroLeakTests() {
     clueType: 'Song title',
   });
   assert(!titleClue.toLowerCase().includes('kagayaku'), 'Anime title clue NEVER contains song title');
-  assert(titleClue.includes('Yuu Kobayashi'), 'Anime title clue can credit artist safely');
+  assert(!titleClue.includes('Yuu Kobayashi'), 'Anime title clue does NOT involve artist name');
+  assert(titleClue.includes('ED1'), 'Anime title clue mentions theme slug ED1');
   assert(!containsAnswerLeak(titleClue, 'KAGAYAKUKIMIE'), 'containsAnswerLeak confirms 0 leak for anime title clue');
 
   // 3c. Title keyword clue for anime track
@@ -2009,8 +2021,8 @@ async function runClueSystemAndZeroLeakTests() {
       isAnimeOped: true,
     };
 
-    const preferredType = i % 3 === 0 ? 'artist' : (i % 3 === 1 ? 'title' : 'keyword');
-    const keyword = extractAnswerKeyword(t, a, { preferredType, allowArtist: true });
+    const preferredType = ['anime', 'title', 'artist', 'keyword'][i % 4];
+    const keyword = extractAnswerKeyword(t, a, { preferredType, allowArtist: true, animeTitle: f });
     if (!keyword) continue;
 
     const clue = formatCrosswordClue(track, keyword);
@@ -2020,7 +2032,7 @@ async function runClueSystemAndZeroLeakTests() {
       throw new Error(`Leak detected in stress test! Clue: "${clue}", Answer: "${keyword.answer}"`);
     }
   }
-  assert(true, 'Zero answer leaks across 500 randomized stress test generations');
+  assert(true, 'Zero answer leaks across 500 randomized stress test generations (including Anime title)');
 }
 
 async function runAnimeArtAndKeyphraseClueDisciplineTests() {
@@ -2055,40 +2067,57 @@ async function runAnimeArtAndKeyphraseClueDisciplineTests() {
   assert(seenArtistAnswers.has('DOLLY'), 'seenAnswers blacklists first artist name token DOLLY');
   assert(seenArtistAnswers.has('PARTON'), 'seenAnswers blacklists second artist name token PARTON');
 
-  // 4. Anime Crosswords Enforce 0% Artist Clues
-  const jigokuTrack = {
-    title: 'Aida',
-    song_title: 'Aida',
-    artist: 'Mamiko Noto',
-    artist_name: 'Mamiko Noto',
-    animeTitle: 'Jigoku Shoujo Futakomori',
-    themeType: 'ED',
-    themeSlug: 'ED1',
-    releaseYear: 2006,
+  // 4. Anime Crossword 3-Way Entity Variation & Zero-Leak Discipline
+  const solaTrack = {
+    title: 'Colorless wind',
+    song_title: 'Colorless wind',
+    artist: 'Aira Yuuki',
+    artist_name: 'Aira Yuuki',
+    animeTitle: 'Sola',
+    themeType: 'OP',
+    themeSlug: 'OP2',
+    releaseYear: 2007,
     isAnimeOped: true,
   };
 
-  // 4a. Guaranteed 0% artist clues for anime: allowArtist=false
-  for (let i = 0; i < 20; i++) {
-    const kw = extractAnswerKeyword(jigokuTrack.title, jigokuTrack.artist, {
-      preferredType: i % 2 === 0 ? 'title' : 'keyword',
-      allowArtist: false,
-    });
-    assert(kw.clueType !== 'Artist name', 'Anime keyword extraction NEVER yields Artist name clue');
-    assert(kw.clueType === 'Song title' || kw.clueType === 'Song title keyword', 'Anime keyword extraction strictly yields Title or Keyword');
-  }
+  // 4a. Candidate extraction supports Anime title, Song title, and Artist name
+  const solaCandidates = extractAllAnswerCandidates(solaTrack.title, solaTrack.artist, { animeTitle: solaTrack.animeTitle });
+  assert(solaCandidates.anime?.answer === 'SOLA', 'extractAllAnswerCandidates extracts anime answer SOLA');
+  assert(solaCandidates.title?.answer === 'COLORLESSWIND', 'extractAllAnswerCandidates extracts title COLORLESSWIND');
+  assert(solaCandidates.artist?.answer === 'AIRAYUUKI', 'extractAllAnswerCandidates extracts artist AIRAYUUKI');
 
-  // 4b. Format realistic anime clue (reproducing user screenshot context)
-  const jigokuClue = formatCrosswordClue(jigokuTrack, {
-    answer: 'AIDA',
-    clueType: 'Song title',
-  });
-  assert(jigokuClue.includes('ED1'), 'Anime clue mentions theme slug ED1');
-  assert(jigokuClue.includes('Jigoku Shoujo Futakomori'), 'Anime clue mentions anime title');
-  assert(jigokuClue.includes('Mamiko Noto'), 'Anime clue safely credits artist without leaking song answer');
-  assert(!jigokuClue.toLowerCase().includes('aida'), 'Anime clue NEVER contains the song title answer');
-  assert(!jigokuClue.startsWith('[Anime]'), 'Anime clue eliminates bracketed [Anime] prefix');
-  assert(!containsAnswerLeak(jigokuClue, 'AIDA'), 'containsAnswerLeak confirms 0 spoiler on anime clue');
+  // 4b. When asking for Anime title: Anime title is strictly NOT in the clue
+  const animeKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'anime', animeTitle: solaTrack.animeTitle });
+  assert(animeKw.clueType === 'Anime title', 'Anime preferred type returns Anime title clue');
+  assert(animeKw.answer === 'SOLA', 'Anime answer is SOLA');
+  const animeClue = formatCrosswordClue(solaTrack, animeKw);
+  assert(!animeClue.toLowerCase().includes('sola'), 'Anime title clue NEVER mentions anime title "Sola"');
+  assert(!containsAnswerLeak(animeClue, animeKw.answer), 'containsAnswerLeak confirms 0 leak for Anime title clue');
+
+  // 4c. When asking for Artist name: Artist name is strictly NOT in the clue
+  const artistKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'artist', animeTitle: solaTrack.animeTitle, allowArtist: true });
+  assert(artistKw.clueType === 'Artist name', 'Artist preferred type returns Artist name clue');
+  assert(artistKw.answer === 'AIRAYUUKI', 'Artist answer is AIRAYUUKI');
+  const artistClue = formatCrosswordClue(solaTrack, artistKw);
+  assert(!artistClue.toLowerCase().includes('aira') && !artistClue.toLowerCase().includes('yuuki'), 'Artist clue NEVER mentions artist "Aira Yuuki"');
+  assert(artistClue.includes('Sola'), 'Artist clue mentions anime title context');
+  assert(!containsAnswerLeak(artistClue, artistKw.answer), 'containsAnswerLeak confirms 0 leak for Artist clue');
+
+  // 4d. When asking for Song title: Song title is NOT in the clue, and NO gratuitous artist inclusion
+  const titleKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'title', animeTitle: solaTrack.animeTitle });
+  assert(titleKw.clueType === 'Song title', 'Title preferred type returns Song title clue');
+  const titleClue = formatCrosswordClue(solaTrack, titleKw);
+  assert(!titleClue.toLowerCase().includes('colorless') && !titleClue.toLowerCase().includes('wind'), 'Title clue NEVER mentions song title');
+  assert(!titleClue.toLowerCase().includes('aira yuuki'), 'Title clue does NOT involve artist name');
+  assert(!containsAnswerLeak(titleClue, titleKw.answer), 'containsAnswerLeak confirms 0 leak for Title clue');
+
+  // 4e. When asking for Song title keyword: Keyword is NOT in the clue, and NO artist inclusion
+  const kwKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'keyword', animeTitle: solaTrack.animeTitle });
+  assert(kwKw.clueType === 'Song title keyword', 'Keyword preferred type returns Song title keyword clue');
+  const keywordClue = formatCrosswordClue(solaTrack, kwKw);
+  assert(!keywordClue.toLowerCase().includes(kwKw.answer.toLowerCase()), 'Keyword clue NEVER mentions keyword answer');
+  assert(!keywordClue.toLowerCase().includes('aira yuuki'), 'Keyword clue does NOT involve artist name');
+  assert(!containsAnswerLeak(keywordClue, kwKw.answer), 'containsAnswerLeak confirms 0 leak for Keyword clue');
 
   // 5. Victory Screen Image Persistence & Caching
   const { AnimeCatalog } = await import('../server/db/animeCatalog.js');

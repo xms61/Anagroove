@@ -536,3 +536,59 @@ export function buildQueryPlan(userOptions = {}) {
     sortOrder: randomOrder,
   };
 }
+
+/**
+ * Converts parsed prompt options into a safe FTS5 search query string for use
+ * with sqliteCatalog.searchCatalogByTheme(). Strips noise words, already-extracted
+ * directives (artist, decade, year, popularity), and FTS5 special characters.
+ *
+ * Returns an empty string when the prompt contains only directives (e.g. "songs by Queen")
+ * so the caller can skip the FTS path and rely on genre/artist filters instead.
+ *
+ * Examples:
+ *   parsePrompt("90s grunge rock") + toFtsQuery → '"grunge" OR "rock"'
+ *   parsePrompt("songs by Daft Punk") + toFtsQuery → '' (artist handled by filter)
+ *   parsePrompt("French house classics") + toFtsQuery → '"house"'
+ */
+export function toFtsQuery(prompt = '', parsedOptions = {}) {
+  if (!prompt || typeof prompt !== 'string') return '';
+
+  const NOISE_WORDS = new Set([
+    'songs', 'song', 'tracks', 'track', 'music', 'discography', 'singles', 'single',
+    'recordings', 'recording', 'tunes', 'tune', 'hits', 'hit', 'classic', 'classics',
+    'anthems', 'anthem', 'essentials', 'essential', 'best', 'top', 'famous',
+    'by', 'from', 'in', 'of', 'the', 'a', 'an', 'with', 'for',
+    'obscure', 'underground', 'niche', 'underrated', 'hidden', 'gems', 'gem',
+    'mainstream', 'pure', 'any', 'anything', 'random', 'new', 'old',
+    'anime', 'openings', 'opening', 'endings', 'ending', 'ost', 'themes', 'theme',
+    'gen', 'generation', 'kpop', 'jpop', 'jrock', 'rnb', 'edm',
+  ]);
+
+  let text = prompt.toLowerCase();
+
+  // Strip year ranges (e.g. "2010-2020", "from 1990 to 2000")
+  text = text.replace(/\b(from\s+)?\d{4}(\s*(to|-)\s*\d{4})?\b/g, ' ');
+
+  // Strip decade references (e.g. "80s", "1990s")
+  text = text.replace(/\b(?:19|20)?\d0s\b/g, ' ');
+
+  // Strip artist directive if already parsed
+  if (parsedOptions.artist) {
+    const artistNorm = parsedOptions.artist.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+    text = text.replace(new RegExp(artistNorm.split(' ').join('\\s+'), 'i'), ' ');
+    text = text.replace(/\b(by|from|artist:\s*|feat\.?\s+|featuring\s+)/gi, ' ');
+  }
+
+  // Tokenize and filter
+  const tokens = text
+    .replace(/[^\w\s-]/g, ' ')
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 3 && !NOISE_WORDS.has(t) && !/^\d+$/.test(t));
+
+  if (tokens.length === 0) return '';
+
+  // Deduplicate and build FTS5 OR query with quoted tokens for phrase safety
+  const unique = [...new Set(tokens)];
+  return unique.map(t => `"${t}"`).join(' OR ');
+}

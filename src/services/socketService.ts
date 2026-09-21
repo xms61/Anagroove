@@ -24,6 +24,8 @@ class SocketService {
   private ws: WebSocket | null = null;
   private listeners: Map<string, Set<SocketEventCallback>> = new Map();
   private isConnecting = false;
+  private reconnectDelay = 1500;
+  private maxReconnectDelay = 60000;
 
   private connect(): Promise<WebSocket> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -31,13 +33,18 @@ class SocketService {
     }
 
     if (this.isConnecting && this.ws) {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const check = setInterval(() => {
           if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             clearInterval(check);
+            clearTimeout(timeout);
             resolve(this.ws);
           }
         }, 50);
+        const timeout = setTimeout(() => {
+          clearInterval(check);
+          reject(new Error('WebSocket connection timeout'));
+        }, 10000);
       });
     }
 
@@ -52,6 +59,7 @@ class SocketService {
       socket.onopen = () => {
         this.isConnecting = false;
         this.ws = socket;
+        this.reconnectDelay = 1500;
         console.log('👥 Connected to SpotySpice Multiplayer WebSocket');
         resolve(socket);
       };
@@ -77,12 +85,14 @@ class SocketService {
       socket.onclose = () => {
         this.isConnecting = false;
         this.ws = null;
-        console.log('Multiplayer WebSocket closed, scheduling auto-reconnect...');
+        const delay = this.reconnectDelay;
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+        console.log(`Multiplayer WebSocket closed, reconnecting in ${delay}ms...`);
         setTimeout(() => {
           if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             this.connect().catch(() => {});
           }
-        }, 1500);
+        }, delay);
       };
     });
   }

@@ -92,24 +92,6 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     }, 500);
   }, [puzzle.id, themeId]);
 
-  // Listen for multiplayer co-op cell updates from teammates
-  useEffect(() => {
-    if (!multiplayerRoom || multiplayerRoom.mode !== 'coop') return;
-
-    const cleanup = socketService.on('coop_cell_update', (data) => {
-      const { row, col, char, playerId: senderId } = data;
-      if (senderId !== playerId && row < puzzle.rows && col < puzzle.cols) {
-        setUserLetters(prev => {
-          const next = prev.map(r => [...r]);
-          next[row][col] = char;
-          return next;
-        });
-      }
-    });
-
-    return () => { cleanup(); };
-  }, [multiplayerRoom, playerId, puzzle.rows, puzzle.cols]);
-
   // Find clues matching the current cell
   const acrossClueForSelected = useMemo(() => {
     return puzzle.clues.find(
@@ -270,9 +252,12 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
 
   const handleInputLetter = useCallback((char: string) => {
     const uppercase = char.toUpperCase();
-    const newLetters = userLetters.map(row => [...row]);
-    newLetters[selectedCell.row][selectedCell.col] = uppercase;
-    setUserLetters(newLetters);
+    let newLetters: string[][] = [];
+    setUserLetters(prev => {
+      newLetters = prev.map(row => [...row]);
+      newLetters[selectedCell.row][selectedCell.col] = uppercase;
+      return newLetters;
+    });
 
     // If in multiplayer co-op room, broadcast typed cell to teammates
     if (multiplayerRoom?.mode === 'coop' && playerId) {
@@ -350,15 +335,18 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     if (isFull) {
       validateGrid(newLetters);
     }
-  }, [userLetters, selectedCell, validity, activeClue, direction, puzzle, validateGrid, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor]);
+  }, [selectedCell, validity, activeClue, direction, puzzle, validateGrid, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor]);
 
   const handleBackspace = useCallback(() => {
-    const newLetters = userLetters.map(row => [...row]);
-    const currentHasChar = newLetters[selectedCell.row][selectedCell.col] !== '';
+    let newLetters: string[][] = [];
+    const currentHasChar = userLetters[selectedCell.row][selectedCell.col] !== '';
 
     if (currentHasChar) {
-      newLetters[selectedCell.row][selectedCell.col] = '';
-      setUserLetters(newLetters);
+      setUserLetters(prev => {
+        newLetters = prev.map(row => [...row]);
+        newLetters[selectedCell.row][selectedCell.col] = '';
+        return newLetters;
+      });
       if (multiplayerRoom?.mode === 'coop' && playerId) {
         socketService.sendCoopCellUpdate(
           multiplayerRoom.code,
@@ -380,8 +368,11 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
         const prevR = direction === 'across' ? activeClue.row : activeClue.row + idxInWord - 1;
         const prevC = direction === 'across' ? activeClue.col + idxInWord - 1 : activeClue.col;
         setSelectedCell({ row: prevR, col: prevC });
-        newLetters[prevR][prevC] = '';
-        setUserLetters(newLetters);
+        setUserLetters(prev => {
+          newLetters = prev.map(row => [...row]);
+          newLetters[prevR][prevC] = '';
+          return newLetters;
+        });
         if (multiplayerRoom?.mode === 'coop' && playerId) {
           socketService.sendCoopCellUpdate(
             multiplayerRoom.code,
@@ -397,7 +388,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     }
 
     scheduleServerSave(newLetters, validity);
-  }, [userLetters, selectedCell, activeClue, direction, validity, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor]);
+  }, [selectedCell, activeClue, direction, validity, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor, userLetters]);
 
   const moveCursor = useCallback((deltaR: number, deltaC: number) => {
     let r = selectedCell.row + deltaR;

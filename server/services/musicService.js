@@ -4,7 +4,7 @@ import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, toCrosswo
 import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
-import { buildQueryPlan, extractAnimeKeyphrase } from './queryBuilder.js';
+import { buildQueryPlan, extractAnimeKeyphrase, toFtsQuery } from './queryBuilder.js';
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.js';
 import { resolveAnimeCoverImages } from './animeImageService.js';
@@ -639,15 +639,55 @@ export async function getRandomSongPool({
       }
     }
 
-    // If using live default provider (not a unit test mock), also harvest candidates from local SQLite catalog
-    if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.getRandomPlayableTracks === 'function') {
+    // Primary: harvest candidates from local SQLite catalog using theme-aware search.
+    // The catalog (285k+ tracks) is queried first with genre, language, FTS, and year filters
+    // so that theme accuracy is determined locally before falling back to external APIs.
+    if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.searchCatalogByTheme === 'function') {
       try {
-        const localTracks = sqliteCatalog.getRandomPlayableTracks({
-          count: Math.min(60, limit),
-          minPopularity: queryPlan.popularity || 0,
+        // Derive FTS query tokens from the user prompt (strips noise/directives already parsed)
+        const ftsQuery = toFtsQuery(prompt, { artist: queryPlan.artist });
+
+        // Map genre string to verified genre cluster names in artists.genres_json
+        const { mapPromptToGenres } = await import('./queryFactory.js');
+        const catalogGenres = queryPlan.artist ? [] : mapPromptToGenres(queryPlan.genre || '', prompt || '');
+
+        // Determine language constraint for catalog query
+        const lowerPrompt = (prompt || '').toLowerCase();
+        const isKpop = /\b(k-?pop|korean)\b/i.test(lowerPrompt) || catalogGenres.includes('K-Pop');
+        const isJapanese = /\b(japanese|city\s*pop|j-pop|j-rock)\b/i.test(lowerPrompt) || catalogGenres.includes('City Pop') || catalogGenres.includes('Japanese');
+        const isLatin = /\b(latin|reggaeton|bossa\s*nova)\b/i.test(lowerPrompt) || catalogGenres.includes('Latin');
+        const isFrench = /\bfrench\b/i.test(lowerPrompt) || catalogGenres.includes('French House');
+        let catalogLanguage = null;
+        if (!isKpop && !isJapanese && !isLatin && !isFrench) {
+          catalogLanguage = 'en'; // Strict English for non-cultural themes
+        } else if (isKpop) {
+          catalogLanguage = ['ko', 'en'];
+        } else if (isJapanese) {
+          catalogLanguage = ['ja', 'en'];
+        }
+
+        // Extract recently-played catalog track IDs to exclude at SQL level
+        const recentCatalogIds = allRecentList
+          .filter(id => String(id).startsWith('sqlite:'))
+          .map(id => parseInt(String(id).replace('sqlite:', ''), 10))
+          .filter(id => !isNaN(id));
+
+        // Use a larger limit when a theme/genre is detected to leverage the full catalog
+        const hasTheme = ftsQuery.length > 0 || catalogGenres.length > 0 || !!queryPlan.artist;
+        const catalogLimit = hasTheme ? Math.min(100, limit) : Math.min(60, limit);
+
+        const localTracks = sqliteCatalog.searchCatalogByTheme({
+          ftsQuery,
+          genres: catalogGenres,
+          artist: queryPlan.artist || '',
+          language: catalogLanguage,
           yearRange: queryPlan.yearRange || null,
+          minPopularity: queryPlan.popularity === 'obscure' ? 0 : (queryPlan.minFans > 0 ? 20 : 0),
+          excludeTrackIds: recentCatalogIds,
           allowSampleless: true,
+          limit: catalogLimit,
         });
+
         if (localTracks && localTracks.length > 0) {
           const mappedLocal = localTracks.map(t => ({
             id: `sqlite:${t.id}`,
@@ -667,11 +707,15 @@ export async function getRandomSongPool({
             release_year: t.release_year,
             releaseDate: t.release_date || (t.release_year ? `${t.release_year}-01-01` : null),
             popularity: t.popularity,
+            language: t.language,
           }));
-          candidateTasks.push(Promise.resolve(mappedLocal));
+          // Insert catalog tracks at the front of candidateTasks so they get priority in tier sorting
+          candidateTasks.unshift(Promise.resolve(mappedLocal));
+          logger.info('music_service', `Catalog-first: ${mappedLocal.length} theme-matched tracks (genres=${JSON.stringify(catalogGenres)}, fts="${ftsQuery}")`);
         }
-      } catch {
+      } catch (err) {
         // Non-fatal if sqliteCatalog is not yet initialized or in an isolated test
+        logger.warn('music_service', `Catalog-first harvest failed: ${err.message}`);
       }
     }
   }
@@ -712,7 +756,7 @@ export async function getRandomSongPool({
   // 3. Variety Rejection Sampling & Language Filtering
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const songs = [];
-  const clueStats = { title: 0, artist: 0, keyword: 0 };
+  const clueStats = { title: 0, artist: 0, keyword: 0, anime: 0 };
   const rejections = {
     recent: 0,
     duplicateTrack: 0,
@@ -800,13 +844,17 @@ export async function getRandomSongPool({
       }
 
       // Clue type selection:
-      // When targeting a single artist or anime themes, NEVER use 'Artist name' clues
-      // (every clue must be Song title or Keyword, as the performer/anime is already identified in the clue)
+      // When targeting a single artist, NEVER use 'Artist name' clues (100% title or keyword)
+      // When playing anime themes, variate between 'anime', 'title', 'artist', and 'keyword'
       const isAnimeTrack = Boolean(track.isAnimeOped);
-      const allowArtist = !isTargetingSingleArtist && !isAnimeTrack;
+      const allowArtist = !isTargetingSingleArtist;
       let preferredType;
-      if (isTargetingSingleArtist || isAnimeTrack) {
+      if (isTargetingSingleArtist) {
         preferredType = (targetList.length % 2 === 0) ? 'title' : 'keyword';
+      } else if (isAnimeTrack) {
+        // Variate across anime title, song title, artist, and keyword
+        const ANIME_ROTATION = ['anime', 'title', 'artist', 'keyword'];
+        preferredType = ANIME_ROTATION[targetList.length % ANIME_ROTATION.length];
       } else {
         preferredType = PREFERRED_CLUE_ROTATION[targetList.length % PREFERRED_CLUE_ROTATION.length];
         if (seenArtists.has(artistIdentity) && preferredType === 'artist') {
@@ -818,24 +866,33 @@ export async function getRandomSongPool({
       const LENGTH_BUCKET_ROTATION = ['short', 'medium', 'long', 'medium', 'short', 'long', 'medium'];
       const targetLengthBucket = LENGTH_BUCKET_ROTATION[targetList.length % LENGTH_BUCKET_ROTATION.length];
 
-      let keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers, targetLengthBucket });
+      let keyword = extractAnswerKeyword(track.title, track.artist, {
+        preferredType,
+        allowArtist,
+        animeTitle: track.animeTitle,
+        seenAnswers,
+        targetLengthBucket
+      });
 
       // If answer already exists on the grid, fallback:
       if (keyword && seenAnswers.has(keyword.answer)) {
         if (keyword.clueType === 'Artist name') {
           // If there is a co-performer (e.g. Sira in "Ski Aggu & Sira"), try them before giving up on artist clues
-          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, seenAnswers, artistIndex: 1, targetLengthBucket });
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'artist', allowArtist, animeTitle: track.animeTitle, seenAnswers, artistIndex: 1, targetLengthBucket });
         }
         if (keyword && seenAnswers.has(keyword.answer)) {
-          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist, seenAnswers, targetLengthBucket });
+          keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'anime', allowArtist, animeTitle: track.animeTitle, seenAnswers, targetLengthBucket });
           if (keyword && seenAnswers.has(keyword.answer)) {
-            keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist, seenAnswers, targetLengthBucket });
+            keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'title', allowArtist, animeTitle: track.animeTitle, seenAnswers, targetLengthBucket });
+            if (keyword && seenAnswers.has(keyword.answer)) {
+              keyword = extractAnswerKeyword(track.title, track.artist, { preferredType: 'keyword', allowArtist, animeTitle: track.animeTitle, seenAnswers, targetLengthBucket });
+            }
           }
         }
       }
       if (!keyword || seenAnswers.has(keyword.answer)) {
         // Fallback without strict length bucket
-        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, seenAnswers });
+        keyword = extractAnswerKeyword(track.title, track.artist, { preferredType, allowArtist, animeTitle: track.animeTitle, seenAnswers });
       }
       if (!keyword || seenAnswers.has(keyword.answer)) {
         rejections.noKeyword++;
@@ -845,7 +902,7 @@ export async function getRandomSongPool({
       // Guardrail against generic 2-letter soundtrack abbreviations (TV, OP, ED, OST, BGM)
       // unless the answer is for an authentic artist name
       if (['TV', 'OP', 'ED', 'OST', 'BGM'].includes(keyword.answer) && keyword.clueType !== 'Artist name') {
-        const altKeyword = extractAnswerKeyword(track.title, track.artist, { preferredType: allowArtist ? 'artist' : 'title', allowArtist, seenAnswers, targetLengthBucket });
+        const altKeyword = extractAnswerKeyword(track.title, track.artist, { preferredType: allowArtist ? 'artist' : 'title', allowArtist, animeTitle: track.animeTitle, seenAnswers, targetLengthBucket });
         if (altKeyword && !['TV', 'OP', 'ED', 'OST', 'BGM'].includes(altKeyword.answer)) {
           keyword = altKeyword;
         } else {
@@ -867,6 +924,7 @@ export async function getRandomSongPool({
 
       if (keyword.clueType === 'Song title') clueStats.title++;
       else if (keyword.clueType === 'Artist name') clueStats.artist++;
+      else if (keyword.clueType === 'Anime title') clueStats.anime = (clueStats.anime || 0) + 1;
       else clueStats.keyword++;
 
       const clueText = formatCrosswordClue(track, keyword);

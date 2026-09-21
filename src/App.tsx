@@ -63,30 +63,19 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Settings state with localStorage persistence
-  const [enableWordAnimations, setEnableWordAnimations] = useState<boolean>(() => {
+  const [savedSettings] = useState(() => {
     try {
-      const saved = localStorage.getItem('spotyspice_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.enableWordAnimations === 'boolean') return parsed.enableWordAnimations;
-      }
+      return JSON.parse(localStorage.getItem('spotyspice_settings') || '{}');
     } catch {
-      // ignore parse errors
+      return {};
     }
-    return true;
   });
-  const [defaultVolume, setDefaultVolume] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('spotyspice_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.defaultVolume === 'number') return parsed.defaultVolume;
-      }
-    } catch {
-      // ignore parse errors
-    }
-    return 0.15;
-  });
+  const [enableWordAnimations, setEnableWordAnimations] = useState<boolean>(
+    typeof savedSettings.enableWordAnimations === 'boolean' ? savedSettings.enableWordAnimations : true
+  );
+  const [defaultVolume, setDefaultVolume] = useState<number>(
+    typeof savedSettings.defaultVolume === 'number' ? savedSettings.defaultVolume : 0.15
+  );
 
   const handleToggleWordAnimations = (enabled: boolean) => {
     setEnableWordAnimations(enabled);
@@ -111,6 +100,7 @@ export default function App() {
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState<MultiplayerRoom | null>(null);
   const [teammateCell, setTeammateCell] = useState<{ row: number; col: number; name: string; color: string } | null>(null);
+  const [victoryData, setVictoryData] = useState<{ winnerName: string } | null>(null);
 
   // Blacklist state
   const { blacklist, addArtist, addSong, removeItem } = useBlacklist();
@@ -298,7 +288,7 @@ export default function App() {
     });
 
     const offPuzzleSolved = socketService.on('puzzle_solved', (data) => {
-      alert(`🏆 Room Victory! ${data.winnerName} solved the puzzle!`);
+      setVictoryData({ winnerName: data.winnerName || 'A player' });
     });
 
     return () => {
@@ -658,6 +648,23 @@ export default function App() {
         multiplayerCode={multiplayerRoom?.code}
         activePuzzleTitle={currentPuzzle?.title || 'Live Crossword'}
       />
+
+      {/* Multiplayer victory modal */}
+      {victoryData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setVictoryData(null)}>
+          <div className="bg-gray-900 border border-yellow-500/50 rounded-2xl p-8 text-center max-w-sm mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="text-5xl mb-4">🏆</div>
+            <h2 className="text-2xl font-bold text-yellow-400 mb-2">Room Victory!</h2>
+            <p className="text-gray-300 text-lg mb-6">{victoryData.winnerName} solved the puzzle!</p>
+            <button
+              className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg transition-colors"
+              onClick={() => setVictoryData(null)}
+            >
+              Awesome!
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

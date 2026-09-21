@@ -1,5 +1,5 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
-import { parsePrompt } from './queryBuilder.js';
+import { parsePrompt, toFtsQuery } from './queryBuilder.js';
 import { extractAnswerKeyword } from '../../shared/musicKeywords.js';
 import { canonicalArtistKey, canonicalTrackKey, toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { generateLiveCrossword } from '../../shared/liveCrossword.js';
@@ -250,15 +250,18 @@ export async function buildCrosswordFromCatalog({
     });
     rawTracks = Array.from(new Set([...(animeGenreTracks || []), ...(animeTokenTracks || []), ...(animeOpeningTracks || []), ...(ostTokenTracks || [])]));
   } else {
-    rawTracks = catalog.queryCatalogForCrossword({
-      artist: parsed.artist || '',
-      text: parsed.artist ? '' : (queryGenres.length > 0 ? '' : prompt),
+    // Use FTS5-powered theme search as primary query path for non-anime prompts
+    const ftsQuery = toFtsQuery(prompt, { artist: parsed.artist });
+    const catalogLanguage = isEnglishStrict ? 'en' : (isKpop ? ['ko', 'en'] : (isJapanese ? ['ja', 'en'] : null));
+
+    rawTracks = catalog.searchCatalogByTheme({
+      ftsQuery,
       genres: queryGenres,
-      language: isEnglishStrict ? 'en' : (isKpop ? ['ko', 'en'] : (isJapanese ? ['ja', 'en'] : null)),
+      artist: parsed.artist || '',
+      language: catalogLanguage,
       yearRange: parsed.yearRange || null,
       minPopularity: parsed.popularity === 'obscure' ? 0 : 25,
-      answerLength,
-      variety: true,
+      allowSampleless: true,
       limit: 140,
     });
   }
