@@ -1,3 +1,13 @@
+// TODO: This monolithic test runner (2000+ lines) should be split into per-module test files.
+// Recommended structure:
+//   scripts/tests/test_crossword_engine.js  — crossword generation, grid placement, scoring
+//   scripts/tests/test_music_keywords.js    — keyword extraction, answer candidates, clue types
+//   scripts/tests/test_query_builder.js     — prompt parsing, decade/artist/genre detection
+//   scripts/tests/test_music_identity.js    — canonical keys, transliteration, blacklist matching
+//   scripts/tests/test_authenticity.js      — isAuthenticTrack, cover/karaoke/workout rejection
+//   scripts/tests/test_validators.js        — server-side input validation
+//   scripts/tests/test_websocket.js         — multiplayer room lifecycle, race/coop sync
+//   scripts/run_tests.js (this file)        — orchestrator that runs all test modules
 import fs from 'node:fs';
 import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
@@ -1153,10 +1163,11 @@ async function runIntegrationTests() {
               const guestMsg = JSON.parse(rawGuest.toString());
               if (guestMsg.type === 'room_joined') {
                 assert(guestMsg.room && guestMsg.room.players?.length === 2, 'Player 2 successfully joins room');
-                // Host starts the game
+                // Host starts the game (must send playerId to prove they are the room host)
                 hostWs.send(JSON.stringify({
                   action: 'start_game',
-                  roomCode
+                  roomCode,
+                  playerId: testUserId
                 }));
               }
 

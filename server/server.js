@@ -126,7 +126,7 @@ app.use(cors({
     ) {
       return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('Origin not allowed by CORS policy'));
   },
   credentials: true
 }));
@@ -372,13 +372,21 @@ server.on('close', () => livePuzzles.clear());
 
 // In-memory rooms
 const rooms = new Map();
+const MAX_PLAYERS_PER_ROOM = 8;
 
-// Generate random friendly room code
+// Generate random friendly room code with collision avoidance
 function generateRoomCode() {
-  const adjectives = ['BEAT', 'GROOVE', 'SPICE', 'VINYL', 'BASS', 'CHORD', 'SOLO', 'FUNK'];
-  const num = Math.floor(10 + Math.random() * 90);
-  const prefix = adjectives[Math.floor(Math.random() * adjectives.length)];
-  return `${prefix}-${num}`;
+  const adjectives = ['BEAT', 'GROOVE', 'SPICE', 'VINYL', 'BASS', 'CHORD', 'SOLO', 'FUNK',
+                       'TEMPO', 'RIFF', 'DROP', 'LOOP', 'VIBE', 'TUNE', 'WAVE', 'ECHO'];
+  let code;
+  let attempts = 0;
+  do {
+    const num = Math.floor(10 + Math.random() * 90);
+    const prefix = adjectives[Math.floor(Math.random() * adjectives.length)];
+    code = `${prefix}-${num}`;
+    attempts++;
+  } while (rooms.has(code) && attempts < 50);
+  return code;
 }
 
 const PLAYER_COLORS = [
@@ -496,6 +504,10 @@ wss.on('connection', (ws, req) => {
             room.players[existingIdx].name = data.playerName || room.players[existingIdx].name;
             currentPlayer = room.players[existingIdx];
           } else {
+            if (room.players.length >= MAX_PLAYERS_PER_ROOM) {
+              ws.send(JSON.stringify({ type: 'error', message: `Room is full (max ${MAX_PLAYERS_PER_ROOM} players).` }));
+              return;
+            }
             currentPlayer = {
               id: data.playerId,
               name: data.playerName || `Player ${room.players.length + 1}`,
@@ -532,7 +544,7 @@ wss.on('connection', (ws, req) => {
 
         case 'start_game': {
           const room = rooms.get(data.roomCode);
-          if (room && (!data.playerId || room.hostId === data.playerId)) {
+          if (room && data.playerId && room.hostId === data.playerId) {
             room.isStarted = true;
             broadcastToRoom(data.roomCode, {
               type: 'game_started',
@@ -647,6 +659,11 @@ wss.on('connection', (ws, req) => {
       }
     }
   });
+});
+
+// Catch-all 404 for unmatched API routes
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
 });
 
 // Serve static frontend assets in production

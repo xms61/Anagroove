@@ -57,7 +57,7 @@ export function validateProgressPayload(body) {
     if (!Array.isArray(validity) || validity.length !== userLetters.length) {
       return { valid: false, error: 'Invalid validity dimensions' };
     }
-    const allowed = new Set(['untested', 'correct', 'incorrect', 'neutral', null, '']);
+    const allowed = new Set(['untested', 'correct', 'wrong', 'incorrect', null, '']);
     for (const row of validity) {
       if (!Array.isArray(row) || row.length !== cols) {
         return { valid: false, error: 'Inconsistent grid rows in validity' };

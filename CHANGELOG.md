@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.13.0] - 2026-09-21
+
+### Added
+- **Theme-Aware Catalog-First Song Selection (`server/db/sqliteCatalog.js`, `server/services/musicService.js`)**:
+  - New `searchCatalogByTheme()` method combining FTS5 full-text search on titles/artists/albums with genre JSON filtering and popularity-weighted random sampling (10–100× faster than `LIKE '%term%'` on 285k+ tracks).
+  - Composite index `idx_tracks_lang_pop_year` on `(language, popularity DESC, release_year)` for the most common theme-filtered query pattern.
+  - Catalog is now queried **first** (catalog-first architecture) and inserted at the front of the candidate pipeline, ensuring local genre/language/temporal accuracy before external API enrichment.
+  - New `toFtsQuery()` helper in `server/services/queryBuilder.js` converts free-text prompts to safe FTS5 OR queries, stripping noise words, directives, and temporal references already handled by filters.
+  - Cultural language auto-detection: K-Pop themes get `['ko','en']`, Japanese/City Pop get `['ja','en']`, all other themes default to `'en'` at the SQL level to maximize thematic precision.
+  - Recently-played catalog track IDs are excluded at the SQL level via `NOT IN (...)` to minimize wasted rejection sampling.
+  - Offline crossword factory (`server/services/queryFactory.js`) upgraded to use `searchCatalogByTheme()` in the primary (non-anime) query path.
+- **Multiplayer Victory Modal (`src/App.tsx`)**:
+  - Replaced blocking `window.alert()` for multiplayer room victories with a state-driven modal matching the EndScreenModal design aesthetic (trophy emoji, yellow gold palette, click-outside-to-dismiss).
+- **WebSocket Connection Timeout (`src/services/socketService.ts`)**:
+  - Added 10-second timeout on the connection polling interval to prevent indefinite hangs.
+- **WebSocket Exponential Backoff (`src/services/socketService.ts`)**:
+  - Reconnect delay now doubles on each failure (1500ms → 3000ms → … → 60000ms cap) instead of a fixed 1500ms, preventing thundering-herd reconnects under sustained server unavailability.
+- **Node.js Engine Constraint**:
+  - Added `"engines": { "node": ">=24.0.0" }` to `package.json` and a `.nvmrc` file pinning the runtime to Node 24.
+
+### Fixed
+- **Security: CORS Fallthrough (`server/server.js`)**:
+  - Removed implicit `callback(null, true)` that allowed every unknown origin through CORS. Unknown origins now receive a `403` via `callback(new Error('Origin not allowed by CORS policy'))`.
+- **Security: `start_game` Host Check (`server/server.js`)**:
+  - Corrected inverted boolean — game start now **requires** `playerId` to be present AND match `room.hostId`. Previously any anonymous client could start a room game.
+- **Security: Room Player Limit (`server/server.js`)**:
+  - Added `MAX_PLAYERS_PER_ROOM = 8` check; joining a full room now sends an `error` message and returns early instead of allowing unbounded memory growth.
+- **Room Code Collision Prevention (`server/server.js`)**:
+  - `generateRoomCode()` now loops with a retry (up to 50 attempts) until an unused code is found, preventing collision on high-traffic servers.
+  - Expanded adjectives vocabulary from 8 to 16 entries (`TEMPO`, `RIFF`, `DROP`, `LOOP`, `VIBE`, `TUNE`, `WAVE`, `ECHO` added).
+- **API 404 Handler (`server/server.js`)**:
+  - Added `app.use('/api', ...)` catch-all returning `{ error: 'Endpoint not found' }` with `404` status, preventing unmatched API routes from falling through to the SPA HTML handler.
+- **Validator Validity Enum (`server/validators.js`)**:
+  - Aligned server-side validity enum to include `'wrong'` (the current frontend `CellValidity` value), keeping `'incorrect'` as a legacy alias. Removed `'neutral'` which was never emitted by the frontend.
+- **Stale Closure: `handleInputLetter` & `handleBackspace` (`src/hooks/useCrosswordGame.ts`)**:
+  - Both handlers now use functional `setUserLetters(prev => ...)` updates, eliminating stale closure captures of `userLetters` in `useCallback` dependency arrays.
+- **Duplicate Co-op Event Handler (`src/hooks/useCrosswordGame.ts`)**:
+  - Removed the duplicate `coop_cell_update` `useEffect` that was applying the same cell mutation twice per teammate keystroke.
+- **Settings localStorage Consolidation (`src/App.tsx`)**:
+  - Replaced two separate `localStorage.getItem('spotyspice_settings')` calls (each with try/catch) with a single shared parse.
+
+### Changed
+- **ESLint `no-constant-condition` Narrowed**:
+  - Removed the global `'no-constant-condition': 'off'` override. The suppression is now scoped only to `server/crawler/**` and `scripts/**` where `while(true)` event loops are legitimate.
+- **Test Runner Structure TODO**:
+  - Added a detailed comment block at the top of `scripts/run_tests.js` recommending the monolithic file (2200+ lines) be split into per-module test files with a suggested structure.
+- **WebSocket Test Authentication**:
+  - Updated the WebSocket integration test to send `playerId` on `start_game`, matching the now-enforced host authentication requirement.
+
+---
+
 ## [1.12.3] - 2026-09-19
 
 ### Added

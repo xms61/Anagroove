@@ -209,6 +209,8 @@ export class SqliteCatalog {
     try {
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_country ON tracks(country_code);');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_lang ON tracks(language);');
+      // Composite index for the most common theme-filtered query pattern
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_lang_pop_year ON tracks(language, popularity DESC, release_year);');
     } catch { /* non-fatal */ }
 
     // One-time fast backfill for existing tracks
@@ -614,6 +616,158 @@ export class SqliteCatalog {
     params.push(Math.max(count, limit));
 
     return this.db.prepare(query).all(...params);
+  }
+
+  /**
+   * Theme-aware catalog search combining FTS5 full-text matching on titles/artists/albums
+   * with genre JSON filtering on artist metadata. Returns a popularity-weighted
+   * random sample ideal for crossword puzzle candidate selection.
+   *
+   * Uses FTS5 MATCH (10-100x faster than LIKE '%term%') on 285k+ tracks.
+   * Excludes recently-played track IDs at the SQL level to reduce wasted rejection sampling.
+   */
+  searchCatalogByTheme({
+    ftsQuery = '',         // FTS5 search tokens, e.g. "rock grunge" or '"city pop"'
+    genres = [],           // Genre strings to match in artists.genres_json
+    artist = '',           // Specific artist canonical name
+    language = null,       // Language filter: 'en', ['ko', 'en'], etc.
+    yearRange = null,      // { start, end }
+    minPopularity = 0,
+    excludeTrackIds = [],  // Recently-played catalog track IDs to exclude
+    allowSampleless = true,
+    limit = 100,
+  } = {}) {
+    const params = [];
+    const conditions = ['1=1'];
+
+    // Audio sample join
+    const sampleJoin = allowSampleless ? 'LEFT' : 'INNER';
+
+    // Artist filter
+    if (artist && typeof artist === 'string' && artist.trim()) {
+      const canonical = normalizeDedupeArtist(artist);
+      conditions.push('(a.canonical_name = ? OR a.display_name = ? OR a.display_name LIKE ? OR a.display_name LIKE ?)');
+      params.push(canonical, artist.trim(), `${artist.trim()} %`, `${artist.trim()} &%`);
+    }
+
+    // Genre filter via JSON substring match on artists.genres_json
+    if (Array.isArray(genres) && genres.length > 0) {
+      const genreClauses = genres.map(() => 'a.genres_json LIKE ?').join(' OR ');
+      conditions.push(`(${genreClauses})`);
+      for (const g of genres) {
+        params.push(`%"${g.trim()}"%`);
+      }
+    }
+
+    // Language filter
+    if (language) {
+      if (Array.isArray(language) && language.length > 0) {
+        const langClauses = language.map(() => 't.language = ?').join(' OR ');
+        conditions.push(`(${langClauses})`);
+        params.push(...language);
+      } else if (typeof language === 'string' && language.trim()) {
+        conditions.push('(t.language = ? OR t.language IS NULL)');
+        params.push(language.trim());
+      }
+    }
+
+    // Temporal filter
+    if (yearRange && typeof yearRange === 'object') {
+      if (yearRange.start !== undefined) {
+        conditions.push('t.release_year >= ?');
+        params.push(yearRange.start);
+      }
+      if (yearRange.end !== undefined) {
+        conditions.push('t.release_year <= ?');
+        params.push(yearRange.end);
+      }
+    }
+
+    // Popularity floor
+    if (minPopularity > 0) {
+      conditions.push('t.popularity >= ?');
+      params.push(minPopularity);
+    }
+
+    // Exclude recently-played tracks to reduce wasted rejection sampling
+    if (Array.isArray(excludeTrackIds) && excludeTrackIds.length > 0) {
+      const placeholders = excludeTrackIds.map(() => '?').join(', ');
+      conditions.push(`t.id NOT IN (${placeholders})`);
+      params.push(...excludeTrackIds);
+    }
+
+    // Audio sample filter
+    if (!allowSampleless) {
+      conditions.push('s.sample_url IS NOT NULL AND s.http_status = 200');
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // If FTS5 query is provided, use it for fast full-text matching
+    if (ftsQuery && typeof ftsQuery === 'string' && ftsQuery.trim()) {
+      try {
+        // FTS5 join path: match on title, artist, album via virtual table
+        const ftsResults = this.db.prepare(`
+          SELECT t.id, t.isrc, t.language, t.display_title as title, a.display_name as artist,
+                 t.album_name as album, t.duration_ms, t.release_year, t.popularity,
+                 s.provider, s.provider_track_id, s.sample_url, s.audio_codec,
+                 (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
+                 (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
+                 (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id
+          FROM tracks_fts
+          JOIN tracks t ON tracks_fts.rowid = t.id
+          JOIN artists a ON t.artist_id = a.id
+          ${sampleJoin} JOIN track_samples s ON t.id = s.track_id
+          WHERE tracks_fts MATCH ?
+            AND ${whereClause}
+          ORDER BY (t.popularity * 3 + ABS(RANDOM()) % 100) DESC
+          LIMIT ?
+        `).all(ftsQuery, ...params, limit);
+
+        if (ftsResults && ftsResults.length >= 10) {
+          return ftsResults;
+        }
+        // Fall through to LIKE fallback if FTS returns insufficient results
+      } catch {
+        // FTS5 syntax error or unavailable — fall through to LIKE fallback
+      }
+
+      // LIKE fallback when FTS5 returns too few results or errors
+      const term = `%${ftsQuery.replace(/['"*]/g, '').trim()}%`;
+      const fallbackConditions = [...conditions,
+        '(t.canonical_title LIKE ? OR t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)'
+      ];
+      return this.db.prepare(`
+        SELECT t.id, t.isrc, t.language, t.display_title as title, a.display_name as artist,
+               t.album_name as album, t.duration_ms, t.release_year, t.popularity,
+               s.provider, s.provider_track_id, s.sample_url, s.audio_codec,
+               (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
+               (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
+               (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id
+        FROM tracks t
+        JOIN artists a ON t.artist_id = a.id
+        ${sampleJoin} JOIN track_samples s ON t.id = s.track_id
+        WHERE ${fallbackConditions.join(' AND ')}
+        ORDER BY (t.popularity * 3 + ABS(RANDOM()) % 100) DESC
+        LIMIT ?
+      `).all(...params, term, term, term, term, limit);
+    }
+
+    // No FTS query — genre/artist/language filter only
+    return this.db.prepare(`
+      SELECT t.id, t.isrc, t.language, t.display_title as title, a.display_name as artist,
+             t.album_name as album, t.duration_ms, t.release_year, t.popularity,
+             s.provider, s.provider_track_id, s.sample_url, s.audio_codec,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id
+      FROM tracks t
+      JOIN artists a ON t.artist_id = a.id
+      ${sampleJoin} JOIN track_samples s ON t.id = s.track_id
+      WHERE ${whereClause}
+      ORDER BY (t.popularity * 3 + ABS(RANDOM()) % 100) DESC
+      LIMIT ?
+    `).all(...params, limit);
   }
 
   /**

@@ -32,8 +32,7 @@ export default [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
       ],
-      'no-console': ['warn', { allow: ['log', 'warn', 'error', 'info'] }],
-      'no-constant-condition': 'off'
+      'no-console': ['warn', { allow: ['log', 'warn', 'error', 'info'] }]
     }
   },
   {
@@ -56,6 +55,13 @@ export default [
     },
     rules: {
       '@typescript-eslint/no-require-imports': 'off'
+    }
+  },
+  {
+    // Crawlers and long-running scripts legitimately use while(true) event loops
+    files: ['server/crawler/**/*.js', 'scripts/**/*.js'],
+    rules: {
+      'no-constant-condition': ['warn', { checkLoops: false }]
     }
   }
 ];

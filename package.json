@@ -1,8 +1,11 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.12.3",
+  "version": "1.13.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"vite\"",
     "dev:client": "vite",

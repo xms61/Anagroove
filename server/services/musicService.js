@@ -4,7 +4,7 @@ import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, toCrosswo
 import { shuffleArray } from '../../shared/shuffle.js';
 import { deezerMusicProvider } from './deezerMusicProvider.js';
 import { itunesMusicProvider } from './itunesMusicProvider.js';
-import { buildQueryPlan, extractAnimeKeyphrase } from './queryBuilder.js';
+import { buildQueryPlan, extractAnimeKeyphrase, toFtsQuery } from './queryBuilder.js';
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.js';
 import { resolveAnimeCoverImages } from './animeImageService.js';
@@ -639,15 +639,55 @@ export async function getRandomSongPool({
       }
     }
 
-    // If using live default provider (not a unit test mock), also harvest candidates from local SQLite catalog
-    if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.getRandomPlayableTracks === 'function') {
+    // Primary: harvest candidates from local SQLite catalog using theme-aware search.
+    // The catalog (285k+ tracks) is queried first with genre, language, FTS, and year filters
+    // so that theme accuracy is determined locally before falling back to external APIs.
+    if (musicProvider === deezerMusicProvider && typeof sqliteCatalog?.searchCatalogByTheme === 'function') {
       try {
-        const localTracks = sqliteCatalog.getRandomPlayableTracks({
-          count: Math.min(60, limit),
-          minPopularity: queryPlan.popularity || 0,
+        // Derive FTS query tokens from the user prompt (strips noise/directives already parsed)
+        const ftsQuery = toFtsQuery(prompt, { artist: queryPlan.artist });
+
+        // Map genre string to verified genre cluster names in artists.genres_json
+        const { mapPromptToGenres } = await import('./queryFactory.js');
+        const catalogGenres = queryPlan.artist ? [] : mapPromptToGenres(queryPlan.genre || '', prompt || '');
+
+        // Determine language constraint for catalog query
+        const lowerPrompt = (prompt || '').toLowerCase();
+        const isKpop = /\b(k-?pop|korean)\b/i.test(lowerPrompt) || catalogGenres.includes('K-Pop');
+        const isJapanese = /\b(japanese|city\s*pop|j-pop|j-rock)\b/i.test(lowerPrompt) || catalogGenres.includes('City Pop') || catalogGenres.includes('Japanese');
+        const isLatin = /\b(latin|reggaeton|bossa\s*nova)\b/i.test(lowerPrompt) || catalogGenres.includes('Latin');
+        const isFrench = /\bfrench\b/i.test(lowerPrompt) || catalogGenres.includes('French House');
+        let catalogLanguage = null;
+        if (!isKpop && !isJapanese && !isLatin && !isFrench) {
+          catalogLanguage = 'en'; // Strict English for non-cultural themes
+        } else if (isKpop) {
+          catalogLanguage = ['ko', 'en'];
+        } else if (isJapanese) {
+          catalogLanguage = ['ja', 'en'];
+        }
+
+        // Extract recently-played catalog track IDs to exclude at SQL level
+        const recentCatalogIds = allRecentList
+          .filter(id => String(id).startsWith('sqlite:'))
+          .map(id => parseInt(String(id).replace('sqlite:', ''), 10))
+          .filter(id => !isNaN(id));
+
+        // Use a larger limit when a theme/genre is detected to leverage the full catalog
+        const hasTheme = ftsQuery.length > 0 || catalogGenres.length > 0 || !!queryPlan.artist;
+        const catalogLimit = hasTheme ? Math.min(100, limit) : Math.min(60, limit);
+
+        const localTracks = sqliteCatalog.searchCatalogByTheme({
+          ftsQuery,
+          genres: catalogGenres,
+          artist: queryPlan.artist || '',
+          language: catalogLanguage,
           yearRange: queryPlan.yearRange || null,
+          minPopularity: queryPlan.popularity === 'obscure' ? 0 : (queryPlan.minFans > 0 ? 20 : 0),
+          excludeTrackIds: recentCatalogIds,
           allowSampleless: true,
+          limit: catalogLimit,
         });
+
         if (localTracks && localTracks.length > 0) {
           const mappedLocal = localTracks.map(t => ({
             id: `sqlite:${t.id}`,
@@ -667,11 +707,15 @@ export async function getRandomSongPool({
             release_year: t.release_year,
             releaseDate: t.release_date || (t.release_year ? `${t.release_year}-01-01` : null),
             popularity: t.popularity,
+            language: t.language,
           }));
-          candidateTasks.push(Promise.resolve(mappedLocal));
+          // Insert catalog tracks at the front of candidateTasks so they get priority in tier sorting
+          candidateTasks.unshift(Promise.resolve(mappedLocal));
+          logger.info('music_service', `Catalog-first: ${mappedLocal.length} theme-matched tracks (genres=${JSON.stringify(catalogGenres)}, fts="${ftsQuery}")`);
         }
-      } catch {
+      } catch (err) {
         // Non-fatal if sqliteCatalog is not yet initialized or in an isolated test
+        logger.warn('music_service', `Catalog-first harvest failed: ${err.message}`);
       }
     }
   }
