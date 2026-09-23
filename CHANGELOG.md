@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.23.0] - 2026-09-23
+
+### Added
+- **`npm run catalog:coverage`** (`server/selection/coverage.js`): an offline report on whether every theme and about 40 benchmark prompts (moods, eras, genres, artists) can be served from the catalog.
+  - It measures the catalog window at "balanced" (tracks, distinct artists, languages) and generates five seeded 12-song puzzles (do they fill up, and how much do they overlap).
+  - Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist prompts ≥ 15. `-- --ci` exits 1 on a miss, and `-- --json` gives the raw results.
+  - Baseline on a copy of the real catalog, before enrichment: **28 of 54 pass** in 25 s. Genre themes miss on distinct artists (only 565 artists have genres), decade prompts miss on release years ("70s disco": 9 tracks), and "songs by YOASOBI" finds nothing.
+- **Theme playlists tag their artists:** the crawler's playlist seeds come from `shared/themes.js`, and every artist on a theme's playlist gets that theme's first genre. `getOrCreateArtist` now merges genres into existing artists (it ignored them before).
+- Tests: the coverage report on the fixture catalog, playlist genre tagging, and English genre names from localized API responses.
+
+### Fixed
+- **Genre names were stored in German.** The Deezer API localizes genre names by the caller's location ("Filme/Videospiele", "Asiatische Musik", "Klassik", "Latin Musik"), so theme filters never matched them. Enrichment now maps album genres by Deezer genre id to English names, and **schema v7** translates the names already stored.
+
+### Removed
+- `CURATED_PLAYLIST_SEEDS` and `harvestCuratedPlaylists`, replaced by `PLAYLIST_SEEDS` and `harvestPlaylists(query, { genre })`.
+
+---
+
 ## [1.22.0] - 2026-09-23
 
 ### Changed

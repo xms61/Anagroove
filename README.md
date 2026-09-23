@@ -38,6 +38,7 @@ npm run catalog:enrich -- --all             # release years, artist fans/genres,
 npm run catalog:recompute                   # languages + popularity percentiles (local)
 npm run db:validate                         # diagnostics + cleanup dry run + gate report
 npm run db:sanitize                         # apply the cleanup (writes a backup first)
+npm run catalog:coverage                    # can every theme and benchmark prompt be served? (offline)
 ```
 
 Flags always go after `--` (`npm run catalog:enrich -- --albums=5000`). Without it, npm swallows them. Every command is listed in [scripts/SCRIPTS_CLI.md](scripts/SCRIPTS_CLI.md).

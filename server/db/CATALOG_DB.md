@@ -11,13 +11,13 @@ Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` 
 WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
 
 ## Migrations (`catalogMigrations.js`)
-- Versions are tracked in `PRAGMA user_version` (currently **v6**). Each migration runs in its own transaction.
+- Versions are tracked in `PRAGMA user_version` (currently **v7**). Each migration runs in its own transaction.
 - They're applied automatically on first catalog use, or explicitly with `npm run db:migrate`.
 - Before migrating a populated file DB, a `VACUUM INTO` copy is written next to it: `catalog.backup-v<from>-<timestamp>.sqlite`, gitignored. Set `SPOTYSPICE_SKIP_DB_BACKUP=1` or pass `--no-backup` to skip it.
 - New schema changes go in a **new** migration entry. Never edit an applied one.
 
 ## Tables
-- `artists`: `canonical_name` UNIQUE (`canonicalArtistKey`: Latin accents folded; kana dakuten and hangul kept), `display_name`, and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json`, `fans_count`, `primary_language` (voted over the artist's catalog), and `enriched_at`.
+- `artists`: `genres_json` holds English genre names: Deezer album genres by genre id (v7 translated the German names stored before), curated clusters, and the theme of any seed playlist the artist appeared on. `canonical_name` UNIQUE (`canonicalArtistKey`: Latin accents folded; kana dakuten and hangul kept), `display_name`, and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json`, `fans_count`, `primary_language` (voted over the artist's catalog), and `enriched_at`.
 - `tracks`:
   - `isrc` UNIQUE (validated format), `display_title`, `artist_id`, `album_name`, `duration_ms`, `release_year`/`release_date`, `is_explicit`.
   - `canonical_title`: the Unicode **base title** key from `baseTitleKey`. Credits and version tags are removed; kana (including dakuten), hangul and kanji are kept.

@@ -194,3 +194,13 @@ test('a legacy v0 catalog migrates to the latest version, and re-running is a no
   assert.equal(runCatalogMigrations(legacyDb).applied.length, 0);
   legacyDb.close();
 });
+
+test('migration v7 translates German Deezer genre names already stored', () => {
+  const { catalog } = freshCatalog();
+  catalog.upsertTrack({ title: 'Theme', artist: 'Composer', durationMs: 200000, provider: 'deezer', providerTrackId: '1', artistMetadata: { genres: ['Filme/Videospiele', 'Films/Games', 'Klassik'] } });
+  catalog.db.exec('PRAGMA user_version = 6');
+  runCatalogMigrations(catalog.db, { backup: false });
+  const { genres_json: json } = catalog.db.prepare("SELECT genres_json FROM artists WHERE display_name = 'Composer'").get();
+  assert.deepEqual(JSON.parse(json), ['Films/Games', 'Classical']);
+  catalog.close();
+});

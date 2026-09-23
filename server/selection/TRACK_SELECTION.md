@@ -57,6 +57,13 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
 - Never put a signed Deezer URL (`hdnea=exp=`) in a puzzle or anything that outlives the request. Use `toPreviewPath(ref)`.
 - `isPreviewUrlFresh` treats URLs within 60 s of `exp` as stale.
 
+## Coverage (`server/selection/coverage.js`, `npm run catalog:coverage`)
+For every theme (except anime, which has its own catalog) and about 40 benchmark prompts (moods, eras, genres, artists), offline:
+- the catalog window at `balanced`: tracks (up to 5,000), distinct artists, languages
+- five seeded 12-song puzzles: whether they fill up, and their average overlap (Jaccard, 0 = all different)
+
+Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist prompts ≥ 15 tracks, and full puzzles. `-- --ci` exits 1 on a miss. The failing rows are the crawl to-do list. Baseline on 2026-09-23, before enrichment: 28 of 54 pass. Genre themes miss on artists (few have genres) and decade prompts on release years.
+
 ## Known limits
 - Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist, so they fall back to live providers.
 - Decade prompts depend on release-year coverage (`catalog:enrich -- --albums=N`). Years come from the album, so compilations carry their own year.

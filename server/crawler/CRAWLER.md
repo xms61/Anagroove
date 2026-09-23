@@ -2,13 +2,13 @@
 
 ## Modules
 - `harvester.js` (`MusicHarvester`): all Deezer payloads go through one mapper, `toCatalogCandidate`. The fetch function is injectable (`{ fetchImpl }`) for tests.
-  - Vectors, in order: **Apple Music charts** (`harvestAppleCharts`: us/gb/jp/kr), curated playlists, decade × genre, foundation-artist discographies (plus related artists), lexicon words. A limit of 0 skips a vector, and `runFullHarvest` stops at the target track count.
+  - Vectors, in order: **Apple Music charts** (`harvestAppleCharts`: us/gb/jp/kr), theme playlists (`PLAYLIST_SEEDS`, from the `seeds` in `shared/themes.js`; every artist on a theme playlist gets the theme's first genre), decade × genre, foundation-artist discographies (plus related artists), lexicon words. A limit of 0 skips a vector, and `runFullHarvest` stops at the target track count.
   - `harvestArtistDiscography` skips an artist whose top tracks vote a language outside en/ja/ko before any album or related-artist requests.
   - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.
 - `enricher.js` (`CatalogEnricher`) fills in metadata. Each step picks its own worklist with SQL and stamps what it has tried (`tracks.enriched_at`, `tracks.itunes_checked_at`, `artists.enriched_at`), so runs are resumable and never loop.
   - `enrichAlbums`: `/album/{id}` (album id from the stored Deezer payload) → release date for every catalog track on the album, including tracks matched through the album's track list. About 9 tracks per request. Run it before `enrichDeezerTracks`.
   - `enrichDeezerTracks`: `/track/{id}` → ISRC, release date, rank. An ISRC already owned by another row counts as a duplicate conflict and is left for merging.
-  - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres.
+  - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres. Genres are stored by Deezer genre id as English names (`DEEZER_GENRE_NAMES`): the API localizes names by the caller's location.
   - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
   - Languages and popularity are recomputed locally by `npm run catalog:recompute` (`recomputeCatalogLanguages`, `recomputeCatalogPopularity`).
 - `authenticityFilter.js` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.js`.
