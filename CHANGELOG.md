@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.19.0] - 2026-09-23
+
+### Changed
+- **Test suite on `node:test`:** the 2,900-line `scripts/run_tests.js` is split into 17 per-area files in `scripts/tests/*.test.js`.
+  - All 616 assertions carried over unchanged.
+  - Files run in parallel processes, each with its own temp data dir. The suite takes ~5 s.
+- **CI** (`.github/workflows/ci.yml`) runs:
+  - lint, typecheck, and server tests with c8 coverage thresholds (`server/db`, `server/policy` and `shared` at lines/functions ≥ 85 %, branches ≥ 75 %; currently 90.5 / 93.8 / 79.8)
+  - frontend tests, the validation gate on a generated fixture catalog, and the build
+  - in a second job, a Playwright smoke test
+
+  The release workflow also runs typecheck and the frontend tests.
+
+### Added
+- **New server suites:**
+  - Unicode dedupe: kana, hangul and kanji titles survive ingest and cleanup; width, spacing and version variants merge.
+  - Popularity calibration: monotonic, clamped, with anchor points.
+  - A table-driven language-classifier corpus.
+  - Blacklist matching, offline mode, and the CI fixture catalog.
+- **Frontend tests** (Vitest + React Testing Library, jsdom) for `useCrosswordGame` and `useBlacklist`: typing, backspace, direction toggle, completion, hints, debounced saves, server sync.
+- **Playwright smoke test** (`npm run test:e2e`):
+  - builds a 92-track fixture catalog, starts the production server offline, and loads the app
+  - types every answer, expects the end screen and checks the solve in `/api/history`
+  - checks for horizontal overflow at 375 px
+- `SPOTYSPICE_OFFLINE=1` serves puzzles from the local catalog only: no Deezer/iTunes fallback, no preview lookups.
+- `npm run test:coverage`, `test:web`, `test:e2e`, `typecheck`, `db:gate:fixture`. `test:ci` runs lint + typecheck + coverage + frontend tests + fixture gate.
+
+### Fixed
+- **Blacklist matched substrings:** blacklisting "IU" also removed songs by "Julius"; "Queen Latifah" removed "Queen"; the song "Hello" removed "Othello". Generic entries now match whole words, which still covers collaborations ("Drake feat. Future") and versions ("Hey Jude - Remastered 2015").
+- **Grid key handlers could read an empty grid:** typing and backspace took the next grid from inside a `setState` updater. When React ran that updater later (any other update pending), the handler crashed on the full-grid check or scheduled a save of an empty grid. They now build the grid from the rendered state and apply it with a functional update.
+
+### Removed
+- `scripts/run_tests.js` and the unused `isBlacklisted` in `useBlacklist` (the server does the matching).
+
+---
+
 ## [1.18.0] - 2026-09-23
 
 ### Added

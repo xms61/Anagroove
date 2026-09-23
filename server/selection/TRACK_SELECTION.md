@@ -27,7 +27,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
    | `mainstream` | ≥ 50 | 2 |
 
    A named artist drops the popularity floor (deep cuts allowed).
-4. **Live providers are a fallback only:** used when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s. Deezer results go through `upsertTrack` (admission policy), so the catalog learns.
+4. **Live providers are a fallback only:** used when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s. Deezer results go through `upsertTrack` (admission policy), so the catalog learns. `SPOTYSPICE_OFFLINE=1` (`server/offline.js`) turns the fallback and preview lookups off.
 5. **Recency tiers:** candidates are bucketed by recent plays (0 / 1 / 2 / 3+), counting track ids, legacy `hit-` ids, and recently played artists. Tiers are filled in that order until `count` is reached.
 6. **Picker:**
    - It rejects duplicate track/title/answer, blacklisted items, language/thematic/authenticity/year policy failures, and non-original versions (`classifyVersion`, which also applies to live candidates).

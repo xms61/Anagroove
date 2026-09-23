@@ -12,7 +12,7 @@
 
 ## Pre-commit checklist
 1. `npm run lint`: 0 errors, 0 warnings.
-2. `npm test`: all pass.
+2. `npm test` and `npm run test:web`: all pass (`npm run test:ci` runs everything CI does except build and e2e).
 3. `git status`: no forbidden files staged.
 4. Version bumped and CHANGELOG/README updated.
 
@@ -23,4 +23,4 @@ gh pr create --base main --head <branch> --title "<type>(<scope>): <summary> (v<
 ```
 If a PR is already open for the branch, push more commits to it.
 
-CI (`.github/workflows/ci.yml`, Node from `.nvmrc`) runs lint, tests, and build. `manual-release.yml` does the tagged Docker release.
+CI (`.github/workflows/ci.yml`, Node from `.nvmrc`) runs lint, typecheck, server tests with coverage thresholds, frontend tests, the validation gate on a generated fixture catalog, and the build. A second job runs the Playwright smoke test. `manual-release.yml` does the tagged Docker release.

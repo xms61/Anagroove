@@ -5,9 +5,13 @@
 | `npm run dev` | API (:3001) + Vite (:3000) together. `dev:server` / `dev:client` run each separately |
 | `npm run build` / `start` / `preview` | `tsc` + Vite build / production server (serves `dist/` on :3000) / Vite preview |
 | `npm run lint` / `lint:fix` / `format` | ESLint / autofix / Prettier |
-| `npm test` | Unit/integration suite, isolated to a temp data dir (see `scripts/tests/TESTING.md`) |
+| `npm test` | Server/shared tests on `node:test`, one temp data dir per process (see `scripts/tests/TESTING.md`) |
+| `npm run test:coverage` | `npm test` under c8 with coverage thresholds for `server/db`, `server/policy`, `shared` |
+| `npm run test:web` / `test:e2e` | Vitest frontend tests / Playwright smoke test (after `npm run build`) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run db:gate:fixture` | Build the fixture catalog in a temp dir and run the validation gate on it |
 | `npm run test:prompts` | Live multi-prompt crossword suite against the **real** catalog + network; report in `reports/` |
-| `npm run test:all` / `test:ci` | test + test:prompts / lint + test |
+| `npm run test:all` / `test:ci` | test + test:web + test:prompts / lint + typecheck + test:coverage + test:web + db:gate:fixture |
 | `npm run eval:crosswords` | Batch quality benchmark with `crosswordJudge`; report in `reports/` |
 | `npm run crawl` | Full crawl: Apple charts, then Deezer vectors (`scripts/crawl_catalog.js`, flags in `server/crawler/CRAWLER.md`) |
 | `npm run catalog:enrich` | Fill release years by album, ISRC/year/rank by track, artist fans/genres, and strict iTunes links; recompute languages (`-- --albums=N --deezer=N --artists=N --itunes=N --languages`) |

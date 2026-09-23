@@ -14,6 +14,15 @@ interface UseCrosswordGameOptions {
   playerColor?: string;
 }
 
+// Copy of a letter grid with one cell changed. Key handlers build the next grid from the
+// rendered state for their own checks and saves, and apply the change with a functional
+// update: React may run an updater later, so values captured inside it can still be empty.
+function withCell(letters: string[][], row: number, col: number, value: string): string[][] {
+  const next = letters.map(line => [...line]);
+  next[row][col] = value;
+  return next;
+}
+
 export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOptions = {}) {
   const {
     themeId = 'mixed',
@@ -257,12 +266,8 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
 
   const handleInputLetter = useCallback((char: string) => {
     const uppercase = char.toUpperCase();
-    let newLetters: string[][] = [];
-    setUserLetters(prev => {
-      newLetters = prev.map(row => [...row]);
-      newLetters[selectedCell.row][selectedCell.col] = uppercase;
-      return newLetters;
-    });
+    const newLetters = withCell(userLetters, selectedCell.row, selectedCell.col, uppercase);
+    setUserLetters(prev => withCell(prev, selectedCell.row, selectedCell.col, uppercase));
 
     // If in multiplayer co-op room, broadcast typed cell to teammates
     if (multiplayerRoom?.mode === 'coop' && playerId) {
@@ -340,18 +345,15 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     if (isFull) {
       validateGrid(newLetters);
     }
-  }, [selectedCell, validity, activeClue, direction, puzzle, validateGrid, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor]);
+  }, [userLetters, selectedCell, validity, activeClue, direction, puzzle, validateGrid, scheduleServerSave, multiplayerRoom, playerId, playerName, playerColor]);
 
   const handleBackspace = useCallback(() => {
-    let newLetters: string[][] = [];
+    let newLetters = userLetters;
     const currentHasChar = userLetters[selectedCell.row][selectedCell.col] !== '';
 
     if (currentHasChar) {
-      setUserLetters(prev => {
-        newLetters = prev.map(row => [...row]);
-        newLetters[selectedCell.row][selectedCell.col] = '';
-        return newLetters;
-      });
+      newLetters = withCell(userLetters, selectedCell.row, selectedCell.col, '');
+      setUserLetters(prev => withCell(prev, selectedCell.row, selectedCell.col, ''));
       if (multiplayerRoom?.mode === 'coop' && playerId) {
         socketService.sendCoopCellUpdate(
           multiplayerRoom.code,
@@ -373,11 +375,8 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
         const prevR = direction === 'across' ? activeClue.row : activeClue.row + idxInWord - 1;
         const prevC = direction === 'across' ? activeClue.col + idxInWord - 1 : activeClue.col;
         setSelectedCell({ row: prevR, col: prevC });
-        setUserLetters(prev => {
-          newLetters = prev.map(row => [...row]);
-          newLetters[prevR][prevC] = '';
-          return newLetters;
-        });
+        newLetters = withCell(userLetters, prevR, prevC, '');
+        setUserLetters(prev => withCell(prev, prevR, prevC, ''));
         if (multiplayerRoom?.mode === 'coop' && playerId) {
           socketService.sendCoopCellUpdate(
             multiplayerRoom.code,

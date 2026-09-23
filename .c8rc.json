@@ -1,0 +1,7 @@
+{
+  "all": true,
+  "include": ["server/**/*.js", "shared/**/*.js"],
+  "exclude": ["server/data/**"],
+  "reporter": ["text-summary", "lcov"],
+  "report-dir": "coverage"
+}

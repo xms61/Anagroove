@@ -1,6 +1,7 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { deezerRateLimiter, itunesRateLimiter, politeFetch } from '../crawler/rateLimiter.js';
 import { logger } from '../logger.js';
+import { isOfflineMode } from '../offline.js';
 import { baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 
@@ -132,6 +133,7 @@ export function previewRefForTrack(track) {
 // ---------------------------------------------------------------------------
 
 async function fetchJson(url, rateLimiter) {
+  if (isOfflineMode() && fetchImpl === politeFetch) return null;
   const res = await fetchImpl(url, {}, { rateLimiter, maxRetries: 2 });
   if (!res || !res.ok) return null;
   return res.json();
