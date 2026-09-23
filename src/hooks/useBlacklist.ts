@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient, BlacklistItem } from '../services/apiClient';
 import { Song } from '../types/crossword';
-import { blacklistIdentityKey, canonicalMusicKey } from '../../shared/musicIdentity';
+import { blacklistIdentityKey } from '../../shared/musicIdentity';
 import { readJson, STORAGE_KEYS, writeJson } from '../services/storage';
 
 const LOCAL_STORAGE_KEY = STORAGE_KEYS.localBlacklist;
@@ -89,22 +89,10 @@ export function useBlacklist() {
     writeJson(LOCAL_STORAGE_KEY, (updated));
   }, []);
 
-  const isBlacklisted = useCallback((songTitle: string, artistName: string) => {
-    const titleKey = canonicalMusicKey(songTitle);
-    const artistKey = canonicalMusicKey(artistName);
-    return blacklist.some(b => {
-      const blacklistKey = canonicalMusicKey(b.name) || b.canonicalKey || '';
-      return b.type === 'artist'
-        ? artistKey === blacklistKey || artistKey.includes(blacklistKey)
-        : titleKey === blacklistKey || titleKey.includes(blacklistKey);
-    });
-  }, [blacklist]);
-
   return {
     blacklist,
     addArtist,
     addSong,
     removeItem,
-    isBlacklisted,
   };
 }

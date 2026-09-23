@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.18.0",
+  "version": "1.19.0",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -16,11 +16,16 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "test": "node --import ./scripts/tests/setup_env.js scripts/run_tests.js",
+    "test": "node --import ./scripts/tests/setup_env.js --test --test-force-exit \"scripts/tests/*.test.js\"",
+    "test:coverage": "c8 npm test && c8 check-coverage --lines 85 --functions 85 --branches 75 --include \"server/db/**\" --include \"server/policy/**\" --include \"shared/**\"",
+    "test:web": "vitest run",
+    "test:e2e": "playwright test",
     "test:prompts": "node scripts/test_prompts_crossword_suite.js",
     "eval:crosswords": "node scripts/eval_crossword_factory.js",
-    "test:all": "npm test && npm run test:prompts",
-    "test:ci": "npm run lint && npm run test",
+    "test:all": "npm test && npm run test:web && npm run test:prompts",
+    "typecheck": "tsc --noEmit",
+    "test:ci": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:web && npm run db:gate:fixture",
+    "db:gate:fixture": "node scripts/tests/fixtures/ciGate.js",
     "crawl": "node scripts/crawl_catalog.js",
     "crawl:artists": "node scripts/crawl_catalog.js --playlists=0 --decades=0 --artists=500 --lexicon=0",
     "crawl:playlists": "node scripts/crawl_catalog.js --playlists-only",
@@ -52,6 +57,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/canvas-confetti": "^1.9.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -60,13 +69,16 @@
     "@types/ws": "^8.5.14",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "c8": "^12.0.0",
     "concurrently": "^9.1.2",
     "eslint": "^10.10.0",
+    "jsdom": "^30.1.1",
     "postcss": "^8.5.1",
     "prettier": "^3.9.7",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.70.0",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "vitest": "^5.0.1"
   }
 }

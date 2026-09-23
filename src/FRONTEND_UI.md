@@ -46,6 +46,8 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
 - **Language filter:** the live generator's EN/JA/KO chips send `languages` (a subset of en/ja/ko; empty means the theme decides). The server applies it to the catalog window and the picker.
 - **Audio:** play through `playableAudioUrl(song)` (`services/audioSource.ts`). It keeps `/api/preview/...` and `/audio/...` paths and rebuilds a stable path for older saved puzzles that hold expiring Deezer URLs.
 - **Multiplayer:** `socketService` remembers the room seat (`resumeToken`) and rejoins on reconnect. A `room_joined` with `resumed: true` must not reset local progress.
+- **Grid key handlers** build the next grid from the rendered state (`withCell`) for their checks and saves, and apply it with a functional `setUserLetters`. Never read values out of a state updater: React may run it later, and the handler then sees an empty grid.
+- **Tests:** hooks are tested with Vitest + React Testing Library (`src/**/*.test.ts`, fixtures in `src/test/`), and the full flow with a Playwright smoke test. See `scripts/tests/TESTING.md`.
 - `npm run build` runs `tsc` in strict mode, then `vite build`.
 
 ## Known gaps

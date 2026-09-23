@@ -18,6 +18,7 @@ import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.js';
 import { getAnimeThemeType, isAnimeTarget } from '../policy/selectionPolicy.js';
 import { logger } from '../logger.js';
+import { isOfflineMode } from '../offline.js';
 import { createRng, weightedOrder } from './random.js';
 import {
   POPULARITY_SAMPLING,
@@ -152,6 +153,7 @@ export async function getRandomSongPool({
   let externalTried = false;
   const fetchExternal = async (needed) => {
     externalTried = true;
+    if (isLiveProvider() && isOfflineMode()) return [];
     const request = externalCandidates({
       provider: musicProvider,
       itunesProvider: itunesMusicProvider,

@@ -107,6 +107,7 @@
 | **Backend** | Node.js, Express, WebSocket (`ws`), Native HTTP Fetch |
 | **Database** | SQLite via Node 24 `node:sqlite`: music catalog, anime catalog, user store |
 | **Accessibility** | Shared dialog shell (focus trap, Esc, labelled), WCAG AA text contrast, self-hosted fonts |
+| **Testing** | `node:test` + c8 (server/shared), Vitest + React Testing Library (frontend), Playwright smoke test on an offline fixture catalog |
 | **Audio Engine** | Deezer API & iTunes preview resolver with dynamic fallback self-healing |
 
 ---
@@ -282,8 +283,7 @@ SpotySpice/
 ├── .github/                    # CI + manual release workflows, RELEASE_PROCESS.md
 ├── data/                       # most_streamed_artists.csv + gitignored dataset dumps
 ├── scripts/                    # Crawl, ingest, anime, validation & eval CLIs (SCRIPTS_CLI.md)
-│   ├── run_tests.js            # Unit & integration test runner
-│   └── tests/                  # Test env preload (temp data dir) & TESTING.md
+│   └── tests/                  # node:test suites, fixture catalog, Playwright smoke test (TESTING.md)
 ├── server/                     # Node.js 24 backend (API_SECURITY.md, MULTIPLAYER_WS.md)
 │   ├── crawler/                # Harvester, authenticity filter, rate limiter (CRAWLER.md)
 │   ├── data/                   # Runtime data (gitignored): catalog.sqlite, anime_catalog.sqlite, users.sqlite
@@ -343,22 +343,31 @@ The server binds each player to its socket on create/join and ignores any `playe
 
 ## 🧪 Testing & Code Quality
 
-Run automated CI-friendly test suites and linters:
+Run automated CI-friendly test suites and linters (details in [scripts/tests/TESTING.md](scripts/tests/TESTING.md)):
 
 ```bash
-# Run the unit & integration suite (isolated temp data dir; never touches server/data)
+# Server & shared tests on node:test (parallel, isolated temp data dirs; never touches server/data)
 npm test
+
+# Same with c8 coverage thresholds for server/db, server/policy and shared
+npm run test:coverage
+
+# Frontend hook tests (Vitest + React Testing Library)
+npm run test:web
+
+# Playwright smoke test: offline fixture catalog, generate -> type -> solve (build first)
+npm run build && npm run test:e2e
 
 # Run the live multi-prompt crossword verification suite (14 diverse genres, eras, temporal windows & single-artist puzzles)
 npm run test:prompts
 
-# Run all test suites combined (unit/integration + multi-prompt verification)
+# Run all test suites combined (server + frontend + multi-prompt verification)
 npm run test:all
 
 # Run ESLint across TypeScript, server, scripts, and shared modules
 npm run lint
 
-# Run full CI pipeline validation (Lint + Unit/Integration Tests)
+# Run the CI checks locally (lint, typecheck, coverage, frontend tests, fixture DB gate)
 npm run test:ci
 
 # Format codebase with Prettier
@@ -374,7 +383,7 @@ node scripts/test_multiplayer_live_sync.js
 
 SpotySpice provides a manual GitHub Actions release pipeline (`.github/workflows/manual-release.yml`) triggered on-demand via **Workflow Dispatch**:
 
-1. **Validation**: Executes `npm run lint` and the full test suite via `npm test`. Optionally runs the live 10-genre prompt evaluation suite when `run_prompt_suite` is enabled.
+1. **Validation**: Executes `npm run lint`, `npm run typecheck`, `npm test` and `npm run test:web`. Optionally runs the live 10-genre prompt evaluation suite when `run_prompt_suite` is enabled.
 2. **Containerization**: Sets up Docker Buildx and builds a production-optimized container (`spotyspice:<tag>`).
 3. **Automated Tagging**: Creates and pushes the semantic version git tag (e.g. `v1.3.0` or custom).
 4. **Release Notes & Publishing**: Automatically extracts version-specific notes from `CHANGELOG.md` and publishes the GitHub Release.

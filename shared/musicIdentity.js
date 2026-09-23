@@ -111,10 +111,12 @@ export function blacklistMatchesTrack(blacklist, track) {
 
     const candidateKey = item.type === 'artist' ? artistKey : titleKey;
     const blacklistKey = canonicalMusicKey(item.name) || item.canonicalKey;
-    return Boolean(candidateKey && blacklistKey && (
-      candidateKey === blacklistKey ||
-      candidateKey.includes(blacklistKey) ||
-      blacklistKey.includes(candidateKey)
-    ));
+    return Boolean(candidateKey && blacklistKey && containsWords(candidateKey, blacklistKey));
   });
+}
+
+// Whole-word match on canonical keys: "drake" blocks "drake feat future" and "hey jude" blocks
+// "hey jude remastered 2015", but "iu" does not block "julius" and "queen latifah" not "queen".
+function containsWords(candidateKey, blacklistKey) {
+  return ` ${candidateKey} `.includes(` ${blacklistKey} `);
 }

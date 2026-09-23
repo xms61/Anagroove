@@ -134,3 +134,7 @@ reports/
 
 # Local planning docs (never committed)
 docs/plans/
+
+# Playwright
+test-results/
+playwright-report/

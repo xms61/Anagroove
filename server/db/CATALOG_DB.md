@@ -51,6 +51,8 @@ A match merges provider links, samples, raw popularity, and missing metadata int
 ## Languages after crawls
 `recomputeCatalogLanguages(db)` (`catalogLanguages.js`, also `npm run catalog:enrich -- --languages`) re-votes every artist's language and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
 
+Known limit: without an artist vote, about 2.5% of plain two-word English titles read as es/it ("Quiet Shadow", "Neon Anchor"), so a new artist's first such track can be refused. The vote fixes it once the artist has 3+ titles. A per-word check was measured on the 498k-track catalog and rejected: it would have kept ~1,900 two-word titles as English, and most of them are genuinely foreign.
+
 ## Popularity
 - `normalizePopularity`: Spotify popularity is the reference when present. Otherwise the Deezer rank is mapped with `deezerRankToScore` (`20·log10(rank) − 39`, calibrated so the median top-10k hit's rank ≈ 562k maps to 76). A legacy `popularity` > 100 is treated as a Deezer rank.
 - Pass raw values to `upsertTrack` as `deezerRank` / `spotifyPopularity`.

@@ -45,8 +45,14 @@ jobs:
       - name: Run linter
         run: npm run lint
 
-      - name: Run automated test suite (290 tests)
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Server tests (node:test)
         run: npm test
+
+      - name: Frontend tests (Vitest)
+        run: npm run test:web
 
       - name: Run multi-prompt crossword test suite (14 prompts)
         if: ${{ inputs.run_prompt_suite }}
