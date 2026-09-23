@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import { DATA_DIR } from '../paths.js';
+import { lazySingleton } from './lazySingleton.js';
 
 const DEFAULT_ANIME_DB_PATH = path.join(DATA_DIR, 'anime_catalog.sqlite');
 
@@ -327,4 +328,5 @@ export class AnimeCatalog {
   }
 }
 
-export const animeCatalog = new AnimeCatalog();
+// Opened on first use, not at import time
+export const animeCatalog = lazySingleton(() => new AnimeCatalog()).instance;

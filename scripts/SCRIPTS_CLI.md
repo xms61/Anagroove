@@ -13,6 +13,7 @@
 | `npm run crawl:artists` / `crawl:playlists` / `crawl:status` | Artist-only / playlist-only / catalog metrics |
 | `npm run crawl:top10k` | Ingest Anna's Archive Spotify top‑10k |
 | `npm run fetch:datasets` / `ingest:dataset` | Prepare dataset dirs / stream-ingest MusicMoveArr dumps |
+| `npm run db:migrate` | Apply pending catalog schema migrations (backup first; `-- --no-backup`, `-- --db=path`) |
 | `npm run db:validate` / `db:sanitize` | Validator dry run with a report / apply fixes |
 | `npm run anime:sync` / `anime:samples` / `anime:ingest` / `anime:images` | Anime OP/ED pipeline |
 

@@ -221,6 +221,14 @@ SpotySpice features a hybrid high-performance music ingestion architecture:
 | `--dry-run` | `false` | Parse and evaluate candidates without writing to SQLite. |
 | `--status` | `false` | Displays formatted counts of unique artists, canonical tracks, audio samples, country codes, languages, and cross-referenced merges without crawling. |
 
+#### Schema Migrations
+The catalog schema is versioned (`PRAGMA user_version`). Pending migrations run automatically the first time the catalog is used, or explicitly:
+```bash
+# Apply pending migrations (writes a VACUUM INTO backup next to catalog.sqlite first)
+npm run db:migrate
+```
+Migrating an existing ~500k-track catalog to v2 takes about 20 s and grows the file by the trigram search index (~140 MB).
+
 #### Database Validation & Sanitization
 Run automated health diagnostics, soft-duplicate clustering, and contamination cleanup:
 ```bash
@@ -244,10 +252,13 @@ npm run anime:samples
 npm run anime:ingest
 ```
 
-#### Deduplication & Integrity
-- **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks without verified 30-second audio previews are automatically rejected.
-- **Country & Language Tagging**: Standard 12-character ISRCs automatically populate the 2-letter ISO country code (`country_code`). Song titles and artist names are analyzed via Unicode scripts and linguistic markers to populate detected languages (`language`).
-- **Master Deduplication**: Tracks are merged across Deezer, Spotify, and Apple Music via ISRC (Tier 1) and acoustic duration matching ($\le 3$s delta) with title/artist normalization (Tier 2). Radio edit suffixes and feature tags are stripped to unify duplicate releases.
+#### Admission Policy, Deduplication & Integrity
+- **English, Japanese & Korean only**: Every write goes through `upsertTrack`, which rejects any other detected language. Han-only titles count as Japanese or Korean when the ISRC was registered in JP or KR.
+- **Original recordings only**: Live, remix, edit, extended, acoustic, instrumental, demo, re-recorded, sped-up, cover, and language versions are rejected. A remaster counts as the original recording.
+- **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks shorter than 45 s or longer than 20 min are rejected.
+- **One popularity scale**: `popularity` is a 0–100 score (Spotify popularity, or the Deezer rank mapped onto it). The raw `deezer_rank` and `spotify_popularity` are kept alongside.
+- **Master Deduplication**: Tracks merge across Deezer, Spotify, and Apple Music by ISRC (Tier 1), or by artist plus a Unicode-aware base title with credits and version tags stripped (Tier 2). One row per song, whatever the release.
+- **Full-text search**: A trigram FTS5 index (kept in sync by triggers) gives fast substring search, including for kana, hangul, and kanji.
 - **WAL Journal Compaction**: The crawler folds runtime journals into `catalog.sqlite` via `PRAGMA wal_checkpoint(TRUNCATE)` to keep the database file compact.
 
 ---

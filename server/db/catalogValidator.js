@@ -219,7 +219,7 @@ export class CatalogValidator {
 
     // Popularity anomalies (supports both 0-100 and Deezer 0-1,000,000 rank scale)
     const invalidPopularityCount = this.db.prepare(`
-      SELECT COUNT(*) as c FROM tracks WHERE popularity < 0 OR popularity > 1000000
+      SELECT COUNT(*) as c FROM tracks WHERE popularity < 0 OR popularity > 100
     `).get().c;
 
     // Missing or invalid audio preview samples

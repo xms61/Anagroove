@@ -4,21 +4,29 @@ import path from 'path';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { logger } from '../logger.js';
 import { DATA_DIR } from '../paths.js';
+import { runCatalogMigrations } from './catalogMigrations.js';
+import { lazySingleton } from './lazySingleton.js';
+import {
+  baseTitleKey,
+  classifyVersion,
+  detectTrackLanguage,
+  extractIsrcCountryCode,
+  isAcceptedVersion,
+  isAllowedLanguage,
+  isValidDuration,
+  normalizeIsrc,
+  normalizePopularity,
+  normalizeReleaseDate,
+  normalizeReleaseYear,
+} from './trackNormalization.js';
 
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'catalog.sqlite');
 
 /**
- * Normalizes title for high-confidence composite key deduplication.
- * Removes parenthetical/bracketed noise (remaster tags, feat., live labels).
+ * Dedupe key for a song title: Unicode-aware, credit/version decorations removed.
  */
 export function normalizeDedupeTitle(title = '') {
-  return (title || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s*[([](?:feat\.|ft\.|remaster(?:ed)?|version|radio\s+edit|edit|explicit|deluxe|bonus|single|album|mono|stereo|anniversary)[^\])]*[)\]]/gi, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
+  return baseTitleKey(title);
 }
 
 /**
@@ -28,47 +36,7 @@ export function normalizeDedupeArtist(artist = '') {
   return canonicalArtistKey(artist);
 }
 
-/**
- * Detects language code ('en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh', 'ru', 'ar')
- * from script analysis and prominent linguistic markers.
- */
-export function detectTrackLanguage(title = '', artist = '') {
-  const text = `${title} ${artist}`.toLowerCase();
-  // Korean Hangul
-  if (/[\uac00-\ud7af]/.test(text)) return 'ko';
-  // Japanese Hiragana / Katakana
-  if (/[\u3040-\u30ff]/.test(text)) return 'ja';
-  // Chinese Hanzi
-  if (/[\u4e00-\u9fff]/.test(text)) return 'zh';
-  // Cyrillic
-  if (/[\u0400-\u04ff]/.test(text)) return 'ru';
-  // Arabic
-  if (/[\u0600-\u06ff]/.test(text)) return 'ar';
-  // Spanish markers
-  if (/\b(amor|coraz[oó]n|vida|noche|fiesta|bailando|despacito|feliz|navidad|se[nñ]orita|mujer|beso|adi[oó]s|para|por|los|las|una|uno|conmigo|quiero)\b/i.test(text)) return 'es';
-  // French markers
-  if (/\b(amour|chanson|avec|dans|pour|une|les|ton|mon|nous|vous|c[eé]|est|vie|femme|soleil|nuit|monde|toujours)\b/i.test(text)) return 'fr';
-  // German markers
-  if (/\b(und|nicht|ist|der|die|das|mit|auf|f[uü]r|von|nacht|liebe|herz|welt|zeit|leben|atemlos)\b/i.test(text)) return 'de';
-  // Italian markers
-  if (/\b(amore|bella|notte|tutto|tutti|della|degli|mondo|vita|cuore|felicit[aà])\b/i.test(text)) return 'it';
-  // Portuguese markers
-  if (/\b(mais|voc[eê]|n[aã]o|pra|tudo|amor|vida|cora[cç][aã]o|saudade)\b/i.test(text)) return 'pt';
-  // Default to English for standard Western/Latin titles
-  return 'en';
-}
-
-/**
- * Extracts 2-letter ISO country code from a standard 12-character ISRC.
- */
-export function extractIsrcCountryCode(isrc = '') {
-  if (typeof isrc !== 'string') return null;
-  const clean = isrc.trim().toUpperCase();
-  if (clean.length === 12 && /^[A-Z]{2}/.test(clean)) {
-    return clean.slice(0, 2);
-  }
-  return null;
-}
+export { detectTrackLanguage, extractIsrcCountryCode };
 
 export class SqliteCatalog {
   constructor(dbPath = DEFAULT_DB_PATH) {
@@ -104,127 +72,8 @@ export class SqliteCatalog {
   }
 
   _createTables() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS artists (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        canonical_name TEXT NOT NULL UNIQUE,
-        display_name TEXT NOT NULL,
-        spotify_id TEXT UNIQUE,
-        deezer_id INTEGER UNIQUE,
-        itunes_artist_id INTEGER UNIQUE,
-        genres_json TEXT,
-        fans_count INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS tracks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        isrc TEXT UNIQUE,
-        canonical_title TEXT NOT NULL,
-        display_title TEXT NOT NULL,
-        artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
-        album_name TEXT,
-        duration_ms INTEGER NOT NULL,
-        release_year INTEGER,
-        release_date TEXT,
-        country_code TEXT,
-        language TEXT DEFAULT 'en',
-        popularity INTEGER DEFAULT 0,
-        is_explicit INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS track_samples (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-        provider TEXT NOT NULL, -- 'deezer' | 'itunes' | 'spotify'
-        provider_track_id TEXT NOT NULL,
-        sample_url TEXT NOT NULL,
-        audio_codec TEXT DEFAULT 'mp3', -- 'mp3' | 'aac'
-        sample_duration_sec INTEGER DEFAULT 30,
-        http_status INTEGER DEFAULT 200,
-        last_checked_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(track_id, provider)
-      );
-
-      CREATE TABLE IF NOT EXISTS track_providers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-        provider TEXT NOT NULL,
-        provider_track_id TEXT NOT NULL,
-        external_url TEXT,
-        raw_metadata_json TEXT,
-        harvested_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(provider, provider_track_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS crawl_queue (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        provider TEXT NOT NULL,
-        task_type TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        status TEXT DEFAULT 'pending', -- 'pending' | 'in_progress' | 'completed' | 'failed'
-        priority INTEGER DEFAULT 0,
-        attempts INTEGER DEFAULT 0,
-        next_run_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(provider, task_type, payload_json)
-      );
-
-      -- Full-Text Search (FTS5) for instant crossword clue discovery
-      CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
-        title,
-        artist,
-        album,
-        content='tracks',
-        content_rowid='id'
-      );
-
-      -- High-Performance Indexes
-      CREATE INDEX IF NOT EXISTS idx_artists_canonical ON artists(canonical_name);
-      CREATE INDEX IF NOT EXISTS idx_tracks_lookup ON tracks(artist_id, canonical_title, duration_ms);
-      CREATE INDEX IF NOT EXISTS idx_tracks_year ON tracks(release_year);
-      CREATE INDEX IF NOT EXISTS idx_tracks_pop ON tracks(popularity DESC);
-      CREATE INDEX IF NOT EXISTS idx_tracks_pop_year ON tracks(popularity DESC, release_year);
-      CREATE INDEX IF NOT EXISTS idx_tracks_lang_country ON tracks(language, country_code);
-      CREATE INDEX IF NOT EXISTS idx_samples_track ON track_samples(track_id);
-      CREATE INDEX IF NOT EXISTS idx_providers_lookup ON track_providers(track_id, provider);
-      CREATE INDEX IF NOT EXISTS idx_providers_provider_id ON track_providers(provider, provider_track_id);
-      CREATE INDEX IF NOT EXISTS idx_queue_poll ON crawl_queue(status, next_run_at, priority DESC);
-    `);
-
-    // Safe backward compatibility migrations for existing database files
-    try {
-      this.db.exec('ALTER TABLE tracks ADD COLUMN country_code TEXT;');
-    } catch { /* already exists */ }
-    try {
-      this.db.exec("ALTER TABLE tracks ADD COLUMN language TEXT DEFAULT 'en';");
-    } catch { /* already exists */ }
-
-    // Indexes for new columns
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_country ON tracks(country_code);');
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_lang ON tracks(language);');
-      // Composite index for the most common theme-filtered query pattern
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_lang_pop_year ON tracks(language, popularity DESC, release_year);');
-    } catch { /* non-fatal */ }
-
-    // One-time fast backfill for existing tracks
-    try {
-      this.db.exec(`
-        UPDATE tracks
-        SET country_code = SUBSTR(isrc, 1, 2)
-        WHERE country_code IS NULL
-          AND isrc IS NOT NULL
-          AND LENGTH(isrc) = 12
-          AND SUBSTR(isrc, 1, 2) GLOB '[A-Z][A-Z]';
-      `);
-      this.db.exec(`
-        UPDATE tracks
-        SET language = 'en'
-        WHERE language IS NULL;
-      `);
-    } catch { /* non-fatal backfill */ }
+    this.migration = runCatalogMigrations(this.db, { dbPath: this.dbPath });
+    this.rejectionStats = { missingFields: 0, title: 0, language: 0, version: 0, duration: 0 };
   }
 
   _prepareStatements() {
@@ -267,22 +116,26 @@ export class SqliteCatalog {
       'SELECT * FROM tracks WHERE isrc = ?'
     );
 
+    // Tier 2: one row per song and artist, whatever the release or duration
     this.stmtFindMatchingTrack = this.db.prepare(`
       SELECT * FROM tracks
       WHERE artist_id = ?
         AND canonical_title = ?
-        AND ABS(duration_ms - ?) <= 3000
+      ORDER BY (version_type = 'original') DESC, popularity DESC
       LIMIT 1
     `);
 
     this.stmtInsertTrack = this.db.prepare(`
-      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date, country_code, language, popularity, is_explicit)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date,
+                          country_code, language, popularity, is_explicit, version_type, deezer_rank, spotify_popularity, rand_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     this.stmtUpdateTrack = this.db.prepare(`
       UPDATE tracks
-      SET isrc = COALESCE(?, isrc),
+      SET isrc = COALESCE(isrc, ?),
+          deezer_rank = CASE WHEN ? IS NULL THEN deezer_rank ELSE MAX(COALESCE(deezer_rank, 0), ?) END,
+          spotify_popularity = COALESCE(?, spotify_popularity),
           popularity = MAX(popularity, ?),
           release_year = COALESCE(release_year, ?),
           release_date = COALESCE(release_date, ?),
@@ -293,6 +146,13 @@ export class SqliteCatalog {
       WHERE id = ?
     `);
 
+    // A plain original replaces a remaster as the row's display release
+    this.stmtPromoteOriginal = this.db.prepare(`
+      UPDATE tracks
+      SET display_title = ?, version_type = 'original', duration_ms = ?, album_name = COALESCE(?, album_name), updated_at = datetime('now')
+      WHERE id = ? AND version_type = 'remaster'
+    `);
+
     this.stmtInsertSample = this.db.prepare(`
       INSERT OR REPLACE INTO track_samples (track_id, provider, provider_track_id, sample_url, audio_codec, sample_duration_sec, http_status, last_checked_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -301,11 +161,6 @@ export class SqliteCatalog {
     this.stmtInsertProvider = this.db.prepare(`
       INSERT OR REPLACE INTO track_providers (track_id, provider, provider_track_id, external_url, raw_metadata_json, harvested_at)
       VALUES (?, ?, ?, ?, ?, datetime('now'))
-    `);
-
-    this.stmtInsertFts = this.db.prepare(`
-      INSERT INTO tracks_fts (rowid, title, artist, album)
-      VALUES (?, ?, ?, ?)
     `);
   }
 
@@ -373,23 +228,44 @@ export class SqliteCatalog {
     return artist;
   }
 
+  _reject(reason) {
+    this.rejectionStats[reason] = (this.rejectionStats[reason] || 0) + 1;
+    return null;
+  }
+
   /**
-   * Ingests a track with 100% deterministic deduplication across Deezer, iTunes, and Spotify.
-   * Merges sample URLs and provider links when a match is verified.
+   * Counts of upserts refused by the admission policy since this catalog was opened.
+   */
+  getRejectionStats() {
+    return { ...this.rejectionStats };
+  }
+
+  /**
+   * Ingests a track with deterministic deduplication across Deezer, iTunes, and Spotify,
+   * enforcing the catalog admission policy:
+   * - languages: en / ja / ko only
+   * - versions: original recordings only (a remaster counts as the original)
+   * - duration: 45 s - 20 min; ISRC/year/date validated or dropped
+   * Merges provider links and samples into an existing row when the song is already known.
+   *
+   * Popularity inputs: `spotifyPopularity` (0-100), `deezerRank` (0 - ~1M) or legacy
+   * `popularity` (0-100, or a Deezer rank when > 100). Stored as one 0-100 score.
    *
    * @param {Object} trackData
-   * @returns {{ trackId: number, isNew: boolean, isMerged: boolean }}
+   * @returns {{ trackId: number, isNew: boolean, isMerged: boolean } | null} null when rejected
    */
   upsertTrack(trackData) {
     const {
       title,
       artist,
-      isrc = null,
+      isrc: rawIsrc = null,
       album = '',
       durationMs = 0,
-      releaseYear = null,
-      releaseDate = null,
-      popularity = 0,
+      releaseYear: rawReleaseYear = null,
+      releaseDate: rawReleaseDate = null,
+      popularity = null,
+      deezerRank = null,
+      spotifyPopularity = null,
       isExplicit = false,
       provider, // 'deezer' | 'itunes' | 'spotify'
       providerTrackId,
@@ -402,75 +278,99 @@ export class SqliteCatalog {
     } = trackData;
 
     if (!title || !artist || !provider || !providerTrackId) {
-      return null;
+      return this._reject('missingFields');
     }
+
+    const displayTitle = String(title).trim();
+    const albumName = album ? String(album).trim() : null;
+    const canonicalTitle = normalizeDedupeTitle(displayTitle);
+    if (!canonicalTitle) return this._reject('title');
+
+    const isrc = normalizeIsrc(rawIsrc);
+    const language = detectTrackLanguage(displayTitle, artist, { isrc });
+    if (!isAllowedLanguage(language)) return this._reject('language');
+
+    const versionType = classifyVersion(displayTitle, albumName || '');
+    if (!isAcceptedVersion(versionType)) return this._reject('version');
+
+    const duration = Math.round(Number(durationMs) || 0);
+    if (!isValidDuration(duration)) return this._reject('duration');
+
+    const releaseDate = normalizeReleaseDate(rawReleaseDate);
+    const releaseYear = normalizeReleaseYear(rawReleaseYear) ?? (releaseDate ? normalizeReleaseYear(releaseDate) : null);
+    const legacyRank = deezerRank === null && Number(popularity) > 100 ? Number(popularity) : null;
+    const rank = Number(deezerRank ?? legacyRank) > 0 ? Math.round(Number(deezerRank ?? legacyRank)) : null;
+    const spotify = spotifyPopularity !== null && spotifyPopularity !== undefined && Number.isFinite(Number(spotifyPopularity))
+      ? Math.max(0, Math.min(100, Math.round(Number(spotifyPopularity))))
+      : null;
+    const score = normalizePopularity({ popularity, deezerRank: rank, spotifyPopularity: spotify });
 
     const artistRow = this.getOrCreateArtist({
       name: artist,
       ...artistMetadata,
     });
-    if (!artistRow) return null;
-
-    const canonicalTitle = normalizeDedupeTitle(title);
-    if (!canonicalTitle) return null;
+    if (!artistRow) return this._reject('missingFields');
 
     let existingTrack = null;
     let isMerged = false;
 
-    // 1. Tier 1 Deduplication: Exact ISRC Match (100% Deterministic Master Recording Match)
-    if (isrc && typeof isrc === 'string' && isrc.trim().length === 12) {
-      existingTrack = this.stmtGetTrackByIsrc.get(isrc.trim().toUpperCase());
+    // 1. Tier 1 Deduplication: Exact ISRC Match (same master recording)
+    if (isrc) {
+      existingTrack = this.stmtGetTrackByIsrc.get(isrc);
       if (existingTrack) isMerged = true;
     }
 
-    // 2. Tier 2 Deduplication: Exact Normalized Artist + Core Title + Acoustic Duration Window (<= 3s)
-    if (!existingTrack && durationMs > 0) {
-      existingTrack = this.stmtFindMatchingTrack.get(artistRow.id, canonicalTitle, durationMs);
+    // 2. Tier 2 Deduplication: same artist + same base title (one row per song)
+    if (!existingTrack) {
+      existingTrack = this.stmtFindMatchingTrack.get(artistRow.id, canonicalTitle);
       if (existingTrack) isMerged = true;
     }
 
     let trackId;
     let isNew = false;
     const countryCode = extractIsrcCountryCode(isrc);
-    const language = detectTrackLanguage(title, artist);
 
     if (existingTrack) {
       trackId = existingTrack.id;
-      // Update track attributes with the best available metadata
+      // Only fill an ISRC on the row if no other row owns it
+      const isrcForRow = isrc && !this.stmtGetTrackByIsrc.get(isrc) ? isrc : null;
       this.stmtUpdateTrack.run(
-        isrc || null,
-        popularity || 0,
-        releaseYear || null,
-        releaseDate || null,
-        album || null,
+        isrcForRow,
+        rank,
+        rank,
+        spotify,
+        score,
+        releaseYear,
+        releaseDate,
+        albumName,
         countryCode,
         language,
         trackId
       );
+      if (versionType === 'original') {
+        this.stmtPromoteOriginal.run(displayTitle, duration, albumName, trackId);
+      }
     } else {
       isNew = true;
       const res = this.stmtInsertTrack.run(
-        isrc ? isrc.trim().toUpperCase() : null,
+        isrc,
         canonicalTitle,
-        title.trim(),
+        displayTitle,
         artistRow.id,
-        album ? album.trim() : null,
-        durationMs || 0,
-        releaseYear || null,
-        releaseDate || null,
+        albumName,
+        duration,
+        releaseYear,
+        releaseDate,
         countryCode,
         language,
-        popularity || 0,
-        isExplicit ? 1 : 0
+        score,
+        isExplicit ? 1 : 0,
+        versionType,
+        rank,
+        spotify,
+        Math.random()
       );
       trackId = Number(res.lastInsertRowid);
-
-      // Index in FTS5
-      try {
-        this.stmtInsertFts.run(trackId, title.trim(), artistRow.display_name, album ? album.trim() : '');
-      } catch {
-        // Non-fatal if FTS indexing errors
-      }
     }
 
     // Attach sample link if available
@@ -598,7 +498,7 @@ export class SqliteCatalog {
       FROM tracks t
       JOIN artists a ON t.artist_id = a.id
       ${allowSampleless ? 'LEFT' : 'INNER'} JOIN track_samples s ON t.id = s.track_id
-      WHERE 1=1
+      WHERE t.version_type IN ('original', 'remaster')
     `;
 
     const params = [];
@@ -649,7 +549,8 @@ export class SqliteCatalog {
     limit = 100,
   } = {}) {
     const params = [];
-    const conditions = ['1=1'];
+    // Originals only (a remaster is the same recording)
+    const conditions = ["t.version_type IN ('original', 'remaster')"];
 
     // Audio sample join
     const sampleJoin = allowSampleless ? 'LEFT' : 'INNER';
@@ -808,7 +709,7 @@ export class SqliteCatalog {
       FROM tracks t
       JOIN artists a ON t.artist_id = a.id
       ${requireSample || !allowSampleless ? 'INNER' : 'LEFT'} JOIN track_samples s ON t.id = s.track_id
-      WHERE 1=1
+      WHERE t.version_type IN ('original', 'remaster')
     `;
 
     const params = [];
@@ -882,7 +783,7 @@ export class SqliteCatalog {
 
     // Prioritize tracks with active previews, then popularity, with randomized tie-breaking
     if (variety) {
-      query += ' ORDER BY (CASE WHEN s.sample_url IS NOT NULL THEN 1 ELSE 0 END) DESC, CAST(t.popularity / 100000 AS INT) DESC, RANDOM() LIMIT ?';
+      query += ' ORDER BY (CASE WHEN s.sample_url IS NOT NULL THEN 1 ELSE 0 END) DESC, CAST(t.popularity / 10 AS INT) DESC, RANDOM() LIMIT ?';
     } else {
       query += ' ORDER BY (CASE WHEN s.sample_url IS NOT NULL THEN 1 ELSE 0 END) DESC, t.popularity DESC, RANDOM() LIMIT ?';
     }
@@ -928,5 +829,7 @@ export class SqliteCatalog {
   }
 }
 
-// Export singleton instance initialized to default database path
-export const sqliteCatalog = new SqliteCatalog();
+const catalogSingleton = lazySingleton(() => new SqliteCatalog());
+// Opened (and migrated) on first use, not at import time
+export const sqliteCatalog = catalogSingleton.instance;
+export const peekSqliteCatalog = catalogSingleton.peek;

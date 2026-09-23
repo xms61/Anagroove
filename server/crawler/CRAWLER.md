@@ -22,8 +22,11 @@ Dumps under `data/` are gitignored and must never be committed.
 - **iTunes:** match on ISRC, or on artist + title + duration within 3 s. Never create a new track from a fuzzy match.
 - **Spotify:** metadata only, from the dumps (popularity, ISRC). No Web API and no previews.
 
-## Ingest policy (target)
-Only `en`/`ja`/`ko` and original versions, popularity score > 30, and filled metadata. See `server/db/CATALOG_DB.md`.
+## Ingest policy
+`sqliteCatalog.upsertTrack` enforces it for every writer: only `en`/`ja`/`ko`, original recordings (a remaster counts), and a duration of 45 s–20 min. Rejections are counted by reason (`getRejectionStats()`).
+- Pass raw popularity as `deezerRank` (Deezer `rank`) or `spotifyPopularity` (0–100). The catalog stores one 0–100 score, and ingest scripts filter on score > 30.
+- Never invent values (e.g. a default duration). Leave fields unknown so they're rejected or enriched later.
+- Details: `server/db/CATALOG_DB.md`.
 
 ## Anime pipeline (`anime_catalog.sqlite`)
 `npm run anime:sync` (AnimeThemes metadata) → `anime:samples` (20 s FFmpeg clips at multiple offsets into `data/anime_samples/`, gitignored) → `anime:ingest` → `anime:images` (AniList cover art). Clips are served at `/audio/anime/...`.

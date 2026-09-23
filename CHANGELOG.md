@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.0] - 2026-09-23
+
+### Added
+- **Versioned catalog migrations** (`server/db/catalogMigrations.js`) tracked in `PRAGMA user_version`, one transaction per migration, with an automatic `VACUUM INTO` backup before migrating a populated catalog. New `npm run db:migrate` (`--no-backup`, `--db=path`) and a `SPOTYSPICE_SKIP_DB_BACKUP` env var.
+- **Schema v2** (`tracks.version_type`, `deezer_rank`, `spotify_popularity`, `rand_key`; indexes `idx_tracks_base`, `idx_tracks_pick`, `idx_tracks_version`). Existing rows are backfilled in place.
+- **Catalog admission policy** enforced in `upsertTrack` for every writer (`server/db/trackNormalization.js`):
+  - Only English, Japanese, and Korean tracks.
+  - Only original recordings (a remaster counts). Live, remix, edit, extended, acoustic, instrumental, demo, re-recorded, altered, cover, and language versions are rejected by `classifyVersion`.
+  - Duration 45 s–20 min, with no made-up defaults. Invalid ISRCs, years, and dates become `NULL`.
+  - Rejections are counted per reason (`getRejectionStats()`).
+- Lazy catalog singletons (`server/db/lazySingleton.js`): importing a module no longer opens or migrates `catalog.sqlite` / `anime_catalog.sqlite`.
+- 36 new tests: admission policy, Unicode base titles, CJK language detection, popularity mapping, remaster/original merging, trigram FTS and triggers, and a v0 → v2 legacy migration.
+
+### Fixed
+- **Japanese/Korean titles were silently dropped.** The dedupe title stripped everything outside `[a-z0-9]`, so kana, hangul, and kanji titles became `''` and were refused. Base titles are now Unicode-aware.
+- **Full-text search was broken** (`tracks_fts` pointed at columns that don't exist on `tracks`), so every themed query fell back to `LIKE '%term%'` over the whole catalog. It's rebuilt as a contentless trigram FTS5 index kept in sync by triggers. Themed catalog queries on the real 498k-track catalog now take 6–324 ms.
+- **Mixed popularity scales:** Deezer ranks (up to ~1M), rank/10000, and Spotify 0–100 values shared one column, so "popularity > 30" did nothing. `popularity` is now one 0–100 score. Spotify is the reference; the Deezer rank is mapped with `20·log10(rank) − 39`, calibrated on the catalog's Spotify/Deezer overlap.
+- Kanji-only titles with a JP/KR ISRC are now tagged `ja`/`ko` instead of `zh`.
+- Tier-2 dedupe matches artist + base title regardless of duration, and base titles now also strip Deezer-style suffixes (`" - 2011 Remaster"`, `" - Single Version"`). A plain original replaces a remaster as the displayed release.
+- Catalog read queries only return original recordings.
+
+### Changed
+- Harvester and ingest scripts pass raw `deezerRank` / `spotifyPopularity`. `ingest_musicmovearr` no longer invents a 180 s duration when one is missing.
+- `catalogValidator` flags popularity outside 0–100.
+- Docs: `server/db/CATALOG_DB.md`, `server/crawler/CRAWLER.md`, `server/services/TRACK_SELECTION.md`, `scripts/SCRIPTS_CLI.md`, and `README.md` are updated for schema v2.
+
+---
+
 ## [1.13.2] - 2026-09-23
 
 ### Fixed

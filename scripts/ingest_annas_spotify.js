@@ -118,6 +118,7 @@ function parseTr(trHtml) {
     releaseYear,
     releaseDate,
     popularity,
+    spotifyPopularity: popularity,
     isExplicit,
     provider: 'spotify',
     providerTrackId,
