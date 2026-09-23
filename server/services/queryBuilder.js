@@ -24,12 +24,6 @@ try {
 }
 
 /**
- * Parses user prompts and settings into actionable multi-provider query plans.
- * Follows KISS and DRY principles: pure functions, transparent regexes, zero external dependencies.
- * Strictly avoids predetermined lists (artists, songs, seed words) to ensure dynamic, non-repetitive exploration.
- */
-
-/**
  * Parses a free-text prompt into structured steering parameters.
  * Handles single artists, compound genres, popularity modifiers, and temporal bounds/ranges.
  * e.g. "anime from the years 2020-2026", "songs by Daft Punk", "Queen", "rock before 1990"
@@ -539,7 +533,7 @@ export function buildQueryPlan(userOptions = {}) {
 
 /**
  * Converts parsed prompt options into a safe FTS5 search query string for use
- * with sqliteCatalog.searchCatalogByTheme(). Strips noise words, already-extracted
+ * with sqliteCatalog.sampleCatalogTracks(). Strips noise words, already-extracted
  * directives (artist, decade, year, popularity), and FTS5 special characters.
  *
  * Returns an empty string when the prompt contains only directives (e.g. "songs by Queen")

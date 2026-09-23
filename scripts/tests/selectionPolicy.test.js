@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extractAnswerKeyword } from '../../shared/musicKeywords.js';
-import { isLanguagePermitted, isTemporalPermitted } from '../../server/policy/selectionPolicy.js';
+import {
+  isAnimeTrack,
+  isAuthenticTrack,
+  isJapaneseTrack,
+  isLanguagePermitted,
+  isTemporalPermitted,
+} from '../../server/policy/selectionPolicy.js';
 
 test('Temporal Filtering, Answer Length Variety & English Enforcement', async () => {
   // 1. Temporal Filtering
@@ -71,3 +77,42 @@ test('Temporal Filtering, Answer Length Variety & English Enforcement', async ()
     `Extracts long answer candidate (length ${longCandidate?.answer?.length}): ${longCandidate?.answer}`
   );
 });
+
+const ANIME_CASES = [
+  [{ artist: 'FLOW', title: 'Colors (Code Geass Opening Theme)', album: 'FLOW THE BEST' }, true],
+  [{ artist: 'Linked Horizon', title: 'Guren no Yumiya', album: 'Attack on Titan OST' }, true],
+  [{ artist: 'Tatsuro Yamashita', title: 'Plastic Love', album: 'Big Wave' }, false],
+  [{ artist: 'DJ AniMe', title: 'Hardcore Attack', album: 'Single' }, false],
+  [{ artist: 'Ben Mazué', title: 'Le coeur nous anime', album: 'Paradis' }, false],
+  [{ artist: 'Animal Collective', title: 'My Girls', album: 'Merriweather' }, false],
+  [{ artist: 'LISA', title: 'Rockstar', album: 'Alter Ego' }, false],
+];
+for (const [track, expected] of ANIME_CASES) {
+  test(`isAnimeTrack: ${track.artist} - ${track.title} -> ${expected}`, () => {
+    assert.equal(isAnimeTrack(track), expected);
+  });
+}
+
+const JAPANESE_CASES = [
+  [{ artist: 'Tatsuro Yamashita', title: 'Ride On Time', language: 'ja' }, true],
+  [{ artist: 'Miki Matsubara', title: 'Stay With Me', album: 'Pocket Park' }, true],
+  [{ artist: 'The Japanese House', title: 'Saw You In A Dream', language: 'en' }, false],
+  [{ artist: 'Aneka', title: 'Japanese Boy', language: 'en' }, false],
+];
+for (const [track, expected] of JAPANESE_CASES) {
+  test(`isJapaneseTrack: ${track.artist} - ${track.title} -> ${expected}`, () => {
+    assert.equal(isJapaneseTrack(track), expected);
+  });
+}
+
+const AUTHENTIC_CASES = [
+  [{ artist: 'Fonzi M', title: 'Yumetourou [Guitar Version]' }, false],
+  [{ artist: 'Various Artists', title: 'Bohemian Rhapsody (Karaoke Version)' }, false],
+  [{ artist: 'Workout Crew', title: 'Levitating (130 BPM Workout Mix)' }, false],
+  [{ artist: 'Queen', title: 'Bohemian Rhapsody', album: 'A Night At The Opera' }, true],
+];
+for (const [track, expected] of AUTHENTIC_CASES) {
+  test(`isAuthenticTrack: ${track.artist} - ${track.title} -> ${expected}`, () => {
+    assert.equal(isAuthenticTrack(track), expected);
+  });
+}

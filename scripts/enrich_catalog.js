@@ -1,69 +1,78 @@
 #!/usr/bin/env node
-/**
- * Fills catalog metadata from provider APIs (resumable; rerun to continue).
- *
- *   npm run catalog:enrich                       # all steps with default limits
- *   npm run catalog:enrich -- --albums=5000      # only release dates by album, 5,000 albums
- *   npm run catalog:enrich -- --deezer=5000      # only Deezer track lookups, 5,000 tracks
- *   npm run catalog:enrich -- --artists=1000 --languages
- *   npm run catalog:enrich -- --itunes=200       # iTunes allows ~15 req/min: keep this small
- *
- * Steps: --albums[=N] (release dates, one request per album), --deezer[=N] (ISRC, release date, rank),
- *        --artists[=N] (fans, genres),
- *        --itunes[=N] (strict cross-reference), --languages (local recompute).
- */
 import '../server/config.js';
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
 import { catalogEnricher } from '../server/crawler/enricher.js';
+import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
-const DEFAULT_LIMITS = { albums: 2000, deezer: 2000, artists: 500, itunes: 100 };
-const args = process.argv.slice(2);
+const USAGE = `
+Fills catalog metadata from provider APIs. Resumable: rerun to continue.
 
-function stepLimit(name) {
-  const arg = args.find(a => a === `--${name}` || a.startsWith(`--${name}=`));
-  if (!arg) return null;
-  const value = parseInt(arg.split('=')[1], 10);
-  return Number.isFinite(value) && value > 0 ? value : DEFAULT_LIMITS[name];
-}
+  npm run catalog:enrich -- --albums=5000             release dates by album (one request per album)
+  npm run catalog:enrich -- --deezer=5000             Deezer track lookups: ISRC, release date, rank
+  npm run catalog:enrich -- --artists=1000            artist fans and genres
+  npm run catalog:enrich -- --itunes=200              strict iTunes cross-reference (~15 req/min: keep it small)
+  npm run catalog:enrich -- --languages               recompute artist and track languages (local)
+  npm run catalog:enrich -- --all                     every step with default limits
+  npm run catalog:enrich -- --all --artists=80000     every step, one limit overridden
 
-const explicit = ['albums', 'deezer', 'artists', 'itunes', 'languages'].some(step => args.some(a => a.startsWith(`--${step}`)));
-const plan = {
-  albums: explicit ? stepLimit('albums') : DEFAULT_LIMITS.albums,
-  deezer: explicit ? stepLimit('deezer') : DEFAULT_LIMITS.deezer,
-  artists: explicit ? stepLimit('artists') : DEFAULT_LIMITS.artists,
-  itunes: explicit ? stepLimit('itunes') : DEFAULT_LIMITS.itunes,
-  languages: explicit ? args.includes('--languages') : true,
+Steps can be combined. Flags must follow "--".`;
+
+export const DEFAULT_LIMITS = Object.freeze({ albums: 2000, deezer: 2000, artists: 500, itunes: 100 });
+const LIMIT_STEPS = Object.keys(DEFAULT_LIMITS);
+
+const OPTIONS = {
+  all: { type: 'boolean' },
+  languages: { type: 'boolean' },
+  ...Object.fromEntries(LIMIT_STEPS.map(step => [step, { type: 'string' }])),
 };
 
-const progress = (p) => process.stdout.write(`\r  [${p.step}] ${p.checked}/${p.total} checked ${JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k]) => !['step', 'checked', 'total'].includes(k))))}   `);
+/** Steps and limits to run. A step is skipped when its value is null/false. */
+export function buildEnrichPlan(argv, env = {}) {
+  const flags = parseFlags(OPTIONS, { argv, env });
+  const plan = {};
+  for (const step of LIMIT_STEPS) {
+    plan[step] = intFlag(flags, step) ?? (flags.all ? DEFAULT_LIMITS[step] : null);
+  }
+  plan.languages = Boolean(flags.all || flags.languages);
 
-process.on('SIGINT', () => {
-  console.log('\nStopping after the current request...');
-  catalogEnricher.stop();
-});
+  if (!Object.values(plan).some(Boolean)) {
+    throw new UsageError('Choose at least one step, or --all.');
+  }
+  return plan;
+}
 
-async function main() {
+const progress = (p) => {
+  const counts = Object.entries(p).filter(([key]) => !['step', 'checked', 'total'].includes(key));
+  process.stdout.write(`\r  [${p.step}] ${p.checked}/${p.total} checked ${JSON.stringify(Object.fromEntries(counts))}   `);
+};
+
+async function main(plan) {
   const started = Date.now();
   console.log(`Catalog enrichment plan: ${JSON.stringify(plan)}`);
 
+  process.on('SIGINT', () => {
+    console.log('\nStopping after the current request...');
+    catalogEnricher.stop();
+  });
+
   if (plan.albums) {
-    console.log(`\n• Deezer album release dates (up to ${plan.albums} albums)`);
+    console.log(`\n- Deezer album release dates (up to ${plan.albums} albums)`);
     console.log(`\n  ${JSON.stringify(await catalogEnricher.enrichAlbums({ limit: plan.albums, onProgress: progress }))}`);
   }
   if (plan.deezer) {
-    console.log(`\n• Deezer track lookups (up to ${plan.deezer})`);
+    console.log(`\n- Deezer track lookups (up to ${plan.deezer})`);
     console.log(`\n  ${JSON.stringify(await catalogEnricher.enrichDeezerTracks({ limit: plan.deezer, onProgress: progress }))}`);
   }
   if (plan.artists) {
-    console.log(`\n• Artist fans & genres (up to ${plan.artists})`);
+    console.log(`\n- Artist fans and genres (up to ${plan.artists})`);
     console.log(`\n  ${JSON.stringify(await catalogEnricher.enrichArtists({ limit: plan.artists, onProgress: progress }))}`);
   }
   if (plan.itunes) {
-    console.log(`\n• iTunes cross-reference (up to ${plan.itunes})`);
+    console.log(`\n- iTunes cross-reference (up to ${plan.itunes})`);
     console.log(`\n  ${JSON.stringify(await catalogEnricher.crossReferenceItunes({ limit: plan.itunes, onProgress: progress }))}`);
   }
   if (plan.languages) {
-    console.log('\n• Recomputing artist & track languages');
+    console.log('\n- Recomputing artist and track languages');
     console.log(`  ${JSON.stringify(catalogEnricher.recomputeLanguages())}`);
   }
 
@@ -71,7 +80,10 @@ async function main() {
   console.log(`\nDone in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }
 
-main().catch(err => {
-  console.error('Enrichment failed:', err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  const plan = parseOrExit(() => buildEnrichPlan(process.argv.slice(2), process.env), USAGE);
+  main(plan).catch(err => {
+    console.error('Enrichment failed:', err);
+    process.exit(1);
+  });
+}

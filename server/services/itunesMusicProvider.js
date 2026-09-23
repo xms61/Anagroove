@@ -21,10 +21,6 @@ function cacheSet(key, value) {
   return value;
 }
 
-export function resetItunesCachesForTesting() {
-  itunesCache.clear();
-}
-
 export function detectStorefront(query = '') {
   const q = String(query).toLowerCase();
   if (/\b(japanese|japan|city\s*pop|citypop|j-pop|jpop|anime|shibuya-kei|kayokyoku|enka)\b/i.test(q)) {

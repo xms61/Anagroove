@@ -66,7 +66,7 @@ test('MusicMoveArr Streaming Ingestor & Lazy Preview Hydration', async () => {
   assert(batchRes.resolvedTracks.length === 2, 'Batch resolves all tracks with verified preview URLs');
   assert(batchRes.failedTracks.length === 0, 'Zero failed tracks when samples exist');
 
-  // 7. SQLite Catalog: insertSample & allowSampleless Candidate Selection
+  // 7. SQLite catalog: sampleless rows and lazy preview hydration
   const memCatalog = new SqliteCatalog(':memory:');
   const insertRes = memCatalog.upsertTrack({
     title: 'Lazy Sampleless Song',
@@ -81,18 +81,14 @@ test('MusicMoveArr Streaming Ingestor & Lazy Preview Hydration', async () => {
   });
   assert(insertRes.isNew === true, 'Inserts sampleless candidate track');
 
-  // Test that allowSampleless=false ignores this track
-  const sampleOnlyPool = memCatalog.getRandomPlayableTracks({ allowSampleless: false });
-  assert(sampleOnlyPool.length === 0, 'allowSampleless=false returns 0 tracks when samples are missing');
+  // The selection window returns sampleless rows; previews are resolved from the Deezer id
+  const [lazy] = memCatalog.sampleCatalogTracks({ start: 0 });
+  assert.equal(lazy.title, 'Lazy Sampleless Song');
+  assert.equal(lazy.deezer_id, '999888');
+  assert.equal(lazy.sample_url, null);
 
-  // Test that allowSampleless=true retrieves this track for JIT hydration
-  const lazyPool = memCatalog.getRandomPlayableTracks({ allowSampleless: true });
-  assert(lazyPool.length === 1, 'allowSampleless=true returns track for JIT hydration');
-  assert(lazyPool[0].title === 'Lazy Sampleless Song', 'Candidate title matches');
-  assert(lazyPool[0].deezer_id === '999888', 'Resolves deezer_id from track_providers');
-
-  // Test insertSample: Simulate JIT Lazy Hydration persisting to SQLite
-  const sampleSaved = memCatalog.insertSample(lazyPool[0].id, {
+  // A lazily resolved preview is stored and served on the next read
+  const sampleSaved = memCatalog.insertSample(lazy.id, {
     provider: 'deezer',
     providerTrackId: '999888',
     sampleUrl: 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3',
@@ -100,12 +96,8 @@ test('MusicMoveArr Streaming Ingestor & Lazy Preview Hydration', async () => {
     sampleDurationSec: 30,
     httpStatus: 200,
   });
-  assert(sampleSaved === true, 'insertSample successfully persists lazily resolved preview');
-
-  // Test that subsequent allowSampleless=false queries now hit this track immediately!
-  const hydratedPool = memCatalog.getRandomPlayableTracks({ allowSampleless: false });
-  assert(hydratedPool.length === 1, 'Subsequent queries return track as a zero-latency cache hit');
-  assert(hydratedPool[0].sample_url === 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3', 'Cached sample_url is preserved');
+  assert.equal(sampleSaved, true);
+  assert.equal(memCatalog.sampleCatalogTracks({ start: 0 })[0].sample_url, 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3');
 
   memCatalog.close();
 });

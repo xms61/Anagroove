@@ -2,7 +2,7 @@
 
 ## Modules
 - `harvester.js` (`MusicHarvester`): all Deezer payloads go through one mapper, `toCatalogCandidate`. The fetch function is injectable (`{ fetchImpl }`) for tests.
-  - Vectors, in order: **Apple Music charts** (`harvestAppleCharts`: us/gb/jp/kr), curated playlists, decade × genre, foundation-artist discographies (plus related artists), lexicon words, year × genre, bigrams. `runFullHarvest` stops at the target track count.
+  - Vectors, in order: **Apple Music charts** (`harvestAppleCharts`: us/gb/jp/kr), curated playlists, decade × genre, foundation-artist discographies (plus related artists), lexicon words. A limit of 0 skips a vector, and `runFullHarvest` stops at the target track count.
   - `harvestArtistDiscography` skips an artist whose top tracks vote a language outside en/ja/ko before any album or related-artist requests.
   - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.
 - `enricher.js` (`CatalogEnricher`) fills in metadata. Each step picks its own worklist with SQL and stamps what it has tried (`tracks.enriched_at`, `tracks.itunes_checked_at`, `artists.enriched_at`), so runs are resumable and never loop.
@@ -29,14 +29,16 @@ After crawls add titles, run `npm run catalog:enrich -- --languages`.
 ## Ingest scripts
 | Script | Source |
 |---|---|
-| `scripts/crawl_catalog.js` | Live crawl. Flags: `--target=N --charts=N --playlists=N --decades=N --artists=N --lexicon=N --playlists-only --status` |
-| `scripts/enrich_catalog.js` | Enrichment: `--albums[=N] --deezer[=N] --artists[=N] --itunes[=N] --languages` (all steps by default) |
+| `scripts/crawl_catalog.js` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
+| `scripts/enrich_catalog.js` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N --languages`, or `--all` for every step with default limits (overrides allowed) |
 | `scripts/ingest_annas_spotify.js` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
 | `scripts/ingest_musicmovearr.js` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
 | `scripts/fetch_datasets.js` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
 | `scripts/populate_artist_genres.js` (`npm run catalog:genres`), `scripts/build_recognized_artists.js` | Curated artist genre clusters and recognized artists |
 
 Dumps under `data/` are gitignored and must never be committed.
+
+All scripts parse flags strictly (`scripts/lib/cli.js`, Node's `util.parseArgs`): an unknown flag, a bad value, or no step at all prints the usage and exits 1. `--name=value` and `--name value` both work. Through npm, flags must follow `--` (`npm run catalog:enrich -- --albums=500`). Without it npm takes them as its own config, and the script reports that instead of running.
 
 ## Provider rules
 - **Deezer:** search results include `isrc` and `rank`; playlist and album-track payloads may not. `/track/{id}` is authoritative. The advanced `artist:"…" track:"…"` search currently returns unrelated or empty results, so use plain `artist title` queries and match the results on artist key plus base title. Preview URLs expire: store ids, not URLs.

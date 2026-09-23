@@ -9,11 +9,11 @@
 | `npm run db:gate:fixture` | Builds the fixture catalog in a temp dir and runs `db:validate --ci` on it | `scripts/tests/fixtures/` |
 | `npm run test:ci` | lint + typecheck + test:coverage + test:web + db:gate:fixture (CI also builds and runs e2e) | `.github/workflows/ci.yml` |
 
-`npm run test:prompts` and `npm run eval:crosswords` are live quality suites (real catalog + network), not unit tests.
 
 ## Server tests (`node:test`)
 - **Isolation:** `setup_env.js` is preloaded with `--import`. It gives each test process its own temp `SPOTYSPICE_DATA_DIR`, so `users.sqlite`, `catalog.sqlite` and `anime_catalog.sqlite` are throwaway. **Never** run a test file without the preload, or it writes to the real `server/data/`. Run one file with:
   `node --import ./scripts/tests/setup_env.js --test --test-force-exit scripts/tests/<file>.test.js`
+- The `dot` reporter shows a file that fails to load only as `'test failed'`. Rerun that file alone (command above) to see the error.
 - Use `import assert from 'node:assert/strict'` and `test()` from `node:test`. Prefer table-driven tests for rule corpora (see `languageCorpus.test.js`).
 - **No network:**
   - Stub music providers with `setMusicProviderForTesting(mock)`, which also bypasses the catalog.
@@ -32,7 +32,7 @@
 | `validators`, `apiIntegration`, `hardening` | input validation, REST + WS flows, preview 302, CORS/CSP, WS authz and resume |
 | `sqliteCatalog`, `unicodeDedupe`, `popularity`, `languageCorpus` | schema, admission policy, CJK dedupe, 0-100 calibration, classifier corpus |
 | `catalogValidator`, `catalogCleanup`, `crawler`, `musicMoveArr`, `animeCatalog` | validator, cleanup idempotence, gate, enrichment, ingest |
-| `blacklist`, `crosswordJudge`, `offline`, `fixtureCatalog` | blacklist matching, judge heuristics, offline mode, CI fixture |
+| `blacklist`, `offline`, `fixtureCatalog`, `cli` | blacklist matching, offline mode, CI fixture, script flag parsing |
 
 ## Frontend tests (Vitest)
 - `vitest.config.ts` extends `vite.config.ts` with jsdom. Test files sit next to the code (`useCrosswordGame.test.ts`). Shared fixtures are in `src/test/`.

@@ -129,7 +129,7 @@ data/anime_metadata_index.json
 *.bak
 *.tmp
 
-# Generated reports (db:validate, eval:crosswords, test:prompts)
+# Generated reports (db:validate)
 reports/
 
 # Local planning docs (never committed)

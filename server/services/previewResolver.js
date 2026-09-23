@@ -60,10 +60,6 @@ export function clearPreviewCacheForTesting() {
   inMemoryPreviewCache.clear();
 }
 
-export function getPreviewCacheStatsForTesting() {
-  return { size: inMemoryPreviewCache.size };
-}
-
 export function extractNumericCatalogTrackId(track) {
   if (!track) return null;
   if (typeof track.catalogTrackId === 'number' && Number.isInteger(track.catalogTrackId) && track.catalogTrackId > 0) {

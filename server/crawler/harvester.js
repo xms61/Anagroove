@@ -154,27 +154,6 @@ for (const d of DECADES) {
   }
 }
 
-// Fine-grained Year (1960-2026) x Genre Matrix yielding 1,600+ rich queries
-export const YEAR_GENRE_SEEDS = [];
-const EXTENDED_GENRES = [
-  'rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie',
-  'metal', 'j-pop', 'reggae', 'country', 'funk', 'punk', 'house', 'techno',
-  'blues', 'folk', 'ambient', 'synthwave', 'k-pop', 'city pop', 'disco', 'alternative'
-];
-for (let yr = 1960; yr <= 2026; yr++) {
-  for (const g of EXTENDED_GENRES) {
-    YEAR_GENRE_SEEDS.push(`${yr} ${g}`);
-  }
-}
-
-// High-frequency musical 2-letter bigram seeds for sweeping all chart tiers
-export const BIGRAM_SEEDS = [
-  'th', 'he', 'in', 'er', 'an', 're', 'on', 'at', 'en', 'nd', 'ti', 'es', 'or', 'te', 'of',
-  'ed', 'is', 'it', 'al', 'ar', 'st', 'to', 'nt', 'ng', 'se', 'ha', 'as', 'ou', 'io', 'le',
-  've', 'co', 'me', 'de', 'hi', 'ri', 'ro', 'ic', 'ne', 'ea', 'ra', 'ce', 'li', 'ch', 'll',
-  'be', 'ma', 'si', 'om', 'ur', 'ca', 'el', 'ta', 'la', 'ns', 'di', 'fo', 'ho', 'pe', 'ec'
-];
-
 // Apple Music "most played" charts per storefront: clean, popularity-ranked, original-script titles
 export const APPLE_CHART_STOREFRONTS = ['us', 'gb', 'jp', 'kr'];
 const APPLE_CHART_URL = (storefront, limit) => `https://rss.marketingtools.apple.com/api/v2/${storefront}/music/most-played/${limit}/songs.json`;
@@ -451,14 +430,12 @@ export class MusicHarvester {
   }
 
   /**
-   * Executes an autonomous catalog harvest across all multi-provider vectors:
+   * Runs the enabled vectors in order until the catalog reaches targetTracks (a limit of 0 skips a vector):
    * 0. Apple Music charts (US, UK, Japan, Korea)
    * 1. Curated Playlists Spider
    * 2. Decade & Genre Matrix Sweep
    * 3. Foundation Artists & Related Artists Discography Spider
    * 4. High-Frequency Lexicon Keywords
-   * 5. Year x Genre matrix
-   * 6. Bigram sweep
    */
   async runFullHarvest({
     targetTracks = 100000,
@@ -469,7 +446,7 @@ export class MusicHarvester {
     lexiconLimit = 350,
     onProgress = () => {},
   } = {}) {
-    logger.info('harvester', `Starting massive catalog harvest targeting ${targetTracks.toLocaleString()} tracks...`);
+    logger.info('harvester', `Starting catalog harvest, target ${targetTracks.toLocaleString()} tracks...`);
 
     const stats = {
       chartTracksMatched: 0,
@@ -556,30 +533,6 @@ export class MusicHarvester {
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
         report(`Vocabulary: "${word}"`);
-      }
-    }
-
-    // Vector 5: Comprehensive Year (1960-2026) x Genre Matrix Sweep
-    if (!isTargetReached() && !this.abortRequested) {
-      for (const query of YEAR_GENRE_SEEDS) {
-        if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestDeezerQuery(query, 3);
-        stats.yearGenreQueriesCrawled = (stats.yearGenreQueriesCrawled || 0) + 1;
-        stats.totalInserted += res.harvested;
-        stats.totalMerged += res.merged;
-        report(`Year/Genre: "${query}"`);
-      }
-    }
-
-    // Vector 6: High-Yield Bigram Sweeper
-    if (!isTargetReached() && !this.abortRequested) {
-      for (const bigram of BIGRAM_SEEDS) {
-        if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestDeezerQuery(bigram, 3);
-        stats.bigramsCrawled = (stats.bigramsCrawled || 0) + 1;
-        stats.totalInserted += res.harvested;
-        stats.totalMerged += res.merged;
-        report(`Bigram: "${bigram}"`);
       }
     }
 

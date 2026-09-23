@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { parseFlags, parseOrExit } from './lib/cli.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -172,8 +173,11 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
   return indexPayload;
 }
 
-if (process.argv[1] && process.argv[1].endsWith('sync_anime_metadata.js')) {
-  const force = process.argv.includes('--force');
+if (import.meta.main) {
+  const force = Boolean(parseOrExit(
+    () => parseFlags({ force: { type: 'boolean' } }).force,
+    'npm run anime:sync -- [--force]   refresh the AnimeThemes index even when it is recent'
+  ));
   fetchAllAnimeThemesMetadata({ forceRefresh: force })
     .then(() => process.exit(0))
     .catch(err => {

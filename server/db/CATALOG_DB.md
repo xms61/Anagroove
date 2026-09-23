@@ -40,7 +40,7 @@ A track is rejected (returns `null`; counted in `getRejectionStats()`) unless it
 
 Invalid ISRCs, years and dates are dropped to `NULL` rather than stored. Titles, albums and artist names go through `cleanDisplayText` (HTML entities decoded, invisible characters removed, whitespace collapsed).
 
-Catalog read queries (`sampleCatalogTracks`, `getRandomPlayableTracks`, `searchCatalogByTheme`, `queryCatalogForCrossword`) only return `original`/`remaster` rows.
+The catalog read path (`sampleCatalogTracks`) only returns `original`/`remaster` rows.
 
 ## Dedupe
 1. Tier 1: exact normalized ISRC.
