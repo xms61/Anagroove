@@ -1,4 +1,4 @@
-# SpotySpice — Agent Doc Map
+# Anagroove — Agent Doc Map
 
 Read only the doc(s) matching your task.
 
@@ -20,4 +20,5 @@ Read only the doc(s) matching your task.
 - Tests never use the network or `server/data/`. Use `new SqliteCatalog(':memory:')` and the `set*ForTesting` stubs.
 - Script flags go after `--`: `npm run catalog:enrich -- --albums=500`.
 - `server/data/*.sqlite` is the user's real data. Open it read-only (`new DatabaseSync(path, { readOnly: true })`) for analysis, and never run write scripts against it unless asked.
+- The app was called SpotySpice. Browser storage keys (`spotyspice_*`), env vars (`SPOTYSPICE_*`) and the Docker volume `spotyspice_data` keep that prefix on purpose: renaming them would reset players' progress, break `.env` files, or start an empty volume.
 - Code style: small functions, clear names instead of comments, no speculative abstractions, no emoji or marketing words in code, logs or docs. Delete dead code instead of keeping it "for later". Update the area doc in the same change.

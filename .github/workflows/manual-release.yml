@@ -72,7 +72,7 @@ jobs:
         with:
           context: .
           push: false
-          tags: spotyspice:${{ steps.get_version.outputs.tag }},spotyspice:latest
+          tags: anagroove:${{ steps.get_version.outputs.tag }},anagroove:latest
 
       - name: Extract Changelog Section
         id: changelog
@@ -95,7 +95,7 @@ jobs:
           except Exception:
               pass
           with open('release_notes.md', 'w') as out:
-              out.write('SpotySpice Release ' + '${TAG}')
+              out.write('Anagroove Release ' + '${TAG}')
           "
           echo "Release notes prepared in release_notes.md"
 
@@ -118,7 +118,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
-          name: "SpotySpice ${{ steps.get_version.outputs.tag }}"
+          name: "Anagroove ${{ steps.get_version.outputs.tag }}"
           body_path: release_notes.md
           prerelease: ${{ inputs.prerelease }}
           draft: false

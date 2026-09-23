@@ -10,7 +10,7 @@ let legacyPath;
 const open = () => new UserStore(path.join(dir, 'users.sqlite'), { legacyStorePath: legacyPath });
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-users-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-users-'));
   legacyPath = path.join(dir, 'store.json');
   // store.json is corrupt, so the import falls back to the .bak copy
   fs.writeFileSync(legacyPath, '{ broken json');

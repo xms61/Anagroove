@@ -150,7 +150,7 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
   const initialStats = sqliteCatalog.getStats();
 
   console.log('\n================================================================');
-  console.log('  SPOTYSPICE - ANNA\'S ARCHIVE SPOTIFY TOP 10K INGESTOR');
+  console.log('  ANAGROOVE - ANNA\'S ARCHIVE SPOTIFY TOP 10K INGESTOR');
   const targetFile = options.file ?? localFilePath;
   const sourceLabel = targetFile ? `Local File (${targetFile})` : ANNAS_ARCHIVE_URL;
 

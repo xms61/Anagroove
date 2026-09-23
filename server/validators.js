@@ -1,5 +1,5 @@
 /**
- * Input validation and sanitization for SpotySpice backend endpoints & WebSockets.
+ * Input validation and sanitization for Anagroove backend endpoints & WebSockets.
  */
 
 const USER_ID_REGEX = /^[a-zA-Z0-9_-]{3,64}$/;

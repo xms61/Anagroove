@@ -63,7 +63,7 @@ export async function ingestAnimeCatalog({
   limit = null,
 } = {}) {
   console.log('======================================================');
-  console.log('       SPOTYSPICE ANIME OP/ED CATALOG INGESTOR        ');
+  console.log('       ANAGROOVE ANIME OP/ED CATALOG INGESTOR        ');
   console.log('======================================================\n');
 
   let metadataIndex = { byBasename: {}, bySlugKey: {} };

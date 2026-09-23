@@ -71,7 +71,7 @@ class SocketService {
         this.isConnecting = false;
         this.ws = socket;
         this.reconnectDelay = 1500;
-        console.log('👥 Connected to SpotySpice Multiplayer WebSocket');
+        console.log('👥 Connected to Anagroove Multiplayer WebSocket');
         // Reclaim our seat after a reconnect (the server holds it for a short grace period)
         if (this.session) {
           const { roomCode, playerId, playerName, resumeToken } = this.session;

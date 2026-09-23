@@ -158,7 +158,7 @@ test('the FTS index is rebuilt after cleanup and its triggers work again', () =>
 });
 
 test('CLI: --ci exits 1 on a failing catalog, --fix writes a backup first, then --ci passes', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-cli-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-cli-'));
   const dbPath = path.join(dir, 'catalog.sqlite');
   const catalog = new SqliteCatalog(dbPath);
   catalog.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '1', isrc: 'GBAHT2000942', releaseYear: 2020, deezerRank: 900000 });

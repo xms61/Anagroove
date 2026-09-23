@@ -332,7 +332,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
 
         {/* Drawer Footer */}
         <div className="p-4 border-t border-white/10 bg-kissa-surface flex items-center justify-between text-xs text-slate-400 font-mono">
-          <span>SpotySpice • Hi-Fi Audio Crossword</span>
+          <span>Anagroove • Hi-Fi Audio Crossword</span>
           <span className="text-emerald-400 font-sans">☁️ Session Saved</span>
         </div>
 

@@ -1,6 +1,6 @@
-# SpotySpice
+# Anagroove
 
-A blind audio crossword: every clue is a 30-second song preview. Guess the title, artist or a keyword from the title, without seeing either until the puzzle is solved. Play solo, co-op or versus.
+The music crossword (anagram + groove). A blind audio crossword: every clue is a 30-second song preview. Guess the title, artist or a keyword from the title, without seeing either until the puzzle is solved. Play solo, co-op or versus.
 
 ## Features
 - **Live puzzles** from a local SQLite catalog of English, Japanese and Korean original recordings. You can pick one of 16 themes (pop, rock, indie, hip-hop, R&B, EDM, metal, country, jazz, K-pop, J-pop, anime, …), or type a prompt such as "80s synth-pop", "songs by Queen" or "rock before 1990".
@@ -66,7 +66,7 @@ Details: [scripts/tests/TESTING.md](scripts/tests/TESTING.md).
 
 ## Docker
 ```bash
-docker compose up -d        # http://localhost:3000, data in the spotyspice_data volume
+docker compose up -d        # http://localhost:3000, data in the spotyspice_data volume (the old name, kept so existing data stays)
 ```
 The image never contains catalog or user databases (`.dockerignore`). Copy a catalog into the volume, or crawl inside the container. The server honours `$PORT`.
 

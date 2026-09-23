@@ -1,7 +1,7 @@
 services:
-  spotyspice:
+  anagroove:
     build: .
-    container_name: spotyspice
+    container_name: anagroove
     restart: unless-stopped
     ports:
       - "3000:3000"

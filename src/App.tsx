@@ -210,7 +210,7 @@ export default function App() {
             </div>
             <div className="sr-only sm:not-sr-only">
               <h1 className="font-black text-base tracking-tight text-white flex items-center gap-2">
-                <span>SpotySpice</span>
+                <span>Anagroove</span>
               </h1>
             </div>
 

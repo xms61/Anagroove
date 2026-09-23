@@ -14,7 +14,7 @@ if (!fs.existsSync(path.join(root, 'dist', 'index.html'))) {
   process.exit(1);
 }
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-e2e-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-e2e-'));
 Object.assign(process.env, {
   SPOTYSPICE_DATA_DIR: dataDir,
   SPOTYSPICE_OFFLINE: '1',

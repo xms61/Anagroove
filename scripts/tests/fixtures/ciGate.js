@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { buildFixtureCatalog } from './fixtureCatalog.js';
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-gate-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-gate-'));
 const dbPath = path.join(dir, 'catalog.sqlite');
 let gate;
 try {

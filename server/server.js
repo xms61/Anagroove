@@ -94,6 +94,6 @@ if (isMainModule) {
     peekSqliteCatalog()?.db?.exec('PRAGMA wal_checkpoint(TRUNCATE);');
   });
   server.listen(PORT, '0.0.0.0', () => {
-    logger.info('startup', `🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT}) [env: ${process.env.NODE_ENV || 'development'}, log: ${process.env.LOG_LEVEL || 'info'}]`);
+    logger.info('startup', `🎵 Anagroove Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT}) [env: ${process.env.NODE_ENV || 'development'}, log: ${process.env.LOG_LEVEL || 'info'}]`);
   });
 }
