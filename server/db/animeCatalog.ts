@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import { DATA_DIR } from '../paths.js';
@@ -6,7 +6,89 @@ import { lazySingleton } from './lazySingleton.js';
 
 const DEFAULT_ANIME_DB_PATH = path.join(DATA_DIR, 'anime_catalog.sqlite');
 
-export function normalizeAnimeText(str) {
+/** An OP/ED theme to store (from the ingest scripts). */
+export interface AnimeTrackInput {
+  animeTitle: string;
+  englishAnimeTitle?: string | null;
+  songTitle: string;
+  artistName: string;
+  themeType?: string;
+  themeNumber?: number;
+  themeSlug?: string;
+  year?: number | null;
+  season?: string | null;
+  malId?: number | null;
+  anilistId?: number | null;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  originalFilePath: string;
+  durationMs?: number;
+  popularity?: number;
+}
+
+interface AnimeTrackRow {
+  id: number;
+  anime_title: string;
+  english_anime_title: string | null;
+  song_title: string;
+  artist_name: string;
+  theme_type: string;
+  theme_number: number;
+  theme_slug: string;
+  year: number | null;
+  season: string | null;
+  mal_id: number | null;
+  anilist_id: number | null;
+  image_url: string | null;
+  popularity: number | null;
+}
+
+export interface AnimeSampleRow {
+  sample_index: number;
+  sample_url: string;
+  offset_seconds: number;
+  duration_seconds: number;
+}
+
+/** A playable anime theme, shaped like a catalog song for the puzzle generator. */
+export interface AnimeSong {
+  id: string;
+  catalogTrackId: number;
+  provider: 'anime_oped';
+  providerTrackId: string;
+  title: string;
+  artist: string;
+  album: string;
+  animeTitle: string;
+  englishAnimeTitle: string | null;
+  themeType: string;
+  themeNumber: number;
+  themeSlug: string;
+  releaseYear: number | null;
+  year: number | null;
+  season: string | null;
+  language: 'ja';
+  popularity: number;
+  audioUrl: string;
+  albumArt: string;
+  imageUrl: string;
+  anilistId: number | null;
+  malId: number | null;
+  sampleVariations: { index: number; url: string; offset: number; duration: number }[];
+  isAnimeOped: true;
+}
+
+export interface AnimeTrackQuery {
+  count?: number;
+  yearRange?: { start?: number | null; end?: number | null } | null;
+  /** 'OP', 'ED', or null for both */
+  type?: string | null;
+  /** Keyword matched against anime, song and artist */
+  search?: string | null;
+  requireSamples?: boolean;
+}
+
+export function normalizeAnimeText(str: unknown): string {
   if (!str) return '';
   return String(str)
     .normalize('NFKD')
@@ -17,8 +99,12 @@ export function normalizeAnimeText(str) {
 }
 
 export class AnimeCatalog {
-  constructor(dbPath = DEFAULT_ANIME_DB_PATH) {
-    if (typeof dbPath === 'object' && dbPath !== null && typeof dbPath.prepare === 'function') {
+  readonly db: DatabaseSync;
+  readonly dbPath: string;
+
+  /** A file path (or ':memory:'), or an already open database (tests). */
+  constructor(dbPath: string | DatabaseSync = DEFAULT_ANIME_DB_PATH) {
+    if (typeof dbPath !== 'string') {
       this.db = dbPath;
       this.dbPath = ':memory:';
     } else {
@@ -41,10 +127,10 @@ export class AnimeCatalog {
       // WAL mode not supported in :memory: databases
     }
 
-    this._initSchema();
+    this.initSchema();
   }
 
-  _initSchema() {
+  private initSchema(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS anime_tracks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +181,8 @@ export class AnimeCatalog {
     }
   }
 
-  upsertAnimeTrack(track) {
+  /** Inserts or updates a theme by its source file; returns the row id. */
+  upsertAnimeTrack(track: AnimeTrackInput): number | undefined {
     const canonicalAnime = normalizeAnimeText(track.animeTitle);
     const canonicalSong = normalizeAnimeText(track.songTitle);
     const canonicalArtist = normalizeAnimeText(track.artistName);
@@ -157,11 +244,11 @@ export class AnimeCatalog {
       track.popularity || 80
     );
 
-    const row = this.db.prepare(`SELECT id FROM anime_tracks WHERE original_file_path = ?`).get(track.originalFilePath);
+    const row = this.db.prepare(`SELECT id FROM anime_tracks WHERE original_file_path = ?`).get(track.originalFilePath) as { id: number } | undefined;
     return row?.id;
   }
 
-  updateTrackImageUrl(id, imageUrl) {
+  updateTrackImageUrl(id: number | null | undefined, imageUrl: string | null | undefined): boolean {
     if (!id || !imageUrl) return false;
     try {
       const stmt = this.db.prepare('UPDATE anime_tracks SET image_url = ? WHERE id = ?');
@@ -172,19 +259,26 @@ export class AnimeCatalog {
     }
   }
 
-  updateAnimeCoverByTitle(animeTitle, imageUrl) {
+  updateAnimeCoverByTitle(animeTitle: string | null | undefined, imageUrl: string | null | undefined): number {
     if (!animeTitle || !imageUrl) return 0;
     try {
       const canonicalAnime = normalizeAnimeText(animeTitle);
       const stmt = this.db.prepare('UPDATE anime_tracks SET image_url = ? WHERE canonical_anime_title = ?');
       const result = stmt.run(imageUrl, canonicalAnime);
-      return result?.changes || 0;
+      return Number(result?.changes) || 0;
     } catch {
       return 0;
     }
   }
 
-  insertSample({ animeTrackId, sampleIndex, samplePath, sampleUrl, offsetSeconds, durationSeconds = 20 }) {
+  insertSample({ animeTrackId, sampleIndex, samplePath, sampleUrl, offsetSeconds, durationSeconds = 20 }: {
+    animeTrackId: number;
+    sampleIndex: number;
+    samplePath: string;
+    sampleUrl: string;
+    offsetSeconds: number;
+    durationSeconds?: number;
+  }) {
     const stmt = this.db.prepare(`
       INSERT INTO anime_samples (anime_track_id, sample_index, sample_path, sample_url, offset_seconds, duration_seconds)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -197,13 +291,13 @@ export class AnimeCatalog {
     return stmt.run(animeTrackId, sampleIndex, samplePath, sampleUrl, offsetSeconds, durationSeconds);
   }
 
-  getSamplesForTrack(animeTrackId) {
+  getSamplesForTrack(animeTrackId: number): AnimeSampleRow[] {
     return this.db.prepare(`
       SELECT sample_index, sample_url, offset_seconds, duration_seconds
       FROM anime_samples
       WHERE anime_track_id = ?
       ORDER BY sample_index ASC
-    `).all(animeTrackId);
+    `).all(animeTrackId) as unknown as AnimeSampleRow[];
   }
 
   /**
@@ -216,9 +310,9 @@ export class AnimeCatalog {
     type = null, // 'OP', 'ED', or null for both
     search = null, // Optional keyword or anime search term
     requireSamples = true,
-  } = {}) {
-    let whereClauses = [];
-    let params = [];
+  }: AnimeTrackQuery = {}): AnimeSong[] {
+    const whereClauses: string[] = [];
+    const params: SQLInputValue[] = [];
 
     if (requireSamples) {
       whereClauses.push(`EXISTS (SELECT 1 FROM anime_samples s WHERE s.anime_track_id = t.id)`);
@@ -256,9 +350,9 @@ export class AnimeCatalog {
     `;
     params.push(Math.max(1, count));
 
-    const rows = this.db.prepare(sql).all(...params);
+    const rows = this.db.prepare(sql).all(...params) as unknown as AnimeTrackRow[];
 
-    return rows.map(r => {
+    return rows.map((r): AnimeSong => {
       const samples = this.getSamplesForTrack(r.id);
       // Randomly pick one of the 2-3 sample variations for immediate playback
       const chosenSample = samples.length > 0
@@ -300,12 +394,14 @@ export class AnimeCatalog {
   }
 
   getStats() {
-    const totalTracks = this.db.prepare(`SELECT COUNT(*) as count FROM anime_tracks`).get().count;
-    const totalOps = this.db.prepare(`SELECT COUNT(*) as count FROM anime_tracks WHERE theme_type = 'OP'`).get().count;
-    const totalEds = this.db.prepare(`SELECT COUNT(*) as count FROM anime_tracks WHERE theme_type = 'ED'`).get().count;
-    const totalSamples = this.db.prepare(`SELECT COUNT(*) as count FROM anime_samples`).get().count;
-    const tracksWithSamples = this.db.prepare(`SELECT COUNT(DISTINCT anime_track_id) as count FROM anime_samples`).get().count;
-    const yearStats = this.db.prepare(`SELECT MIN(year) as minYear, MAX(year) as maxYear FROM anime_tracks WHERE year IS NOT NULL`).get();
+    const count = (sql: string) => Number(this.db.prepare(sql).get()?.count) || 0;
+    const totalTracks = count(`SELECT COUNT(*) as count FROM anime_tracks`);
+    const totalOps = count(`SELECT COUNT(*) as count FROM anime_tracks WHERE theme_type = 'OP'`);
+    const totalEds = count(`SELECT COUNT(*) as count FROM anime_tracks WHERE theme_type = 'ED'`);
+    const totalSamples = count(`SELECT COUNT(*) as count FROM anime_samples`);
+    const tracksWithSamples = count(`SELECT COUNT(DISTINCT anime_track_id) as count FROM anime_samples`);
+    const yearStats = this.db.prepare(`SELECT MIN(year) as minYear, MAX(year) as maxYear FROM anime_tracks WHERE year IS NOT NULL`).get() as
+      { minYear: number | null; maxYear: number | null } | undefined;
 
     return {
       totalTracks,
@@ -319,7 +415,7 @@ export class AnimeCatalog {
     };
   }
 
-  close() {
+  close(): void {
     try {
       this.db.exec('PRAGMA optimize;');
     } catch {
@@ -329,4 +425,4 @@ export class AnimeCatalog {
 }
 
 // Opened on first use, not at import time
-export const animeCatalog = lazySingleton(() => new AnimeCatalog()).instance;
+export const animeCatalog: AnimeCatalog = lazySingleton(() => new AnimeCatalog()).instance;

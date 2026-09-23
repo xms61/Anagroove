@@ -5,7 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { buildFixtureCatalog } from './fixtures/fixtureCatalog.js';
-import { evaluateCatalogGate } from '../../server/db/catalogGate.js';
+import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 
 test('the CI fixture catalog is fully admitted, passes the gate and serves puzzles', () => {

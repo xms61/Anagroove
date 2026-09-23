@@ -18,7 +18,7 @@ import { createMusicRouter } from './routes/music.js';
 import { createUserRouter } from './routes/user.js';
 import { attachMultiplayer } from './ws/rooms.js';
 import { peekSqliteCatalog } from './db/sqliteCatalog.js';
-import { onShutdown } from './shutdown.js';
+import { onShutdown } from './shutdown.ts';
 import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);

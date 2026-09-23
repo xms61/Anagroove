@@ -3,7 +3,7 @@ import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.js';
 import { validatePreviewRef } from '../../server/validators.js';
 import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.js';
-import { db } from '../../server/db.js';
+import { db } from '../../server/db.ts';
 import {
   resolveTrackPreview,
   clearPreviewCacheForTesting,

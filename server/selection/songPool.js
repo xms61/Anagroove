@@ -15,10 +15,10 @@ import { buildQueryPlan, extractAnimeKeyphrase } from '../services/queryBuilder.
 import { resolveAnimeCoverImages } from '../services/animeImageService.js';
 import { batchResolvePreviews, previewRefForTrack, toPreviewPath } from '../services/previewResolver.js';
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
-import { animeCatalog } from '../db/animeCatalog.js';
+import { animeCatalog } from '../db/animeCatalog.ts';
 import { getAnimeThemeType, isAnimeTarget } from '../policy/selectionPolicy.js';
 import { logger } from '../logger.js';
-import { isOfflineMode } from '../offline.js';
+import { isOfflineMode } from '../offline.ts';
 import { createRng, weightedOrder } from './random.js';
 import {
   POPULARITY_SAMPLING,

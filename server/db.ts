@@ -4,9 +4,9 @@
  */
 import path from 'path';
 import { DATA_DIR } from './paths.js';
-import { onShutdown } from './shutdown.js';
+import { onShutdown } from './shutdown.ts';
 import { lazySingleton } from './db/lazySingleton.js';
-import { UserStore } from './db/userStore.js';
+import { UserStore } from './db/userStore.ts';
 
 const { instance, peek } = lazySingleton(() => new UserStore(path.join(DATA_DIR, 'users.sqlite'), {
   legacyStorePath: path.join(DATA_DIR, 'store.json'),
@@ -14,5 +14,4 @@ const { instance, peek } = lazySingleton(() => new UserStore(path.join(DATA_DIR,
 
 onShutdown('user-store', () => peek()?.flushSync());
 
-/** @type {UserStore} */
-export const db = instance;
+export const db: UserStore = instance;

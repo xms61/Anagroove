@@ -1,0 +1,12 @@
+{
+  // Server tests: the same Node rules as tsconfig.node.json, with implicit any and null checks
+  // relaxed. Tests prove behaviour at runtime; typing every fixture row and database handle
+  // would add casts without catching bugs. Source files stay fully strict.
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "strictNullChecks": false
+  },
+  "include": ["scripts/tests"],
+  "exclude": ["scripts/tests/e2e/*.spec.ts"]
+}

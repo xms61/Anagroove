@@ -1,5 +1,5 @@
 {
-  // Type-checks the server, shared modules and scripts. Node 24 runs the .ts files directly by
+  // Type-checks the server, shared modules and scripts (tests: tsconfig.tests.json). Node 24 runs the .ts files directly by
   // stripping types, so this config never emits: only syntax Node can erase is allowed, relative
   // imports name the real .ts file, and type-only imports are marked `import type`.
   "compilerOptions": {
@@ -25,5 +25,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["server", "shared", "scripts"],
-  "exclude": ["server/data", "node_modules", "dist", "scripts/tests/e2e/*.spec.ts"]
+  "exclude": ["server/data", "node_modules", "dist", "scripts/tests"]
 }

@@ -8,7 +8,7 @@ import {
 } from '../../shared/musicKeywords.ts';
 import { buildQueryPlan, extractAnimeKeyphrase } from '../../server/services/queryBuilder.js';
 import { resolveAnimeCoverImages } from '../../server/services/animeImageService.js';
-import { AnimeCatalog } from '../../server/db/animeCatalog.js';
+import { AnimeCatalog } from '../../server/db/animeCatalog.ts';
 
 const KEYPHRASES = [
   ['anime gundam', 'gundam'],

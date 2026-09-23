@@ -9,7 +9,7 @@ import {
   MIN_DEEZER_RANK,
   recomputeCatalogPopularity,
 } from '../../server/db/catalogPopularity.js';
-import { runCatalogCleanup } from '../../server/db/catalogCleanup.js';
+import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
 import { POPULARITY_SAMPLING, popularityWeight } from '../../server/selection/candidates.js';
 
 test('the Deezer placeholder rank and invalid ranks are unknown', () => {

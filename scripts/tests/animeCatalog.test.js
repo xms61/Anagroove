@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isAnimeTarget, getAnimeThemeType } from '../../server/policy/selectionPolicy.js';
-import { AnimeCatalog } from '../../server/db/animeCatalog.js';
+import { AnimeCatalog } from '../../server/db/animeCatalog.ts';
 
 const TARGETS = [
   ['anime', '', true],

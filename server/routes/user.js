@@ -3,7 +3,7 @@
  * anonymous X-User-Id.
  */
 import express from 'express';
-import { db } from '../db.js';
+import { db } from '../db.ts';
 import { validateBlacklistPayload, validateHistoryPayload, validateProgressPayload, validateUserId } from '../validators.js';
 
 export function requireUserId(req, res, next) {

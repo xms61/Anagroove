@@ -2,8 +2,8 @@
 
 Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` (`server/paths.js`, override with `SPOTYSPICE_DATA_DIR`):
 - `catalog.sqlite` — main music catalog (`sqliteCatalog.js`)
-- `anime_catalog.sqlite` — isolated anime OP/ED catalog (`animeCatalog.js`)
-- `users.sqlite` — user progress/history/blacklist (`server/db/userStore.js`, see `server/API_SECURITY.md`); imports the old `store.json` once
+- `anime_catalog.sqlite` — isolated anime OP/ED catalog (`animeCatalog.ts`)
+- `users.sqlite` — user progress/history/blacklist (`server/db/userStore.ts`, see `server/API_SECURITY.md`); imports the old `store.json` once
 
 `sqliteCatalog` and `animeCatalog` are **lazy singletons** (`lazySingleton.js`): importing a module opens nothing, and the first property access opens (and migrates) the file. Scripts and tests that must not touch real data need `SPOTYSPICE_DATA_DIR`, or `new SqliteCatalog(':memory:')`.
 
@@ -62,7 +62,7 @@ Known limit: without an artist vote, about 2.5% of plain two-word English titles
 - Floor and cover acts are enforced by the cleanup's `popularity` step and only for **enriched** artists (fans known). Others are reported as `unjudged`.
 - Pass raw values to `upsertTrack` as `deezerRank` / `spotifyPopularity`.
 
-## Cleanup (`catalogCleanup.js`)
+## Cleanup (`catalogCleanup.ts`)
 `runCatalogCleanup(db, { apply, steps })` brings existing rows under the admission policy. All steps run in one transaction; without `apply` it rolls back, so dry-run counts are exact. It is idempotent: a second run changes nothing. Steps, in order:
 1. `text`: `cleanDisplayText` on titles, albums and artist names; artists whose names now share a key are merged.
 2. `classify`: recompute `canonical_title` and `version_type`.
@@ -77,8 +77,8 @@ Known limit: without an artist vote, about 2.5% of plain two-word English titles
 The FTS triggers are dropped during the run and the index is rebuilt once at the end.
 
 ## Validation & gate
-- `catalogReport.js`: catalog statistics (inventory, coverage, languages, decades, popularity buckets, genres, most prolific artists) and the markdown report that combines them with the gate and the cleanup dry run. The checks themselves are only in the gate and the cleanup.
-- `catalogGate.js` (`evaluateCatalogGate`): the hard checks for `npm run db:validate -- --ci`. They cover duplicates, language, stored and re-derived version, popularity, duration, empty keys, unlinked/orphan rows, authenticity, uncleaned text, FTS count, and release-year/ISRC coverage ≥ 95% (thresholds can be overridden).
+- `catalogReport.ts`: catalog statistics (inventory, coverage, languages, decades, popularity buckets, genres, most prolific artists) and the markdown report that combines them with the gate and the cleanup dry run. The checks themselves are only in the gate and the cleanup.
+- `catalogGate.ts` (`evaluateCatalogGate`): the hard checks for `npm run db:validate -- --ci`. They cover duplicates, language, stored and re-derived version, popularity, duration, empty keys, unlinked/orphan rows, authenticity, uncleaned text, FTS count, and release-year/ISRC coverage ≥ 95% (thresholds can be overridden).
 - `npm run db:validate` runs diagnostics, a cleanup dry run and the gate, and writes `reports/database_validation_report.md` (gitignored).
 - `npm run db:sanitize` writes a `catalog.backup-cleanup-<ts>.sqlite` copy, migrates if needed, applies the cleanup, then runs ANALYZE, a WAL checkpoint and VACUUM.
 - Coverage checks only pass once enrichment has run (`npm run catalog:enrich -- --albums=N`). Release years come from the album, so a song first seen on a compilation carries the compilation year.

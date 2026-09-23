@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { UserStore } from '../../server/db/userStore.js';
+import { UserStore } from '../../server/db/userStore.ts';
 
 let dir;
 let legacyPath;

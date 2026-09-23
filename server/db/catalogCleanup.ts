@@ -6,6 +6,7 @@
  * All steps run in ONE transaction. A dry run executes the same steps and rolls back, so the
  * reported counts are exactly what an apply would change. Running it twice changes nothing.
  */
+import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { checkAuthenticity } from '../policy/authenticityRules.js';
 import { createTracksFts } from './catalogMigrations.js';
@@ -29,30 +30,114 @@ import {
 // Order matters: rows of one song are merged before artist languages are voted and rows are
 // deleted (so the vote sees the final title set), and provider links are restored before the
 // policy step treats unlinked rows as unusable.
-export const CLEANUP_STEPS = Object.freeze(['text', 'classify', 'recordings', 'links', 'duplicates', 'languages', 'policy', 'popularity', 'fields', 'orphans']);
+export const CLEANUP_STEPS = Object.freeze(['text', 'classify', 'recordings', 'links', 'duplicates', 'languages', 'policy', 'popularity', 'fields', 'orphans'] as const);
+export type CleanupStep = (typeof CLEANUP_STEPS)[number];
+
+/** A dry-run example; which fields are set depends on the step. */
+export interface CleanupExample {
+  popularity?: number | null;
+  artist?: string;
+  title?: string;
+  detail?: string | null;
+  kept?: string;
+  merged?: string;
+  removed?: string[];
+  tracks?: number;
+  copied?: number;
+}
+
+/** A step's counters (numbers), plus optional reasons and examples. */
+export type StepCounts = {
+  reasons?: Record<string, number>;
+  examples?: CleanupExample[] | Record<string, CleanupExample[]>;
+  rebuilt?: boolean;
+} & Record<string, unknown>;
+
+export type StepResult = StepCounts & { name: string; ms: number };
+
+export interface CatalogSummary {
+  tracks: number;
+  artists: number;
+  samples: number;
+  providers: number;
+}
+
+export interface CleanupResult {
+  applied: boolean;
+  before: CatalogSummary;
+  after: CatalogSummary;
+  steps: StepResult[];
+}
+
+interface ArtistRow {
+  id: number;
+  canonical_name: string;
+  display_name: string;
+  spotify_id: string | null;
+  deezer_id: number | null;
+  itunes_artist_id: number | null;
+  genres_json: string | null;
+  fans_count: number | null;
+  track_count: number;
+}
+
+interface PolicyRow {
+  id: number;
+  display_title: string;
+  album_name: string | null;
+  canonical_title: string | null;
+  version_type: string;
+  language: string | null;
+  duration_ms: number | null;
+  popularity: number | null;
+  artist: string;
+  has_provider: number;
+}
+
+/** Columns read by the track merger (TRACK_MERGE_COLUMNS). */
+interface MergeRow {
+  id: number;
+  artist_id: number;
+  canonical_title: string;
+  display_title: string;
+  version_type: string;
+  isrc: string | null;
+  popularity: number | null;
+  deezer_rank: number | null;
+  spotify_popularity: number | null;
+  release_year: number | null;
+  release_date: string | null;
+  artist: string;
+  has_sample: number;
+}
+
+type NumericMergeField = 'popularity' | 'deezer_rank' | 'spotify_popularity';
+type PolicyReason = 'language' | 'version' | 'inauthentic' | 'duration' | 'title' | 'unlinked';
 
 const EXAMPLE_LIMIT = 10;
 const ACCEPTED_SQL = ACCEPTED_VERSION_TYPES.map(type => `'${type}'`).join(', ');
 
-function registerCleanupFunctions(db) {
-  db.function('ss_clean_text', { deterministic: true }, (value) => (value === null ? null : cleanDisplayText(value)));
-  db.function('ss_base_title', { deterministic: true }, (title) => baseTitleKey(title || ''));
-  db.function('ss_version_type', { deterministic: true }, (title, album) => classifyVersion(title || '', album || ''));
-  db.function('ss_artist_key', { deterministic: true }, (name) => canonicalArtistKey(name || ''));
+function registerCleanupFunctions(db: DatabaseSync): void {
+  db.function('ss_clean_text', { deterministic: true }, (value) => (value === null ? null : cleanDisplayText(String(value))));
+  db.function('ss_base_title', { deterministic: true }, (title) => baseTitleKey(String(title || '')));
+  db.function('ss_version_type', { deterministic: true }, (title, album) => String(classifyVersion(String(title || ''), String(album || ''))));
+  db.function('ss_artist_key', { deterministic: true }, (name) => canonicalArtistKey(String(name || '')));
   db.function('ss_isrc', { deterministic: true }, (isrc) => normalizeIsrc(isrc));
-  db.function('ss_isrc_country', { deterministic: true }, (isrc) => extractIsrcCountryCode(isrc || ''));
+  db.function('ss_isrc_country', { deterministic: true }, (isrc) => extractIsrcCountryCode(String(isrc || '')));
   db.function('ss_year', { deterministic: true }, (year) => normalizeReleaseYear(year));
   db.function('ss_date', { deterministic: true }, (date) => normalizeReleaseDate(date));
 }
 
 /** Keeps the N most popular examples seen, for dry-run review. */
 class ExampleList {
+  readonly limit: number;
+  items: CleanupExample[] = [];
+
   constructor(limit = EXAMPLE_LIMIT) {
     this.limit = limit;
-    this.items = [];
   }
 
-  add(item) {
+  add(item: CleanupExample): void {
     if (this.items.length < this.limit) {
       this.items.push(item);
       this.items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
@@ -66,14 +151,14 @@ class ExampleList {
 }
 
 /** Headline counts used before/after a cleanup and by the report. */
-export function summarizeCatalog(db) {
+export function summarizeCatalog(db: DatabaseSync): CatalogSummary {
   const row = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM tracks) AS tracks,
       (SELECT COUNT(*) FROM artists) AS artists,
       (SELECT COUNT(*) FROM track_samples) AS samples,
       (SELECT COUNT(*) FROM track_providers) AS providers
-  `).get();
+  `).get() as unknown as CatalogSummary;
   return { tracks: row.tracks, artists: row.artists, samples: row.samples, providers: row.providers };
 }
 
@@ -82,7 +167,7 @@ export function summarizeCatalog(db) {
 // ---------------------------------------------------------------------------
 
 /** Decodes HTML entities / trims display text, then merges artists whose names now share a key. */
-function stepText(db) {
+function stepText(db: DatabaseSync): StepCounts {
   const titles = db.prepare(`
     UPDATE tracks SET display_title = ss_clean_text(display_title)
     WHERE display_title IS NOT ss_clean_text(display_title) AND ss_clean_text(display_title) <> ''
@@ -97,15 +182,17 @@ function stepText(db) {
   `).run().changes;
 
   // Group artists by their current identity key; a key shared by several rows is one artist
-  const groups = new Map();
-  for (const artist of db.prepare(`
+  const groups = new Map<string, ArtistRow[]>();
+  const artists = db.prepare(`
     SELECT a.*, (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = a.id) AS track_count
     FROM artists a
-  `).iterate()) {
+  `).iterate() as Iterable<ArtistRow>;
+  for (const artist of artists) {
     const key = canonicalArtistKey(artist.display_name);
     if (!key) continue;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(artist);
+    const group = groups.get(key) ?? [];
+    group.push(artist);
+    groups.set(key, group);
   }
 
   const repointTracks = db.prepare('UPDATE tracks SET artist_id = ? WHERE artist_id = ?');
@@ -137,14 +224,14 @@ function stepText(db) {
       artistsMerged++;
       examples.add({ kept: keeper.display_name, merged: loser.display_name, popularity: loser.track_count });
     }
-    if (keeper.canonical_name !== key) keysUpdated += setKey.run(key, keeper.id).changes;
+    if (keeper.canonical_name !== key) keysUpdated += Number(setKey.run(key, keeper.id).changes);
   }
 
   return { titles, albums, artistNames, artistsMerged, keysUpdated, examples: examples.items };
 }
 
 /** Rebuilds missing provider links from stored samples (a sample carries its provider track id). */
-function stepLinks(db) {
+function stepLinks(db: DatabaseSync): StepCounts {
   const restored = db.prepare(`
     INSERT OR IGNORE INTO track_providers (track_id, provider, provider_track_id)
     SELECT s.track_id, s.provider, s.provider_track_id
@@ -156,7 +243,7 @@ function stepLinks(db) {
 }
 
 /** Recomputes base-title keys and version classes with the current rules. */
-function stepClassify(db) {
+function stepClassify(db: DatabaseSync): StepCounts {
   const baseTitles = db.prepare(`
     UPDATE tracks SET canonical_title = ss_base_title(display_title)
     WHERE canonical_title IS NOT ss_base_title(display_title)
@@ -168,7 +255,7 @@ function stepClassify(db) {
   return { baseTitles, versions };
 }
 
-function stepLanguages(db) {
+function stepLanguages(db: DatabaseSync): StepCounts {
   return recomputeCatalogLanguages(db);
 }
 
@@ -176,8 +263,8 @@ function stepLanguages(db) {
  * Deletes rows the admission policy would refuse today (D1 languages, D2 versions,
  * authenticity, duration, empty title key) and rows with no provider link (nothing to play or enrich).
  */
-function deletePolicyViolations(db, reasons, examples) {
-  const doomed = [];
+function deletePolicyViolations(db: DatabaseSync, reasons: Record<PolicyReason, number>, examples: Record<PolicyReason, ExampleList>): number {
+  const doomed: number[] = [];
 
   const rows = db.prepare(`
     SELECT t.id, t.display_title, t.album_name, t.canonical_title, t.version_type, t.language,
@@ -185,8 +272,8 @@ function deletePolicyViolations(db, reasons, examples) {
            EXISTS (SELECT 1 FROM track_providers p WHERE p.track_id = t.id) AS has_provider
     FROM tracks t JOIN artists a ON a.id = t.artist_id
   `);
-  for (const row of rows.iterate()) {
-    let reason = null;
+  for (const row of rows.iterate() as Iterable<PolicyRow>) {
+    let reason: PolicyReason | null = null;
     if (!isAllowedLanguage(row.language)) reason = 'language';
     else if (!isAcceptedVersion(row.version_type)) reason = 'version';
     else if (!checkAuthenticity({ title: row.display_title, artist: row.artist, album: row.album_name || '' }).authentic) reason = 'inauthentic';
@@ -214,9 +301,9 @@ function deletePolicyViolations(db, reasons, examples) {
  * Deleting rows changes the title sets artists are voted on, so with the languages step selected
  * the vote and the deletion repeat until they agree (a second cleanup run then changes nothing).
  */
-function stepPolicy(db, { relanguage = false } = {}) {
-  const reasons = { language: 0, version: 0, inauthentic: 0, duration: 0, title: 0, unlinked: 0 };
-  const examples = Object.fromEntries(Object.keys(reasons).map(k => [k, new ExampleList()]));
+function stepPolicy(db: DatabaseSync, { relanguage = false }: { relanguage?: boolean } = {}): StepCounts {
+  const reasons: Record<PolicyReason, number> = { language: 0, version: 0, inauthentic: 0, duration: 0, title: 0, unlinked: 0 };
+  const examples = Object.fromEntries(Object.keys(reasons).map(k => [k, new ExampleList()])) as Record<PolicyReason, ExampleList>;
 
   let deleted = deletePolicyViolations(db, reasons, examples);
   let rounds = 1;
@@ -245,7 +332,7 @@ const TRACK_MERGE_COLUMNS = `t.id, t.artist_id, t.canonical_title, t.display_tit
  * own sample per provider wins), the earliest release date and highest popularity inputs are
  * kept, and a missing ISRC is taken from a duplicate.
  */
-function createTrackMerger(db) {
+function createTrackMerger(db: DatabaseSync): (keeper: MergeRow, losers: MergeRow[]) => number {
   const moveProviders = db.prepare('UPDATE OR IGNORE track_providers SET track_id = ? WHERE track_id = ?');
   const moveSamples = db.prepare('UPDATE OR IGNORE track_samples SET track_id = ? WHERE track_id = ?');
   const clearIsrc = db.prepare('UPDATE tracks SET isrc = NULL WHERE id = ?');
@@ -265,13 +352,13 @@ function createTrackMerger(db) {
 
   return (keeper, losers) => {
     const group = [keeper, ...losers];
-    const maxOf = (field) => {
-      const values = group.map(row => row[field]).filter(v => v !== null && v !== undefined);
+    const maxOf = (field: NumericMergeField): number | null => {
+      const values = group.map(row => row[field]).filter((v): v is number => v !== null && v !== undefined);
       return values.length ? Math.max(...values) : null;
     };
     // The earliest known release of the song is its original release
     const dated = group.filter(row => row.release_year);
-    const earliest = dated.length ? dated.reduce((a, b) => (b.release_year < a.release_year ? b : a)) : null;
+    const earliest = dated.length ? dated.reduce((a, b) => (b.release_year! < a.release_year! ? b : a)) : null;
     const isrcDonor = keeper.isrc ? null : losers.find(row => row.isrc);
 
     for (const loser of losers) {
@@ -283,7 +370,7 @@ function createTrackMerger(db) {
     const spotify = maxOf('spotify_popularity');
     mergeInto.run(
       isrcDonor?.isrc ?? null,
-      isrcDonor ? extractIsrcCountryCode(isrcDonor.isrc) : null,
+      isrcDonor ? extractIsrcCountryCode(isrcDonor.isrc || '') : null,
       maxOf('popularity') ?? 0,
       deezerRank, deezerRank,
       spotify, spotify,
@@ -303,40 +390,42 @@ function createTrackMerger(db) {
  * and under Lady Gaga) with the provider link kept by only one row. A row whose sample points at a
  * provider track owned by another row is the same recording: fold it into the owner.
  */
-function stepRecordings(db) {
+function stepRecordings(db: DatabaseSync): StepCounts {
   const pairs = db.prepare(`
     SELECT DISTINCT s.track_id AS duplicate_id, p.track_id AS owner_id
     FROM track_samples s
     JOIN track_providers p ON p.provider = s.provider AND p.provider_track_id = s.provider_track_id
     WHERE p.track_id <> s.track_id
     ORDER BY s.track_id
-  `).all();
+  `).all() as { duplicate_id: number; owner_id: number }[];
 
   // Resolve chains (A -> B -> C) so every duplicate lands on a row that survives
   const ownerOf = new Map(pairs.map(pair => [pair.duplicate_id, pair.owner_id]));
-  const resolve = (id) => {
-    const seen = new Set();
+  const resolve = (id: number): number => {
+    const seen = new Set<number>();
     while (ownerOf.has(id) && !seen.has(id)) {
       seen.add(id);
-      id = ownerOf.get(id);
+      id = ownerOf.get(id)!;
     }
     return id;
   };
-  const byOwner = new Map();
+  const byOwner = new Map<number, number[]>();
   for (const duplicateId of ownerOf.keys()) {
     const ownerId = resolve(duplicateId);
     if (ownerId === duplicateId) continue;
-    if (!byOwner.has(ownerId)) byOwner.set(ownerId, []);
-    byOwner.get(ownerId).push(duplicateId);
+    const duplicates = byOwner.get(ownerId) ?? [];
+    duplicates.push(duplicateId);
+    byOwner.set(ownerId, duplicates);
   }
 
-  const getTrack = db.prepare(`SELECT ${TRACK_MERGE_COLUMNS} FROM tracks t JOIN artists a ON a.id = t.artist_id WHERE t.id = ?`);
+  const getTrackStatement: StatementSync = db.prepare(`SELECT ${TRACK_MERGE_COLUMNS} FROM tracks t JOIN artists a ON a.id = t.artist_id WHERE t.id = ?`);
+  const getTrack = (id: number) => getTrackStatement.get(id) as unknown as MergeRow | undefined;
   const merge = createTrackMerger(db);
   let removed = 0;
   const examples = new ExampleList();
   for (const [ownerId, duplicateIds] of byOwner) {
-    const keeper = getTrack.get(ownerId);
-    const losers = duplicateIds.map(id => getTrack.get(id)).filter(Boolean);
+    const keeper = getTrack(ownerId);
+    const losers = duplicateIds.map(getTrack).filter((row): row is MergeRow => Boolean(row));
     if (!keeper || losers.length === 0) continue;
     const popularity = merge(keeper, losers);
     removed += losers.length;
@@ -355,7 +444,7 @@ function stepRecordings(db) {
  * plain original with a sample, an ISRC and the highest popularity; the others' provider links,
  * samples and metadata are merged in.
  */
-function stepDuplicates(db) {
+function stepDuplicates(db: DatabaseSync): StepCounts {
   const rows = db.prepare(`
     SELECT ${TRACK_MERGE_COLUMNS}
     FROM tracks t
@@ -366,16 +455,16 @@ function stepDuplicates(db) {
     ) d ON d.artist_id = t.artist_id AND d.canonical_title = t.canonical_title
     WHERE t.version_type IN (${ACCEPTED_SQL})
     ORDER BY t.artist_id, t.canonical_title
-  `).all();
+  `).all() as unknown as MergeRow[];
 
-  const rank = (row) => [
+  const rank = (row: MergeRow): number[] => [
     row.version_type === 'original' ? 1 : 0,
     row.has_sample ? 1 : 0,
     row.isrc ? 1 : 0,
     row.popularity || 0,
     -row.id,
   ];
-  const better = (a, b) => {
+  const better = (a: MergeRow, b: MergeRow): boolean => {
     const ra = rank(a);
     const rb = rank(b);
     for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i] > rb[i];
@@ -386,7 +475,7 @@ function stepDuplicates(db) {
   let groups = 0;
   let removed = 0;
   const examples = new ExampleList();
-  const flush = (group) => {
+  const flush = (group: MergeRow[]) => {
     if (group.length < 2) return;
     groups++;
     const keeper = group.reduce((best, row) => (better(row, best) ? row : best));
@@ -401,7 +490,7 @@ function stepDuplicates(db) {
     });
   };
 
-  let group = [];
+  let group: MergeRow[] = [];
   for (const row of rows) {
     if (group.length && (row.artist_id !== group[0].artist_id || row.canonical_title !== group[0].canonical_title)) {
       flush(group);
@@ -419,11 +508,11 @@ function stepDuplicates(db) {
  * floor whose artist has been enriched (rules in catalogPopularity.js). Tracks of artists that
  * were not enriched yet have unknown fans: they are counted as `unjudged`, not deleted.
  */
-function stepPopularity(db) {
+function stepPopularity(db: DatabaseSync): StepCounts {
   const coverActs = findCoverActs(db);
   const deleteArtistTracks = db.prepare('DELETE FROM tracks WHERE artist_id = ?');
   let coverTracks = 0;
-  for (const act of coverActs) coverTracks += Number(deleteArtistTracks.run(act.id).changes);
+  for (const act of coverActs as { id: number }[]) coverTracks += Number(deleteArtistTracks.run(act.id).changes);
 
   const { below, unjudged } = findTracksBelowFloor(db);
   const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
@@ -435,12 +524,15 @@ function stepPopularity(db) {
     coverActs: coverActs.length,
     coverTracks,
     unjudged,
-    examples: { coverActs: coverActs.slice(0, EXAMPLE_LIMIT).map(act => ({ artist: act.name, tracks: act.tracks, copied: act.copied })) },
+    examples: {
+      coverActs: (coverActs as { name: string; tracks: number; copied: number }[]).slice(0, EXAMPLE_LIMIT)
+        .map(act => ({ artist: act.name, tracks: act.tracks, copied: act.copied })),
+    },
   };
 }
 
 /** Normalizes stored fields: ISRC format, registrant country, years/dates, Deezer ranks and the popularity score. */
-function stepFields(db) {
+function stepFields(db: DatabaseSync): StepCounts {
   const isrcNormalized = db.prepare(`
     UPDATE OR IGNORE tracks SET isrc = ss_isrc(isrc)
     WHERE isrc IS NOT NULL AND ss_isrc(isrc) IS NOT NULL AND isrc <> ss_isrc(isrc)
@@ -460,8 +552,8 @@ function stepFields(db) {
     WHERE release_year IS NOT COALESCE(ss_year(release_year), ss_year(release_date))
   `).run().changes;
   // Legacy rows kept the Deezer rank in `popularity`; the placeholder rank carries no signal
-  const ranks = db.prepare('UPDATE tracks SET deezer_rank = popularity WHERE deezer_rank IS NULL AND popularity > 100').run().changes
-    + db.prepare(`UPDATE tracks SET deezer_rank = NULL WHERE deezer_rank = ${DEEZER_PLACEHOLDER_RANK}`).run().changes;
+  const ranks = Number(db.prepare('UPDATE tracks SET deezer_rank = popularity WHERE deezer_rank IS NULL AND popularity > 100').run().changes)
+    + Number(db.prepare(`UPDATE tracks SET deezer_rank = NULL WHERE deezer_rank = ${DEEZER_PLACEHOLDER_RANK}`).run().changes);
   const popularity = recomputeCatalogPopularity(db);
   const explicit = db.prepare(`
     UPDATE tracks SET is_explicit = CASE WHEN is_explicit THEN 1 ELSE 0 END WHERE is_explicit NOT IN (0, 1) OR is_explicit IS NULL
@@ -472,14 +564,14 @@ function stepFields(db) {
   return { isrcNormalized, isrcCleared, countryCodes, dates, years, ranks, popularity, explicit, randKeys };
 }
 
-function stepOrphans(db) {
+function stepOrphans(db: DatabaseSync): StepCounts {
   const samples = db.prepare('DELETE FROM track_samples WHERE track_id NOT IN (SELECT id FROM tracks)').run().changes;
   const providers = db.prepare('DELETE FROM track_providers WHERE track_id NOT IN (SELECT id FROM tracks)').run().changes;
   const artists = db.prepare('DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)').run().changes;
   return { samples, providers, artists };
 }
 
-const STEP_IMPLEMENTATIONS = {
+const STEP_IMPLEMENTATIONS: Record<CleanupStep, (db: DatabaseSync, options: { relanguage: boolean }) => StepCounts> = {
   text: stepText,
   classify: stepClassify,
   recordings: stepRecordings,
@@ -497,18 +589,23 @@ const STEP_IMPLEMENTATIONS = {
 // ---------------------------------------------------------------------------
 
 /**
- * Runs the cleanup. With `apply: false` (default) everything is rolled back afterwards.
- * @param {import('node:sqlite').DatabaseSync} db a migrated (latest schema) catalog
- * @param {{ apply?: boolean, steps?: string[], onStep?: (name: string, result: object) => void }} [options]
- * @returns {{ applied: boolean, before: object, after: object, steps: Array<{ name: string, ms: number } & object> }}
+ * Runs the cleanup on a migrated (latest schema) catalog. With `apply: false` (default)
+ * everything is rolled back afterwards.
  */
-export function runCatalogCleanup(db, { apply = false, steps = CLEANUP_STEPS, onStep = () => {} } = {}) {
-  const unknown = steps.filter(step => !STEP_IMPLEMENTATIONS[step]);
+export function runCatalogCleanup(
+  db: DatabaseSync,
+  { apply = false, steps = CLEANUP_STEPS, onStep = () => {} }: {
+    apply?: boolean;
+    steps?: readonly string[];
+    onStep?: (name: string, result: StepResult) => void;
+  } = {},
+): CleanupResult {
+  const unknown = steps.filter(step => !(CLEANUP_STEPS as readonly string[]).includes(step));
   if (unknown.length) throw new Error(`Unknown cleanup step(s): ${unknown.join(', ')}`);
 
   registerCleanupFunctions(db);
   const before = summarizeCatalog(db);
-  const results = [];
+  const results: StepResult[] = [];
 
   db.exec('BEGIN IMMEDIATE;');
   try {
@@ -517,7 +614,7 @@ export function runCatalogCleanup(db, { apply = false, steps = CLEANUP_STEPS, on
 
     for (const name of CLEANUP_STEPS.filter(step => steps.includes(step))) {
       const started = Date.now();
-      const result = { name, ...STEP_IMPLEMENTATIONS[name](db, { relanguage: steps.includes('languages') }), ms: 0 };
+      const result: StepResult = { name, ...STEP_IMPLEMENTATIONS[name](db, { relanguage: steps.includes('languages') }), ms: 0 };
       result.ms = Date.now() - started;
       results.push(result);
       onStep(name, result);
@@ -537,7 +634,7 @@ export function runCatalogCleanup(db, { apply = false, steps = CLEANUP_STEPS, on
 }
 
 /** Post-apply maintenance: planner statistics, WAL truncation and (optionally) VACUUM. */
-export function compactCatalog(db, { vacuum = true } = {}) {
+export function compactCatalog(db: DatabaseSync, { vacuum = true }: { vacuum?: boolean } = {}): void {
   db.exec('ANALYZE;');
   db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
   if (vacuum) db.exec('VACUUM;');
