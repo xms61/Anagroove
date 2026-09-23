@@ -5,11 +5,12 @@ import {
   extractAllAnswerCandidates,
   isSingleEntityArtist,
   splitArtistNames,
-} from '../../shared/musicKeywords.js';
-import { blacklistIdentityKey, canonicalArtistKey, toCrosswordAnswer } from '../../shared/musicIdentity.js';
+  type ExtractKeywordOptions,
+} from '../../shared/musicKeywords.ts';
+import { blacklistIdentityKey, canonicalArtistKey, toCrosswordAnswer, type BlacklistIdentityItem } from '../../shared/musicIdentity.js';
 
 // [title, artist, options, answer, clue type, why]
-const KEYWORDS = [
+const KEYWORDS: [title: string, artist: string, options: ExtractKeywordOptions, answer: string, clueType: string, why: string][] = [
   ['Hello', 'Adele', {}, 'HELLO', 'Song title', 'a one-word title'],
   ['Stay (feat. Justin Bieber)', 'The Kid LAROI', {}, 'STAY', 'Song title', 'feat. credits are stripped'],
   ['Your Love', 'The Outfield', {}, 'YOURLOVE', 'Song title', 'multi-word titles are joined'],
@@ -27,7 +28,7 @@ for (const [title, artist, options, answer, clueType, why] of KEYWORDS) {
   test(`extractAnswerKeyword("${title}", "${artist}"): ${why}`, () => {
     const keyword = extractAnswerKeyword(title, artist, options);
     assert.equal(keyword?.answer, answer);
-    assert.equal(keyword.clueType, clueType);
+    assert.equal(keyword?.clueType, clueType);
   });
 }
 
@@ -36,16 +37,16 @@ test('extractAnswerKeyword returns null for empty input', () => {
 });
 
 test('length buckets steer the answer length', () => {
-  assert.ok(extractAnswerKeyword('Die With A Smile feat. Lady Gaga', 'Bruno Mars', { targetLengthBucket: 'short' }).answer.length <= 5);
-  assert.ok(extractAnswerKeyword('Die With A Smile feat. Lady Gaga', 'Bruno Mars', { targetLengthBucket: 'long' }).answer.length >= 9);
+  assert.ok(extractAnswerKeyword('Die With A Smile feat. Lady Gaga', 'Bruno Mars', { targetLengthBucket: 'short' })!.answer.length <= 5);
+  assert.ok(extractAnswerKeyword('Die With A Smile feat. Lady Gaga', 'Bruno Mars', { targetLengthBucket: 'long' })!.answer.length >= 9);
 });
 
 test('answer candidates keep collaborators separate and offer a short keyword', () => {
-  const apt = extractAllAnswerCandidates('APT. (feat. Bruno Mars)', 'ROSÉ & Bruno Mars');
+  const apt = extractAllAnswerCandidates('APT. (feat. Bruno Mars)', 'ROSÉ & Bruno Mars')!;
   assert.equal(apt.title?.answer, 'APT');
   assert.deepEqual(apt.artistCandidates?.map(c => c.answer), ['ROSE', 'BRUNOMARS']);
 
-  const die = extractAllAnswerCandidates('Die With A Smile feat. Lady Gaga', 'Bruno Mars');
+  const die = extractAllAnswerCandidates('Die With A Smile feat. Lady Gaga', 'Bruno Mars')!;
   assert.equal(die.title?.answer, 'DIEWITHASMILE');
   assert.equal(die.shortKeyword?.answer, 'DIE');
 });
@@ -71,7 +72,7 @@ test('artist identity keys keep numbers and fold case and diacritics', () => {
   assert.equal(canonicalArtistKey('Beyoncé'), canonicalArtistKey('BEYONCE'));
 });
 
-const ENTITIES = [
+const ENTITIES: [name: string, expected: boolean][] = [
   ['Above & Beyond', true],
   ['Mumford & Sons', true],
   ['Bob Marley & The Wailers', true],
@@ -84,7 +85,7 @@ for (const [name, expected] of ENTITIES) {
   });
 }
 
-const SPLITS = [
+const SPLITS: [name: string, expected: string[]][] = [
   ['Ski Aggu & Sira', ['Ski Aggu', 'Sira']],
   ['Ski aggu & Sira', ['Ski aggu', 'Sira']],
   ['Above & Beyond', ['Above & Beyond']],
@@ -98,12 +99,13 @@ for (const [name, expected] of SPLITS) {
 }
 
 test('blacklist identity keys keep generic and distinct provider-scoped entries apart', () => {
-  const keys = new Set([
+  const items: BlacklistIdentityItem[] = [
     { type: 'song', name: 'Same Title' },
     { type: 'song', name: 'Same Title', provider: 'deezer', providerTrackId: '101' },
     { type: 'song', name: 'same-title', provider: 'deezer', providerTrackId: '202' },
     { type: 'artist', name: 'Beyoncé' },
     { type: 'artist', name: 'beyonce', provider: 'deezer', providerArtistId: '42' },
-  ].map(blacklistIdentityKey));
+  ];
+  const keys = new Set(items.map(blacklistIdentityKey));
   assert.equal(keys.size, 5);
 });

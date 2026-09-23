@@ -28,7 +28,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - `Modal` (shared shell)
   - the modals: `LiveGenerator` ("Custom puzzle"), `Multiplayer`, `Blacklist` ("Hidden artists & songs"), `Hint`, `EndScreen` (the solved puzzle's tracklist), `History` (all solved puzzles), `Settings`, plus the room victory dialog in `App.tsx`.
   - Dialogs share one layout: a `font-display` title and a one-line muted description, sections labelled in small caps, `Button`s in the footer. Labels are plain ("Hint", "Hidden artists & songs"), and actions that used to appear only on hover are always visible.
-- `types/crossword.ts`: shared puzzle types. `shared/*.d.ts` types the shared JS modules (e.g. `canonicalArtistKey`, which the client uses for recent-artist keys so they match the server).
+- Puzzle types (`Song`, `Clue`, `Puzzle`, `CellValidity`, …) live in `shared/types.ts`, shared with the server that builds the puzzles. The client imports the shared modules directly (e.g. `canonicalArtistKey`, so recent-artist keys match the server).
 
 ## Styling
 - **Themes:** three dark themes, picked in Settings: `city` (Tokyo Rain), `berlin` (Berlin Concrete) and `vinyl` (Vinyl Room).
@@ -64,7 +64,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - Keys: `spotyspice_user_id`, `spotyspice_settings`, `spotyspice_active_genre`, `spotyspice_active_config`, `spotyspice_active_live_puzzle`, `spotyspice_recent_songs`, `spotyspice_player_name`, `spotyspice_local_blacklist`.
 - **Settings:** read and write through `useSettings()`/`readSettings()`. Don't parse `spotyspice_settings` in components.
 - **Language filter:** the live generator's EN/JA/KO chips send `languages` (a subset of en/ja/ko; empty means the theme decides). The server applies it to the catalog window and the picker.
-- **Themes:** the generator and multiplayer theme pickers render `THEMES` from `shared/themes.js`. A saved theme id that no longer exists (the removed "latin") falls back to Mixed (`knownThemeOr` in `App.tsx`).
+- **Themes:** the generator and multiplayer theme pickers render `THEMES` from `shared/themes.ts`. A saved theme id that no longer exists (the removed "latin") falls back to Mixed (`knownThemeOr` in `App.tsx`).
 - **Audio:** play through `playableAudioUrl(song)` (`services/audioSource.ts`). It keeps `/api/preview/...` and `/audio/...` paths and rebuilds a stable path for older saved puzzles that hold expiring Deezer URLs.
 - **Multiplayer:** `socketService` remembers the room seat (`resumeToken`) and rejoins on reconnect. A `room_joined` with `resumed: true` must not reset local progress.
 - **Grid key handlers** build the next grid from the rendered state (`withCell`) for their checks and saves, and apply it with a functional `setUserLetters`. Never read values out of a state updater: React may run it later, and the handler then sees an empty grid.

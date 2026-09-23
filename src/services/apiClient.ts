@@ -1,4 +1,4 @@
-import { CellValidity } from '../types/crossword';
+import { CellValidity } from '../../shared/types';
 
 /**
  * The anonymous user id doubles as a bearer secret for progress/blacklist data,

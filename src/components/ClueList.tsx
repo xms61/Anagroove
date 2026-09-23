@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Clue } from '../types/crossword';
+import { Clue } from '../../shared/types';
 import { cx } from './ui';
 
 interface ClueListProps {

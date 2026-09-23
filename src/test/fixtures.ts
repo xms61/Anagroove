@@ -1,4 +1,4 @@
-import type { CellData, Clue, Puzzle, Song } from '../types/crossword';
+import type { CellData, Clue, Puzzle, Song } from '../../shared/types';
 
 const song = (title: string): Song => ({
   id: `test:${title}`,

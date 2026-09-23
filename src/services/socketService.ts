@@ -1,4 +1,4 @@
-import { Puzzle } from '../types/crossword';
+import { Puzzle } from '../../shared/types';
 
 export interface RoomPlayer {
   id: string;

@@ -6,13 +6,25 @@
  *   languages  song languages the theme allows (the catalog holds en/ja/ko only)
  *   seeds      Deezer playlist searches the crawler harvests for the theme
  */
+export type SongLanguage = 'en' | 'ja' | 'ko';
+
+export interface Theme {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  genres: readonly string[];
+  languages: readonly SongLanguage[];
+  seeds: readonly string[];
+}
+
 const ROCK = ['Rock', 'Classic Rock', 'Alternative Rock', 'Hard Rock', 'Indie Rock', 'Grunge', 'Rock & Roll/Rockabilly'];
 const HIP_HOP = ['Rap/Hip Hop', 'Hip-Hop', 'Hip Hop'];
 const ELECTRONIC = ['Dance', 'Electro', 'Electronic', 'EDM', 'Techno/House', 'Trance', 'French House'];
 const SOUNDTRACK = ['Films/Games', 'Soundtrack'];
 const JAPANESE = ['Japanese', 'J-Pop', 'City Pop', 'Asian Music'];
 
-export const THEMES = Object.freeze([
+export const THEMES: readonly Theme[] = Object.freeze([
   { id: 'all', name: 'Mixed & Eclectic', icon: '🎲', description: 'Fresh cross-genre selection', genres: [], languages: ['en'],
     seeds: ['all time hits', 'billboard hot 100', 'top usa', 'top uk', 'party classics', 'road trip anthems', 'acoustic chill'] },
   { id: 'pop', name: 'Global Pop Hits', icon: '✨', description: 'Chart-topping pop icons', genres: ['Pop', 'Indie Pop', 'International Pop'], languages: ['en'],
@@ -48,10 +60,10 @@ export const THEMES = Object.freeze([
 ]);
 
 const THEMES_BY_ID = new Map(THEMES.map(theme => [theme.id, theme]));
-const genresOf = (id) => THEMES_BY_ID.get(id).genres;
+const genresOf = (id: string): readonly string[] => THEMES_BY_ID.get(id)?.genres ?? [];
 
 /** The theme with this id, or undefined. `mixed` is an old name for `all`. */
-export function themeById(id) {
+export function themeById(id: string): Theme | undefined {
   return THEMES_BY_ID.get(id === 'mixed' ? 'all' : id);
 }
 
@@ -59,7 +71,7 @@ export function themeById(id) {
  * Words in a free-text genre or prompt -> genre clusters, most specific first. A matched
  * phrase is removed before the next rule runs, so "city pop" never also counts as "pop".
  */
-const PROMPT_GENRES = [
+const PROMPT_GENRES: [RegExp, readonly string[]][] = [
   [/\bcity\s*pop\b/, ['City Pop']],
   [/\bk-?pop\b|\bkorean\b/, genresOf('kpop')],
   [/\bj-?pop\b|\bj-?rock\b|\bjapanese\b/, JAPANESE],
@@ -90,12 +102,12 @@ const PROMPT_GENRES = [
 ];
 
 /** Genre clusters for a theme id, or for the words of a free-text genre and prompt. */
-export function genresForPrompt(genre = '', prompt = '') {
+export function genresForPrompt(genre = '', prompt = ''): string[] {
   const theme = themeById(genre);
   if (theme && theme.id !== 'all') return [...theme.genres];
 
   let text = `${genre} ${prompt}`.toLowerCase();
-  const genres = new Set();
+  const genres = new Set<string>();
   for (const [pattern, clusters] of PROMPT_GENRES) {
     if (!pattern.test(text)) continue;
     clusters.forEach(g => genres.add(g));

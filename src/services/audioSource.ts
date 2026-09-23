@@ -1,4 +1,4 @@
-import { Song } from '../types/crossword';
+import { Song } from '../../shared/types';
 
 /**
  * Returns a URL that will still play later. New puzzles already carry stable

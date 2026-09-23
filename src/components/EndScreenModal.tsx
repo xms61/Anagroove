@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { EyeOff, ExternalLink, Loader2, Music, Pause, Play, RotateCcw, UserX } from 'lucide-react';
-import { Puzzle, Song } from '../types/crossword';
+import { Puzzle, Song } from '../../shared/types';
 import { Modal } from './Modal';
 import { Button, IconButton } from './ui';
 import { readSettings } from '../hooks/useSettings';

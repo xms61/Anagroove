@@ -1,4 +1,4 @@
-import { Puzzle } from '../types/crossword';
+import { Puzzle } from '../../shared/types';
 import { getAnonymousUserId } from './apiClient';
 import { readJson, STORAGE_KEYS, writeJson } from './storage';
 import { canonicalArtistKey } from '../../shared/musicIdentity';

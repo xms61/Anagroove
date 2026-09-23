@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient, BlacklistItem } from '../services/apiClient';
-import { Song } from '../types/crossword';
+import { Song } from '../../shared/types';
 import { blacklistIdentityKey } from '../../shared/musicIdentity';
 import { readJson, STORAGE_KEYS, writeJson } from '../services/storage';
 

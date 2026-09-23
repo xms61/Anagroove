@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { shuffleArray } from '../../shared/shuffle.js';
-import { generateLiveCrossword } from '../../shared/liveCrossword.js';
+import { shuffleArray } from '../../shared/shuffle.ts';
+import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
 
 test('Unbiased Fisher-Yates Shuffle', async () => {
   const empty = shuffleArray([]);
@@ -29,7 +29,7 @@ test('Unbiased Fisher-Yates Shuffle', async () => {
 });
 
 test('Live Crossword Placement Engine', async () => {
-  const sampleTracks = [
+  const tracks = [
     { id: 'track_1', title: 'Get Lucky', artist: 'Daft Punk', audioUrl: 'http://example.com/1.mp3', answer: 'GETLUCKY', clueType: 'Song title' },
     { id: 'track_2', title: 'Starboy', artist: 'The Weeknd', audioUrl: 'http://example.com/2.mp3', answer: 'STARBOY', clueType: 'Song title' },
     { id: 'track_3', title: 'One More Time', artist: 'Daft Punk', audioUrl: 'http://example.com/3.mp3', answer: 'ONEMORETIME', clueType: 'Song title' },
@@ -39,6 +39,7 @@ test('Live Crossword Placement Engine', async () => {
     { id: 'track_7', title: 'Technologic', artist: 'Daft Punk', audioUrl: 'http://example.com/7.mp3', answer: 'TECHNOLOGIC', clueType: 'Song title' },
     { id: 'track_8', title: 'Aerodynamic', artist: 'Daft Punk', audioUrl: 'http://example.com/8.mp3', answer: 'AERODYNAMIC', clueType: 'Song title' },
   ];
+  const sampleTracks: LiveSong[] = tracks.map(track => ({ ...track, album: '', albumArt: '', clueText: track.title }));
   const testPuzzle = generateLiveCrossword(sampleTracks, 'Test Puzzle', 6);
   assert(testPuzzle && testPuzzle.clues.length >= 5, 'Generates valid intersecting crossword layout');
   assert(testPuzzle && testPuzzle.rows > 0 && testPuzzle.cols > 0, 'Computes bounding box rows and cols');

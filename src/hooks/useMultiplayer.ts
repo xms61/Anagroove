@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Puzzle } from '../types/crossword';
+import { Puzzle } from '../../shared/types';
 import { socketService, MultiplayerRoom } from '../services/socketService';
 import { dynamicMusicService } from '../services/dynamicMusicService';
 

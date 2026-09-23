@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clue } from '../types/crossword';
+import { Clue } from '../../shared/types';
 import { Modal } from './Modal';
 
 interface HintModalProps {

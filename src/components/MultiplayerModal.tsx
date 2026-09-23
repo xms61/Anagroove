@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Copy, Crown, HeartHandshake, Play, Swords } from 'lucide-react';
 import { MultiplayerRoom } from '../services/socketService';
-import { Puzzle } from '../types/crossword';
+import { Puzzle } from '../../shared/types';
 import { Modal } from './Modal';
 import { Button, cx } from './ui';
 import { THEMES } from '../../shared/themes';

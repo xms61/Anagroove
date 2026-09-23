@@ -7,7 +7,7 @@ import { isAuthenticCandidate } from './authenticityFilter.js';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
 import { STREAMED_ARTIST_NAMES } from './artistBaseline.js';
 import { logger } from '../logger.js';
-import { THEMES, genresForPrompt } from '../../shared/themes.js';
+import { THEMES, genresForPrompt } from '../../shared/themes.ts';
 
 // High-frequency music words (English, plus romanized Japanese/Korean) for broad search sweeps
 export const MUSIC_LEXICON_SEEDS = [

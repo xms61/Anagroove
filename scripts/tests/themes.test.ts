@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { THEMES, themeById, genresForPrompt } from '../../shared/themes.js';
+import { THEMES, themeById, genresForPrompt } from '../../shared/themes.ts';
 import { ALLOWED_LANGUAGES } from '../../server/db/trackNormalization.js';
 import { allowedLanguagesForContext } from '../../server/policy/selectionPolicy.js';
 import { DEEZER_GENRE_TAXONOMY } from '../../server/services/deezerMusicProvider.js';
@@ -30,8 +30,9 @@ test('every theme except Mixed has genre clusters, and every theme has crawl see
 test('every theme is a valid live-puzzle genre with a live Deezer configuration', () => {
   for (const { id } of THEMES) {
     assert.equal(validateLivePuzzlePayload({ genre: id }).data?.genre, id);
-    const config = DEEZER_GENRE_TAXONOMY[id];
-    assert.ok(config && (config.chartId !== undefined || config.searches?.length > 0) && config.minFans > 0 && config.minRank > 0, id);
+    const config: { chartId?: number | null; searches?: string[]; minFans: number; minRank: number } | undefined =
+      DEEZER_GENRE_TAXONOMY[id as keyof typeof DEEZER_GENRE_TAXONOMY];
+    assert.ok(config && (config.chartId !== undefined || (config.searches?.length ?? 0) > 0) && config.minFans > 0 && config.minRank > 0, id);
   }
 });
 
@@ -47,7 +48,7 @@ test('the removed Latin theme is gone; "mixed" is an old name for Mixed', () => 
 });
 
 // [genre, prompt, expected genres (subset), genres that must not appear]
-const PROMPTS = [
+const PROMPTS: [genre: string, prompt: string, included: string[], excluded: string[]][] = [
   ['rock', '', ['Rock', 'Classic Rock'], []],
   ['all', '80s Japanese City Pop', ['City Pop', 'Japanese'], ['Pop']],
   ['all', 'pop-punk anthems', ['Punk', 'Emo'], ['Pop']],

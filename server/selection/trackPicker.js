@@ -3,7 +3,7 @@
  * language/thematic/authenticity/year policy, one track per artist (unless the prompt targets
  * an artist), then the crossword answer and clue with clue-type and answer-length rotation.
  */
-import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.js';
+import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.ts';
 import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey } from '../../shared/musicIdentity.js';
 import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.js';
 import {

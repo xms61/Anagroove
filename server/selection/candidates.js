@@ -13,7 +13,7 @@ import { toFtsQuery } from '../services/queryBuilder.js';
 import { allowedLanguagesForContext } from '../policy/selectionPolicy.js';
 import { logger } from '../logger.js';
 import { weightedOrder } from './random.js';
-import { genresForPrompt } from '../../shared/themes.js';
+import { genresForPrompt } from '../../shared/themes.ts';
 
 /**
  * Popularity setting -> window on the catalog's percentile score and weighting exponent
