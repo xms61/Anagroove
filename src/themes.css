@@ -31,6 +31,7 @@
   --radius-panel: 16px;
   --radius-control: 10px;
   --radius-cell: 6px;
+  --radius-play: 50%;
   --font-display: 'Zen Kaku Gothic New', 'Plus Jakarta Sans', system-ui, sans-serif;
   --display-weight: 900;
   --display-style: normal;
@@ -69,6 +70,7 @@
   --radius-panel: 0px;
   --radius-control: 0px;
   --radius-cell: 0px;
+  --radius-play: 0px;
   --font-display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
   --display-weight: 700;
   --display-style: normal;
@@ -107,6 +109,7 @@
   --radius-panel: 18px;
   --radius-control: 999px;
   --radius-cell: 4px;
+  --radius-play: 50%;
   --font-display: 'Fraunces', Georgia, serif;
   --display-weight: 600;
   --display-style: italic;
@@ -118,17 +121,28 @@
   --panel-alpha: 1;
 }
 
-/* Decoration behind the app: rain and neon (city), a site grid (berlin), a lamp glow (vinyl) */
-.theme-backdrop > * {
+/*
+ * Theme-only content: `only-city`, `only-berlin`, `only-vinyl` render (as `display: contents`,
+ * so the wrapper adds no box) only while that theme is active. Hidden ones are also hidden from
+ * screen readers.
+ */
+.only-city,
+.only-berlin,
+.only-vinyl {
   display: none;
 }
-:root:not([data-theme]) .backdrop-city,
-:root[data-theme='city'] .backdrop-city,
-:root[data-theme='berlin'] .backdrop-berlin,
-:root[data-theme='vinyl'] .backdrop-vinyl {
-  display: block;
+:root:not([data-theme]) .only-city,
+:root[data-theme='city'] .only-city,
+:root[data-theme='berlin'] .only-berlin,
+:root[data-theme='vinyl'] .only-vinyl {
+  display: contents;
 }
 
+/* Decoration behind the app: rain and neon (city), a site grid (berlin), a lamp glow (vinyl) */
+.backdrop-city {
+  position: absolute;
+  inset: 0;
+}
 .backdrop-city .neon {
   position: absolute;
   border-radius: 50%;
@@ -180,6 +194,30 @@
   background: rgb(var(--c-accent));
   opacity: 0.08;
   filter: blur(110px);
+}
+
+/* Clue number badges: outlined neon, a white station sign, or italic brass */
+.clue-badge {
+  color: rgb(var(--c-hi));
+  border: 1px solid rgb(var(--c-hi) / 0.45);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+:root[data-theme='berlin'] .clue-badge {
+  color: rgb(var(--c-bg));
+  background: rgb(var(--c-fg));
+  border-color: transparent;
+  font-family: var(--font-display);
+}
+:root[data-theme='vinyl'] .clue-badge {
+  color: rgb(var(--c-accent));
+  border-color: transparent;
+  font-family: var(--font-display);
+  font-style: italic;
+}
+:root .clue-badge[data-active='true'] {
+  color: rgb(var(--c-on-accent));
+  background: rgb(var(--c-accent));
+  border-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

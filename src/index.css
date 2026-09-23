@@ -44,46 +44,28 @@ body {
   }
 }
 
-@keyframes spin-slow {
+/* Player decks (PlayerDeck.tsx) */
+@keyframes spin-record {
   to {
     transform: rotate(360deg);
   }
 }
-.animate-spin-slow {
-  animation: spin-slow 24s linear infinite;
+.animate-spin-record {
+  animation: spin-record 1.8s linear infinite;
 }
 .spin-paused {
   animation-play-state: paused;
 }
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+.animate-eq-bar {
+  animation: eq-bar 0.9s ease-in-out infinite;
+}
 
 .vinyl-grooves {
   background: repeating-radial-gradient(circle, rgb(var(--c-bg)) 0 1px, rgb(var(--c-raised)) 1px 3px);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 30px rgba(0, 0, 0, 0.8);
-}
-
-@keyframes eq-bounce-1 {
-  0%, 100% { height: 4px; }
-  50% { height: 16px; }
-}
-@keyframes eq-bounce-2 {
-  0%, 100% { height: 14px; }
-  50% { height: 6px; }
-}
-@keyframes eq-bounce-3 {
-  0%, 100% { height: 8px; }
-  50% { height: 18px; }
-}
-@keyframes eq-bounce-4 {
-  0%, 100% { height: 16px; }
-  50% { height: 4px; }
-}
-.animate-eq-1 { animation: eq-bounce-1 0.75s ease-in-out infinite; }
-.animate-eq-2 { animation: eq-bounce-2 0.6s ease-in-out infinite; }
-.animate-eq-3 { animation: eq-bounce-3 0.85s ease-in-out infinite; }
-.animate-eq-4 { animation: eq-bounce-4 0.7s ease-in-out infinite; }
-
-.tile-shadow {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 /* Bounce when a typed word is correct */
@@ -98,11 +80,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-spin-slow,
-  .animate-eq-1,
-  .animate-eq-2,
-  .animate-eq-3,
-  .animate-eq-4,
+  .animate-spin-record,
+  .animate-eq-bar,
   .animate-letter-correct-pop,
   .animate-spin,
   .animate-ping,

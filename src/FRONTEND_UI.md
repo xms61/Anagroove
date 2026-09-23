@@ -3,7 +3,7 @@
 React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio` to :3001). Tailwind CSS, `lucide-react` icons, `canvas-confetti`, self-hosted fonts (`@fontsource`), three switchable themes.
 
 ## Structure
-- `App.tsx`: top-level state, header, grid + clue layout, and all modals.
+- `App.tsx`: top-level state, the grid + clue layout, and all modals.
 - `hooks/`:
   - `useCrosswordGame.ts`: grid state, cursor, validation, hints, progress, and solve time for history.
   - `useBlacklist.ts`: local + server blacklist sync.
@@ -18,7 +18,13 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - `storage.ts`: guarded storage.
   - `audioSource.ts`
 - `components/`:
-  - `CrosswordGrid`, `ClueList`, `AudioPlayerBar`, `LoungeDrawer`
+  - `AppHeader`: name, puzzle picker, Hint, Check (the only primary button), New, Settings and Menu. On phones it uses two rows (flex `order`).
+  - `CrosswordGrid`
+  - `ClueList`: two columns, or Across/Down tabs below `md`. The headings change per theme.
+  - `AudioPlayerBar`: docked at the bottom, with `PlayerDeck` (radio display, step sequencer or turntable, following the theme), a seek slider and volume.
+  - `LoungeDrawer`
+  - `ThemeBackdrop`
+  - `ui.tsx`: `Button` (primary/secondary/ghost/danger), `IconButton` (`label` required), `Panel` and `cx`. Use them instead of restyling buttons and surfaces.
   - `Modal` (shared shell)
   - the modals: `LiveGenerator`, `Multiplayer`, `Blacklist`, `Hint`, `EndScreen` (current puzzle tracklist), `History` (all solved puzzles), `Settings`, plus the room victory dialog in `App.tsx`.
 - `types/crossword.ts`: shared puzzle types. `shared/*.d.ts` types the shared JS modules (e.g. `canonicalArtistKey`, which the client uses for recent-artist keys so they match the server).
@@ -33,7 +39,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - ESLint rejects raw Tailwind colours (`text-slate-400`, `bg-amber-500`, …) and hex literals in `.tsx` files.
   - Colours that come from data (a player's colour) go in `style`, with `rgb(var(--c-accent))` as the fallback.
 - **Headings** use `font-display` (`index.css`): the theme's face, weight, style, case and spacing.
-- **Decoration** lives in `ThemeBackdrop` and `themes.css` (rain and neon, a site grid, a lamp glow). It is CSS only, `aria-hidden`, and each theme shows only its own layer.
+- **Theme-only markup** goes in `only-city` / `only-berlin` / `only-vinyl` wrappers (`themes.css`): the active theme's wrapper renders as `display: contents`, the others are hidden. `ThemeBackdrop` (rain and neon, a site grid, a lamp glow), `PlayerDeck` and the clue headings use them. Decoration is `aria-hidden`.
 - **Fonts:**
   - Plus Jakarta Sans (body) and JetBrains Mono (numbers), plus one display face per theme: Zen Kaku Gothic New, Barlow Condensed, Fraunces italic.
   - All are Latin subsets from `@fontsource`, imported in `main.tsx`. A browser only downloads a face the active theme uses.
@@ -42,7 +48,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - Every theme keeps body and `muted` text at WCAG AA on its surfaces.
   - The minimum text size is `text-xs` (12 px); clue text is `text-sm` (14 px). The exception is the grid's cell numbers.
 - **Motion:** `prefers-reduced-motion` stops the rain, spinners, equalizer bars and the letter pop (`index.css`, `themes.css`).
-- **Mobile:** the grid sizes its cells from its container (20–44 px) and scrolls inside its board if it still doesn't fit. The page must not scroll horizontally at 375 px.
+- **Mobile:** the grid sizes its cells from its container (20–44 px) and scrolls inside its board if it still doesn't fit. The page reserves the docked player's height (`pb-28`), so the last clue scrolls into view above it. The page must not scroll horizontally at 375 px (both checked by the smoke test).
 
 ## Rules
 - **Every dialog uses `<Modal>`**, which gives it:

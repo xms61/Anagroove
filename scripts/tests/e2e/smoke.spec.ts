@@ -49,6 +49,12 @@ test('no horizontal scrolling on a 375 px phone', async ({ page }) => {
   await loadPuzzle(page);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+
+  // The docked player must not hide the end of the clue list once the page is scrolled down
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const lastClue = await page.getByRole('region', { name: 'Clues' }).getByRole('button', { name: /^\d+[AD]\b/ }).last().boundingBox();
+  const player = await page.getByRole('region', { name: 'Preview player' }).boundingBox();
+  expect(lastClue!.y + lastClue!.height).toBeLessThanOrEqual(player!.y);
 });
 
 test('the theme picked in Settings applies and survives a reload', async ({ page }) => {
