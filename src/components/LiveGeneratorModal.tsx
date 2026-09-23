@@ -3,6 +3,7 @@ import { Puzzle } from '../types/crossword';
 import { dynamicMusicService } from '../services/dynamicMusicService';
 import { Zap, Disc3, Sparkles, CheckCircle2, Sliders, Dices } from 'lucide-react';
 import { Modal } from './Modal';
+import { THEMES } from '../../shared/themes';
 
 export type PuzzleLanguage = 'en' | 'ja' | 'ko';
 
@@ -23,19 +24,6 @@ interface LiveGeneratorModalProps {
   onPuzzleGenerated: (puzzle: Puzzle, config: PuzzleGenerationConfig) => void;
 }
 
-const GENERATOR_GENRES = [
-  { id: 'all', name: 'Mixed & Eclectic', icon: '🎲', desc: 'Fresh cross-genre selection' },
-  { id: 'kpop', name: 'K-Pop Universe', icon: '🌸', desc: 'Korean pop & idol anthems' },
-  { id: 'anime', name: 'Anime & J-Rock', icon: '⚔️', desc: 'Anime openings & J-Rock' },
-  { id: 'gaming', name: 'Video Game OSTs', icon: '🎮', desc: 'Iconic game soundtracks' },
-  { id: 'pop', name: 'Global Pop Hits', icon: '✨', desc: 'Chart-topping pop icons' },
-  { id: 'rock', name: 'Rock & Retro Legends', icon: '🎸', desc: 'Classic & modern rock riffs' },
-  { id: 'hiphop', name: 'Hip-Hop & Rap Giants', icon: '🎤', desc: 'Beats, bars & rap titans' },
-  { id: 'edm', name: 'EDM & Dance Anthems', icon: '🎧', desc: 'Club bangers & electronic' },
-  { id: 'cinematic', name: 'Cinematic Movie OSTs', icon: '🎬', desc: 'Epic film & movie scores' },
-  { id: 'latin', name: 'Latin & Reggaeton', icon: '🔥', desc: 'Hot reggaeton & latin pop' },
-  { id: 'poppunk', name: '2000s Pop-Punk & Emo', icon: '🖤', desc: 'Nostalgic punk & emo hits' },
-];
 
 const POPULARITY_TIERS = [
   { id: 'pure', name: 'Pure Random', desc: 'Any popularity, underground to stars' },
@@ -149,10 +137,10 @@ export const LiveGeneratorModal: React.FC<LiveGeneratorModalProps> = ({
         {activeTab === 'presets' ? (
           <div className="mb-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              1. Select Style ({GENERATOR_GENRES.length} Themes)
+              1. Select Style ({THEMES.length} Themes)
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-              {GENERATOR_GENRES.map(genre => (
+              {THEMES.map(genre => (
                 <button
                   key={genre.id}
                   type="button"
@@ -167,7 +155,7 @@ export const LiveGeneratorModal: React.FC<LiveGeneratorModalProps> = ({
                     <span>{genre.icon}</span>
                     <span className="truncate">{genre.name}</span>
                   </div>
-                  <div className="text-xs text-slate-400 truncate mt-1">{genre.desc}</div>
+                  <div className="text-xs text-slate-400 truncate mt-1">{genre.description}</div>
                 </button>
               ))}
             </div>

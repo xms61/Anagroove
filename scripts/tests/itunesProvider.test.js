@@ -21,12 +21,8 @@ const STOREFRONTS = [
   ['Japanese City Pop', 'JP'],
   ['Korean Trot', 'KR'],
   ['K-Pop', 'US'],
-  ['French House', 'FR'],
-  ['German Krautrock', 'DE'],
-  ['Bossa Nova', 'BR'],
-  ['Reggae Roots', 'JM'],
-  ['Afrobeat', 'NG'],
   ['Britpop', 'GB'],
+  ['French House', 'US'],
   ['90s Grunge', 'US'],
 ];
 for (const [query, storefront] of STOREFRONTS) {

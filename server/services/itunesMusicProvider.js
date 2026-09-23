@@ -32,27 +32,6 @@ export function detectStorefront(query = '') {
   if (/\b(korean|korea|trot|hallyu)\b/i.test(q)) {
     return 'KR';
   }
-  if (/\b(french|france|chanson|french\s*house|french\s*touch|y\u00e9-y\u00e9)\b/i.test(q)) {
-    return 'FR';
-  }
-  if (/\b(german|germany|krautrock|schlager|ndw|neue\s*deutsche\s*welle)\b/i.test(q)) {
-    return 'DE';
-  }
-  if (/\b(brazil|brazilian|bossa\s*nova|samba|mpb|tropicalia|forro)\b/i.test(q)) {
-    return 'BR';
-  }
-  if (/\b(latin|spanish|spain|reggaeton|cumbia|salsa|bachata|flamenco|bolero)\b/i.test(q)) {
-    return 'ES';
-  }
-  if (/\b(italian|italy|italo|canzone)\b/i.test(q)) {
-    return 'IT';
-  }
-  if (/\b(reggae|dancehall|roots\s*reggae|ska|dub)\b/i.test(q)) {
-    return 'JM';
-  }
-  if (/\b(afrobeats|afrobeat|highlife|amapiano)\b/i.test(q)) {
-    return 'NG';
-  }
   if (/\b(britpop|uk\s*garage|grime|uk\s*drill|madchester|shoegaze)\b/i.test(q)) {
     return 'GB';
   }

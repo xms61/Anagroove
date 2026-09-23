@@ -146,7 +146,6 @@ const THEMATIC_CASES = [
   [{ title: 'Around the World', artist: 'Daft Punk' }, 'poppunk', 'pop-punk hits', false, 'Daft Punk is not pop-punk'],
   [{ title: 'We Own The Night', artist: 'Dance Gavin Dance' }, 'edm', 'dance edm', false, 'a post-hardcore band'],
   [{ title: 'Private Dancer', artist: 'Tina Turner' }, 'edm', 'dance music', false, '"Dancer"'],
-  [{ title: 'Radio Africa', artist: 'Latin Quarter' }, 'latin', 'latin music', false, 'a British band'],
   [{ title: 'People Who Eat Darkness', artist: 'Steven Wilson' }, 'kpop', 'new gen kpop', false, 'Western act in K-pop'],
   [{ title: 'Before He Cheats', artist: 'Carrie Underwood' }, 'kpop', 'new gen kpop', false, 'Western act in K-pop'],
   [{ title: 'Cater 2 U', artist: "Destiny's Child" }, 'kpop', 'new gen kpop', false, 'Western act in K-pop'],

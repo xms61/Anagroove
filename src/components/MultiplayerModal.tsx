@@ -3,21 +3,9 @@ import { MultiplayerRoom } from '../services/socketService';
 import { Puzzle } from '../types/crossword';
 import { Users, Copy, Check, Play, Crown, Zap, Swords, HeartHandshake, Sparkles } from 'lucide-react';
 import { Modal } from './Modal';
+import { THEMES } from '../../shared/themes';
 import { readString, STORAGE_KEYS, writeString } from '../services/storage';
 
-export const MULTIPLAYER_STYLES = [
-  { id: 'all', name: 'Mixed & Eclectic', icon: '🎲' },
-  { id: 'rock', name: 'Rock & Retro', icon: '🎸' },
-  { id: 'pop', name: 'Global Pop', icon: '✨' },
-  { id: 'kpop', name: 'K-Pop Universe', icon: '🌸' },
-  { id: 'hiphop', name: 'Hip-Hop Giants', icon: '🎤' },
-  { id: 'edm', name: 'EDM & Dance', icon: '🎧' },
-  { id: 'latin', name: 'Latin & Reggaeton', icon: '🔥' },
-  { id: 'gaming', name: 'Video Game OSTs', icon: '🎮' },
-  { id: 'anime', name: 'Anime & J-Rock', icon: '⚔️' },
-  { id: 'cinematic', name: 'Cinematic OSTs', icon: '🎬' },
-  { id: 'poppunk', name: 'Pop-Punk & Emo', icon: '🖤' },
-];
 
 interface MultiplayerModalProps {
   isOpen: boolean;
@@ -266,7 +254,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                     2. Crossword Musical Style
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1 custom-scrollbar">
-                    {MULTIPLAYER_STYLES.map(style => (
+                    {THEMES.map(style => (
                       <button
                         key={style.id}
                         type="button"

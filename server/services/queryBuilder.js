@@ -223,7 +223,7 @@ export function generateThemeVariations(genre = '', decade = '') {
 
   // If there's a cultural/language prefix (e.g. "Japanese", "French", "Korean"), retain core compound genre
   const words = trimmed.split(/\s+/);
-  const isCultural = /^(japanese|korean|french|german|spanish|italian|brazilian|latin|african|chinese|swedish|anime)\b/i.test(words[0]);
+  const isCultural = /^(japanese|korean|french|german|swedish|british|anime)\b/i.test(words[0]);
 
   if (words.length >= 3) {
     if (isCultural) {
@@ -271,7 +271,6 @@ export function generateThemeVariations(genre = '', decade = '') {
   if (lower.includes('french house')) variations.add('french touch');
   if (lower.includes('krautrock')) variations.add('kosmische musik');
   if (lower.includes('city pop') || lower.includes('citypop')) variations.add('japanese city pop');
-  if (lower.includes('bossa nova')) variations.add('bossa nova brasil');
   if (lower.includes('grunge')) variations.add('grunge rock');
   if (lower.includes('reggae')) variations.add('roots reggae');
   if (lower.includes('k-pop') || lower.includes('kpop')) {

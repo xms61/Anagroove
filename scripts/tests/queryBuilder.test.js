@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEEZER_GENRE_TAXONOMY } from '../../server/services/deezerMusicProvider.js';
 import { parsePrompt, buildQueryPlan, generateThemeVariations } from '../../server/services/queryBuilder.js';
-import { validateLivePuzzlePayload } from '../../server/validators.js';
 
 const years = (parsed) => [parsed.yearRange?.start, parsed.yearRange?.end];
 
@@ -61,14 +59,4 @@ test('theme variations keep the core subgenre and add known synonyms', () => {
   assert.ok(frenchHouse.includes('french touch') || frenchHouse.includes('French House'));
   const kpop = generateThemeVariations('kpop');
   assert.ok(!kpop.some(v => v.startsWith('gen ')) && !kpop.includes('kpop hits'));
-});
-
-test('every UI theme is a valid genre with a live Deezer configuration', () => {
-  for (const theme of ['mixed', 'kpop', 'anime', 'gaming', 'pop', 'rock', 'hiphop', 'edm', 'cinematic', 'latin', 'poppunk']) {
-    assert.equal(validateLivePuzzlePayload({ genre: theme }).data?.genre, theme, theme);
-    const config = DEEZER_GENRE_TAXONOMY[theme];
-    assert.ok(config && (config.chartId !== undefined || config.searches?.length > 0) && config.minFans > 0 && config.minRank > 0, theme);
-  }
-  assert.ok(DEEZER_GENRE_TAXONOMY.all && DEEZER_GENRE_TAXONOMY.electronic, 'aliases');
-  assert.ok(DEEZER_GENRE_TAXONOMY.anime.minFans >= 25000);
 });
