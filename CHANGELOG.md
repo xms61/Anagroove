@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.27.0] - 2026-09-23
+
+### Changed
+- **Header (`AppHeader`):**
+  - the name, the puzzle picker, then Hint and **Check** (the only primary button)
+  - New, Settings and Menu as icons, with a dot on Menu while in a multiplayer room
+  - phones get two rows: the name, Check and Menu, then the picker, Hint, New and Settings
+- **Clue list:**
+  - one badge style per theme instead of a colour per clue
+  - theme headings: ヨコのカギ / タテのカギ, WAAGERECHT / SENKRECHT, Side A / Side B
+  - Across/Down tabs on phones
+- **Player:**
+  - one docked row, with the theme's deck: a car-radio display with level bars, a step sequencer that fills with playback, or a turntable whose tonearm moves in as the preview plays
+  - the seek bar is now a keyboard-accessible slider
+  - "Preview unavailable" is an icon with a label instead of a pill that overflowed on phones
+  - a blocked autoplay no longer shows as an error
+- **Page:**
+  - the loading and error states use plain wording ("Picking songs…", "Couldn't build a puzzle")
+  - the race leaderboard is a slim bar
+  - the page reserves the player's height, so it no longer covers the last clue on phones
+
+### Added
+- `ui.tsx`: `Button`, `IconButton` (a label is required), `Panel` and `cx`.
+- `only-city` / `only-berlin` / `only-vinyl` wrappers for theme-specific markup.
+- The smoke test checks that the last clue can scroll into view above the player on a 375 px phone.
+
+### Removed
+- The -5 s / +5 s buttons (the slider seeks), the spinning disc logo, and the unused `isPlaying` grid prop and animation helpers.
+
+---
+
 ## [1.26.0] - 2026-09-23
 
 ### Added

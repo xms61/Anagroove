@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Clue } from '../types/crossword';
+import { cx } from './ui';
 
 interface ClueListProps {
   clues: Clue[];
@@ -7,91 +8,92 @@ interface ClueListProps {
   onSelectClue: (clue: Clue) => void;
 }
 
-const getClueBadgeClass = (clueId: string) => {
-  const num = parseInt(clueId) || 0;
-  const isAcross = clueId.includes('A');
-  const palette = isAcross
-    ? [
-        'bg-accent text-on-accent',
-        'bg-hi text-on-accent',
-        'bg-bad text-fg',
-        'bg-ok text-on-accent',
-        'bg-bad text-on-accent',
-        'bg-accent text-on-accent',
-      ]
-    : [
-        'bg-hi text-fg',
-        'bg-ok text-on-accent',
-        'bg-bad text-fg',
-        'bg-accent text-on-accent',
-        'bg-hi text-fg',
-        'bg-hi text-fg',
-      ];
-  return palette[num % palette.length];
-};
+type Direction = Clue['direction'];
+
+/** Column headings per theme: the Japanese and German crossword terms, or a record's sides. */
+function ColumnHeading({ direction, count }: { direction: Direction; count: number }) {
+  const across = direction === 'across';
+  return (
+    <div className="flex items-baseline gap-2.5 px-3 pb-3 mb-1.5 border-b border-line">
+      <h2 className="font-display text-xl leading-none">
+        <span className="only-city">{across ? 'Across' : 'Down'}</span>
+        <span className="only-berlin">{across ? 'Across' : 'Down'}</span>
+        <span className="only-vinyl">{across ? 'Side A' : 'Side B'}</span>
+      </h2>
+      <span className="text-xs font-bold tracking-wider text-muted">
+        <span className="only-city" lang="ja">{across ? 'ヨコのカギ' : 'タテのカギ'}</span>
+        <span className="only-berlin" lang="de">{across ? 'WAAGERECHT →' : 'SENKRECHT ↓'}</span>
+        <span className="only-vinyl">{across ? 'ACROSS' : 'DOWN'}</span>
+      </span>
+      <span className="ml-auto text-xs text-muted">{count} clues</span>
+    </div>
+  );
+}
+
+function ClueButton({ clue, active, onSelect }: { clue: Clue; active: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      className={cx(
+        'w-full flex items-center gap-3 px-3 py-2 text-left rounded-control transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
+        active ? 'bg-raised' : 'hover:bg-raised/60',
+      )}
+    >
+      <span data-active={active} className="clue-badge min-w-9 h-7 px-1.5 shrink-0 inline-flex items-center justify-center rounded-cell text-sm font-extrabold">
+        {clue.id}
+      </span>
+      <span className="flex flex-col min-w-0">
+        <span className="text-sm font-semibold truncate" title={clue.clueText}>{clue.clueText}</span>
+        <span className="text-xs text-muted">{clue.clueType} · {clue.length} letters</span>
+      </span>
+    </button>
+  );
+}
 
 export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectClue }) => {
-  const acrossClues = clues.filter(c => c.direction === 'across');
-  const downClues = clues.filter(c => c.direction === 'down');
+  const [tab, setTab] = useState<Direction>(activeClue?.direction ?? 'across');
+  useEffect(() => {
+    if (activeClue) setTab(activeClue.direction);
+  }, [activeClue]);
 
-  const renderClueItem = (clue: Clue) => {
-    const isActive = activeClue?.id === clue.id;
-    const badgeColor = getClueBadgeClass(clue.id);
-
+  const column = (direction: Direction) => {
+    const list = clues.filter(c => c.direction === direction);
     return (
-      <button
-        key={clue.id}
-        type="button"
-        onClick={() => onSelectClue(clue)}
-        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all cursor-pointer border ${
-          isActive
-            ? 'bg-fg text-on-accent border-line shadow-[0_4px_16px_rgba(0,0,0,0.3)] font-semibold scale-[1.01]'
-            : 'bg-transparent text-fg hover:bg-fg/5 hover:text-fg border-transparent'
-        }`}
-      >
-        <span
-          className={`px-2.5 py-0.5 rounded-md font-mono font-black text-xs shrink-0 shadow-sm ${badgeColor}`}
-        >
-          {clue.id}
-        </span>
-        <div className="flex flex-col truncate">
-          <span className={`text-sm font-medium truncate ${isActive ? 'text-on-accent font-bold' : 'text-fg'}`} title={clue.clueText}>
-            {clue.clueText}
-          </span>
-          <span className={`text-xs font-mono ${isActive ? 'text-muted font-semibold' : 'text-muted'}`}>
-            {clue.clueType} • {clue.length} letters
-          </span>
+      <div className={cx('flex-col min-w-0', tab === direction ? 'flex' : 'hidden md:flex')}>
+        <ColumnHeading direction={direction} count={list.length} />
+        <div className="flex flex-col gap-0.5">
+          {list.map(clue => (
+            <ClueButton key={clue.id} clue={clue} active={activeClue?.id === clue.id} onSelect={() => onSelectClue(clue)} />
+          ))}
         </div>
-      </button>
+      </div>
     );
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 max-h-[600px] overflow-y-auto pr-1">
-      {/* Across (Horizontal) Clues */}
-      <div className="flex flex-col">
-        <h3 className="text-sm font-bold text-fg mb-2.5 pb-1.5 border-b border-line/5 flex items-center justify-between sticky top-0 bg-surface/95 backdrop-blur-sm z-10">
-          <span className="flex items-center gap-1.5 text-accent">
-            <span>Across (Horizontal)</span>
-          </span>
-          <span className="text-xs font-mono text-muted bg-fg/5 px-2 py-0.5 rounded-full">{acrossClues.length} clues</span>
-        </h3>
-        <div className="flex flex-col gap-1.5">
-          {acrossClues.map(clue => renderClueItem(clue))}
-        </div>
+    <div>
+      {/* Phones show one direction at a time */}
+      <div className="md:hidden flex gap-1 p-1 mb-3 bg-bg/40 border border-line rounded-control" role="group" aria-label="Clue direction">
+        {(['across', 'down'] as const).map(direction => (
+          <button
+            key={direction}
+            type="button"
+            aria-pressed={tab === direction}
+            onClick={() => setTab(direction)}
+            className={cx(
+              'flex-1 h-10 rounded-control text-sm font-bold capitalize cursor-pointer transition',
+              tab === direction ? 'bg-raised text-fg' : 'text-muted',
+            )}
+          >
+            {direction}
+          </button>
+        ))}
       </div>
-
-      {/* Down (Vertical) Clues */}
-      <div className="flex flex-col">
-        <h3 className="text-sm font-bold text-fg mb-2.5 pb-1.5 border-b border-line/5 flex items-center justify-between sticky top-0 bg-surface/95 backdrop-blur-sm z-10">
-          <span className="flex items-center gap-1.5 text-hi">
-            <span>Down (Vertical)</span>
-          </span>
-          <span className="text-xs font-mono text-muted bg-fg/5 px-2 py-0.5 rounded-full">{downClues.length} clues</span>
-        </h3>
-        <div className="flex flex-col gap-1.5">
-          {downClues.map(clue => renderClueItem(clue))}
-        </div>
+      <div className="grid md:grid-cols-2 gap-4 lg:gap-6">
+        {column('across')}
+        {column('down')}
       </div>
     </div>
   );

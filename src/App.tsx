@@ -22,7 +22,9 @@ import { applyTheme } from './themes';
 import { ThemeBackdrop } from './components/ThemeBackdrop';
 import { readJson, readString, STORAGE_KEYS, writeJson, writeString } from './services/storage';
 import { themeById } from '../shared/themes';
-import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle, Settings, Trophy } from 'lucide-react';
+import { AlertCircle, Disc3, Swords, Trophy } from 'lucide-react';
+import { AppHeader } from './components/AppHeader';
+import { Button, Panel } from './components/ui';
 
 /** A saved theme id that no longer exists (e.g. the removed "latin") falls back to Mixed. */
 const knownThemeOr = (id: string) => (themeById(id) ? id : 'all');
@@ -83,9 +85,6 @@ export default function App() {
 
   // Blacklist state
   const { blacklist, addArtist, addSong, removeItem } = useBlacklist();
-
-  // Playback state for vinyl animation sync
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   const activePuzzle = currentPuzzle || EMPTY_PUZZLE;
 
@@ -201,180 +200,57 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen text-fg flex flex-col pb-36">
+    <div className="min-h-screen text-fg flex flex-col pb-28 sm:pb-32">
       <ThemeBackdrop />
-      {/* Top Clean Minimalist Header */}
-      <header className="border-b border-line/10 bg-surface/90 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5 shadow-sm">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          {/* Brand & Live Style Selector */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-on-accent shrink-0">
-              <Disc3 className={`w-5 h-5 ${isAudioPlaying ? 'animate-spin-slow' : ''}`} />
-            </div>
-            <div className="sr-only sm:not-sr-only">
-              <h1 className="font-black text-base tracking-tight text-fg flex items-center gap-2">
-                <span>Anagroove</span>
-              </h1>
-            </div>
+      <AppHeader
+        puzzleTitle={currentPuzzle?.title || 'Live crossword'}
+        clueCount={currentPuzzle?.clues.length ?? 0}
+        isLoading={isLoadingPuzzle}
+        inRoom={Boolean(multiplayer.room)}
+        onOpenGenerator={() => setOpenDialog('generator')}
+        onNewPuzzle={() => generateNewPuzzle({ genre: currentGenre, targetWords: 10 })}
+        onHint={() => setOpenDialog('hint')}
+        onCheck={validateGrid}
+        onOpenSettings={() => setOpenDialog('settings')}
+        onOpenMenu={() => setOpenDialog('lounge')}
+      />
 
-            {/* Live Style Badge & Generator Trigger */}
-            <button
-              type="button"
-              onClick={() => setOpenDialog('generator')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised border border-accent/30 hover:border-accent/60 text-xs font-semibold text-fg transition cursor-pointer shadow-sm group"
-              title="Click to generate a custom live crossword or change musical style"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-accent" />
-              <span className="font-bold text-accent truncate max-w-[120px] sm:max-w-[200px]">
-                {currentPuzzle?.title || 'Live Crossword'}
-              </span>
-              {currentPuzzle && (
-                <span className="text-xs text-muted font-mono hidden sm:inline">
-                  ({currentPuzzle.clues.length} clues)
-                </span>
-              )}
-              <ChevronDown className="w-3.5 h-3.5 text-muted group-hover:text-accent ml-0.5" />
-            </button>
-          </div>
-
-          {/* Essential Actions: Quick Shuffle, Hint, Check, and Salon Menu (☰) */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Quick Random Shuffle Button */}
-            <button
-              type="button"
-              onClick={() => generateNewPuzzle({ genre: currentGenre, targetWords: 10 })}
-              disabled={isLoadingPuzzle}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised text-accent hover:text-accent text-xs font-bold border border-accent/30 transition cursor-pointer shadow-sm disabled:opacity-50"
-              title="Generate a fresh random crossword on the fly"
-              aria-label="Shuffle: new random crossword"
-            >
-              <Shuffle className={`w-3.5 h-3.5 text-accent ${isLoadingPuzzle ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Shuffle</span>
-            </button>
-
-            {/* Hint Button */}
-            <button
-              type="button"
-              onClick={() => setOpenDialog('hint')}
-              disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised text-accent hover:text-accent text-xs font-bold border border-accent/30 transition cursor-pointer shadow-sm disabled:opacity-40"
-              title="Get a hint ([Space] Letter, [Tab] Word, [Shift+Tab] Reveal All)"
-              aria-label="Hint"
-            >
-              <Lightbulb className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
-              <span className="hidden sm:inline">Hint</span>
-            </button>
-
-            {/* Check Button */}
-            <button
-              type="button"
-              onClick={validateGrid}
-              disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-ok to-ok hover:from-ok hover:to-ok text-fg text-xs font-bold transition cursor-pointer active:scale-95 disabled:opacity-40"
-              title="Check answers"
-              aria-label="Check answers"
-            >
-              <CheckSquare className="w-3.5 h-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Check</span>
-            </button>
-
-            {/* Settings Button */}
-            <button
-              type="button"
-              onClick={() => setOpenDialog('settings')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised text-accent hover:text-accent text-xs font-bold border border-accent/30 transition cursor-pointer shadow-sm"
-              title="Open Lounge Settings"
-              aria-label="Settings"
-            >
-              <Settings className="w-3.5 h-3.5 text-accent" />
-              <span className="hidden sm:inline">Settings</span>
-            </button>
-
-            {/* Lounge Menu Button */}
-            <button
-              type="button"
-              onClick={() => setOpenDialog('lounge')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shadow-sm relative ${
-                multiplayer.room
-                  ? 'bg-hi text-on-accent border-hi'
-                  : 'bg-panel hover:bg-raised text-fg border-line/10 hover:border-accent/40'
-              }`}
-              title="Open Lounge Menu (Live Generator, Multiplayer, Blacklist, History)"
-              aria-label="Menu"
-            >
-              <Menu className="w-4 h-4 text-accent" />
-              <span className="hidden sm:inline">Menu</span>
-
-              {/* Status indicator dot if multiplayer is active */}
-              {multiplayer.room && (
-                <span className="w-2 h-2 rounded-full bg-hi animate-ping absolute -top-0.5 -right-0.5" />
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Versus Race Mode Live Leaderboard Bar (if in race mode) */}
       {multiplayer.room?.mode === 'race' && (
-        <div className="bg-bad/10 border-b border-bad/30 px-4 py-2 text-sm" role="status" aria-label="Race leaderboard">
-          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <span className="font-bold text-bad flex items-center gap-1.5">
-              <Swords className="w-4 h-4 text-bad" aria-hidden="true" />
-              <span>VERSUS RACE LEADERBOARD</span>
+        <div className="bg-panel/90 border-b border-line px-4 py-2.5 text-sm" role="status" aria-label="Race leaderboard">
+          <div className="max-w-7xl mx-auto lg:px-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="font-display text-lg leading-none flex items-center gap-2">
+              <Swords className="w-4 h-4 text-accent" aria-hidden="true" />
+              Race
             </span>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              {multiplayer.room.players.map(p => (
-                <div key={p.id} className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-fg truncate max-w-[8rem]">{p.name}:</span>
-                  <div className="w-16 sm:w-24 bg-bg/40 rounded-full h-2 overflow-hidden border border-line/10" aria-hidden="true">
-                    <div
-                      className="h-full transition-all duration-300"
-                      style={{ width: `${p.progress || 0}%`, backgroundColor: p.color || 'rgb(var(--c-accent))' }}
-                    />
-                  </div>
-                  <span className="font-mono font-bold text-fg">{p.progress || 0}%</span>
+            {multiplayer.room.players.map(p => (
+              <div key={p.id} className="flex items-center gap-2 min-w-0">
+                <span className="font-semibold truncate max-w-[8rem]">{p.name}</span>
+                <div className="w-20 sm:w-28 h-2 bg-raised rounded-full overflow-hidden" aria-hidden="true">
+                  <div className="h-full transition-all duration-300" style={{ width: `${p.progress || 0}%`, backgroundColor: p.color || 'rgb(var(--c-accent))' }} />
                 </div>
-              ))}
-            </div>
+                <span className="font-mono text-xs text-muted">{p.progress || 0}%</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Main Game Arena */}
       {isLoadingPuzzle && !currentPuzzle ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[450px]">
-          <div className="relative mb-6">
-            <div className="w-20 h-20 rounded-full border-4 border-accent/20 flex items-center justify-center animate-spin">
-              <Disc3 className="w-12 h-12 text-accent" />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-4 h-4 rounded-full bg-bg border-2 border-accent animate-pulse" />
-            </div>
-          </div>
-          <h2 className="text-xl font-black text-fg mb-2 tracking-tight">Tuning Turntable...</h2>
-          <p className="text-xs text-muted max-w-sm text-center leading-relaxed">
-            Gathering live Deezer track previews and weaving a dynamic music crossword grid on the fly.
-          </p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 min-h-[450px] text-center" role="status">
+          <Disc3 className="w-14 h-14 text-accent animate-spin" aria-hidden="true" />
+          <h2 className="font-display text-2xl">Picking songs…</h2>
+          <p className="text-sm text-muted max-w-sm">Choosing tracks and building the grid.</p>
         </div>
       ) : puzzleError && !currentPuzzle ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[450px]">
-          <div className="w-12 h-12 rounded-2xl bg-bad/10 border border-bad/20 flex items-center justify-center mb-4 text-bad">
-            <AlertCircle className="w-6 h-6" />
-          </div>
-          <h2 className="text-lg font-bold text-fg mb-1">Unable to Load Live Crossword</h2>
-          <p className="text-xs text-muted mb-6 max-w-sm text-center">{puzzleError}</p>
-          <button
-            type="button"
-            onClick={() => generateNewPuzzle({ genre: 'all', targetWords: 10 })}
-            className="px-5 py-2.5 bg-gradient-to-r from-accent to-accent hover:opacity-95 text-on-accent font-bold rounded-xl text-xs cursor-pointer shadow-lg shadow-accent/20"
-          >
-            Try Again
-          </button>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 min-h-[450px] text-center" role="alert">
+          <AlertCircle className="w-10 h-10 text-bad" aria-hidden="true" />
+          <h2 className="font-display text-2xl">Couldn't build a puzzle</h2>
+          <p className="text-sm text-muted max-w-sm">{puzzleError}</p>
+          <Button variant="primary" onClick={() => generateNewPuzzle({ genre: 'all', targetWords: 10 })} className="mt-3">Try again</Button>
         </div>
       ) : (
-        <main className="max-w-7xl mx-auto w-full p-4 lg:p-6 flex flex-col xl:flex-row items-center xl:items-start justify-center gap-8">
-          {/* Crossword Grid with Vinyl Backdrop */}
-          <div className="w-full xl:w-auto flex justify-center">
+        <main className="max-w-7xl mx-auto w-full px-4 lg:px-8 pt-5 sm:pt-8 flex flex-col xl:flex-row items-stretch xl:items-start gap-5 xl:gap-8">
+          <div className="xl:w-auto flex justify-center">
             <CrosswordGrid
               puzzle={activePuzzle}
               userLetters={userLetters}
@@ -392,24 +268,9 @@ export default function App() {
             />
           </div>
 
-          {/* Clue Lists (Across & Down side-by-side) */}
-          <div className="w-full xl:flex-1 xl:max-w-2xl bg-surface/85 border border-line/10 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-line/10">
-              <span className="text-xs font-bold uppercase tracking-wider text-accent/80 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-accent" />
-                <span>Live Clues</span>
-              </span>
-              <span className="text-xs font-mono font-bold text-muted">
-                {activePuzzle.clues.length} Words
-              </span>
-            </div>
-
-            <ClueList
-              clues={activePuzzle.clues}
-              activeClue={activeClue}
-              onSelectClue={selectClue}
-            />
-          </div>
+          <Panel aria-label="Clues" className="flex-1 min-w-0 p-3 sm:p-5">
+            <ClueList clues={activePuzzle.clues} activeClue={activeClue} onSelectClue={selectClue} />
+          </Panel>
         </main>
       )}
 
@@ -418,7 +279,6 @@ export default function App() {
         activeClue={activeClue}
         onPrevClue={prevClue}
         onNextClue={nextClue}
-        onPlaybackChange={setIsAudioPlaying}
         volume={defaultVolume}
         onVolumeChange={handleChangeDefaultVolume}
         isCompleted={isCompleted || showEndScreen}
