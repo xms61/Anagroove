@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BlacklistItem } from '../services/apiClient';
-import { Ban, X, Plus, Trash2, Search, User, Music } from 'lucide-react';
+import { Ban, Plus, Trash2, Search, User, Music } from 'lucide-react';
+import { Modal } from './Modal';
 
 interface BlacklistModalProps {
   isOpen: boolean;
@@ -42,30 +43,22 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-[#121622] border border-rose-500/20 rounded-2xl max-w-lg w-full p-6 shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative text-slate-100 flex flex-col max-h-[85vh]">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/10 transition cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
+    <Modal isOpen={isOpen} onClose={onClose} className="border-rose-500/20 max-w-lg p-6 flex flex-col">
+      {({ titleId, descriptionId }) => (
+      <>
         {/* Header */}
         <div className="flex items-center gap-3 pb-4 border-b border-white/10">
           <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/35 text-rose-400 flex items-center justify-center shadow-sm">
             <Ban className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <h2 id={titleId} className="text-xl font-bold text-white flex items-center gap-2">
               Music Blacklist
               <span className="text-xs bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-full font-mono">
                 {blacklist.length} blocked
               </span>
             </h2>
-            <p className="text-xs text-slate-400">
+            <p id={descriptionId} className="text-xs text-slate-400">
               Blacklisted artists and tracks will never appear in your crosswords.
             </p>
           </div>
@@ -74,7 +67,7 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
         {/* Add Field */}
         <form onSubmit={handleAdd} className="my-4 flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="flex rounded-xl overflow-hidden border border-white/10 bg-[#181e2c] p-0.5 text-xs font-semibold">
+            <div className="flex rounded-xl overflow-hidden border border-white/10 bg-kissa-card p-0.5 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setInputType('artist')}
@@ -102,7 +95,7 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
               value={inputText}
               onChange={e => setInputText(e.target.value)}
               placeholder={`Block ${inputType}... (e.g. ${inputType === 'artist' ? 'Taylor Swift, Drake' : 'Despacito'})`}
-              className="flex-1 px-3 py-2 rounded-xl bg-[#181e2c] border border-white/10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+              className="flex-1 px-3 py-2 rounded-xl bg-kissa-card border border-white/10 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:border-rose-500"
             />
 
             <button
@@ -119,13 +112,13 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
         {/* Search existing list */}
         {blacklist.length > 5 && (
           <div className="relative mb-3">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Filter blocked items..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#181e2c] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-kissa-card border border-white/10 text-xs text-white placeholder:text-slate-400 focus:outline-none"
             />
           </div>
         )}
@@ -133,7 +126,7 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
         {/* Blacklist Items List */}
         <div className="flex-1 overflow-y-auto pr-1 divide-y divide-white/5">
           {filtered.length === 0 ? (
-            <div className="text-center py-10 text-slate-500 text-xs font-mono">
+            <div className="text-center py-10 text-slate-400 text-xs font-mono">
               {searchQuery ? 'No matching blocked items.' : 'Your blacklist is currently empty.'}
             </div>
           ) : (
@@ -159,7 +152,7 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
                   type="button"
                   onClick={() => onRemoveItem(item.id)}
                   title="Remove from blacklist"
-                  className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -169,7 +162,7 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="pt-3 mt-2 border-t border-white/10 flex items-center justify-between text-xs text-slate-500">
+        <div className="pt-3 mt-2 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
           <span>Synced automatically without accounts</span>
           <button
             type="button"
@@ -179,7 +172,8 @@ export const BlacklistModal: React.FC<BlacklistModalProps> = ({
             Done
           </button>
         </div>
-      </div>
-    </div>
+      </>
+      )}
+    </Modal>
   );
 };

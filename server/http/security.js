@@ -48,8 +48,8 @@ export function securityHeaders({ production }) {
       res.setHeader('Content-Security-Policy', [
         "default-src 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self'",
         "img-src 'self' data: https:",
         "media-src 'self' https:",
         "connect-src 'self' ws: wss:",

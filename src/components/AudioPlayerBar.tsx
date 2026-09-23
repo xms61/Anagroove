@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clue } from '../types/crossword';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import { playableAudioUrl } from '../services/audioSource';
+import { readSettings } from '../hooks/useSettings';
 
 interface AudioPlayerBarProps {
   activeClue?: Clue;
@@ -28,16 +29,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(() => {
     if (typeof controlledVolume === 'number') return controlledVolume;
-    try {
-      const saved = localStorage.getItem('spotyspice_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.defaultVolume === 'number') return parsed.defaultVolume;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 0.15;
+    return readSettings().defaultVolume;
   });
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -220,14 +212,14 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       />
 
       {/* Floating Analog Preamp Deck */}
-      <div className="bg-[#12141c]/95 backdrop-blur-xl text-slate-100 rounded-2xl px-5 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.85)] flex flex-col sm:flex-row items-center justify-between gap-4 border border-amber-500/30 relative overflow-hidden">
+      <div className="bg-kissa-surface/95 backdrop-blur-xl text-slate-100 rounded-2xl px-5 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.85)] flex flex-col sm:flex-row items-center justify-between gap-4 border border-amber-500/30 relative overflow-hidden">
         {/* Subtle brass plate top edge */}
         <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
 
         {/* Left: Active Clue Info with VU Meter & Letter Pips */}
         <div className="flex items-center gap-3.5 w-full sm:w-auto overflow-hidden">
           {/* Dual VU Meter / Analog Level Indicator */}
-          <div className="w-10 h-10 rounded-xl bg-[#0c0d12] border border-amber-500/30 flex items-center justify-center shrink-0 p-1.5 shadow-inner">
+          <div className="w-10 h-10 rounded-xl bg-kissa-base border border-amber-500/30 flex items-center justify-center shrink-0 p-1.5 shadow-inner">
             {isPlaying ? (
               <div className="flex items-end gap-[3px] h-5">
                 <div className="w-1 bg-amber-400 rounded-full animate-eq-1" />
@@ -335,8 +327,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       </div>
 
       {/* Interactive Audio Sample Scrubber Bar */}
-      <div className="w-full bg-[#0d0f17] border-x border-b border-amber-500/30 rounded-b-xl px-4 py-1.5 -mt-1 mx-auto max-w-[calc(100%-16px)] flex items-center gap-3 shadow-lg select-none">
-        <span className="text-[10px] font-mono text-amber-300 font-bold w-9 text-right shrink-0">
+      <div className="w-full bg-kissa-base border-x border-b border-amber-500/30 rounded-b-xl px-4 py-1.5 -mt-1 mx-auto max-w-[calc(100%-16px)] flex items-center gap-3 shadow-lg select-none">
+        <span className="text-xs font-mono text-amber-300 font-bold w-9 text-right shrink-0">
           {formatSeconds(currentTime)}
         </span>
 
@@ -365,7 +357,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           />
         </div>
 
-        <span className="text-[10px] font-mono text-slate-400 font-semibold w-9 shrink-0">
+        <span className="text-xs font-mono text-slate-400 font-semibold w-9 shrink-0">
           {formatSeconds(duration)}
         </span>
 
@@ -375,7 +367,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             type="button"
             onClick={() => handleSkipSeconds(-5)}
             title="Skip back 5 seconds"
-            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[10px] font-mono text-slate-300 hover:text-white transition cursor-pointer"
+            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
           >
             -5s
           </button>
@@ -383,7 +375,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             type="button"
             onClick={() => handleSkipSeconds(5)}
             title="Skip forward 5 seconds"
-            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[10px] font-mono text-slate-300 hover:text-white transition cursor-pointer"
+            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
           >
             +5s
           </button>
@@ -391,7 +383,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       </div>
 
       {/* Vintage Salon Subtitle */}
-      <p className="text-[10px] text-slate-400/80 mt-1 text-center font-mono">
+      <p className="text-xs text-slate-400/80 mt-1 text-center font-mono">
         Blind Audio Preview • Artists and track titles revealed upon solving
       </p>
     </div>

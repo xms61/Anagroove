@@ -9,8 +9,8 @@ Entry: `server/server.js` composes the app (Express 4, plus a `ws` server on `/w
 | Route | Auth | Notes |
 |---|---|---|
 | `GET /api/health` | none | liveness |
-| `GET /api/music/random` | optional `X-User-Id` | song pool; 30/min limit |
-| `POST /api/puzzles/live` | `X-User-Id` | builds a puzzle and returns `livePuzzleToken` (5 min TTL, max 100) for `create_room`; 30/min limit |
+| `GET /api/music/random` | optional `X-User-Id` | song pool; optional `languages=en,ja` filter; 30/min limit |
+| `POST /api/puzzles/live` | `X-User-Id` | builds a puzzle and returns `livePuzzleToken` (5 min TTL, max 100) for `create_room`. Optional `languages: ["en"\|"ja"\|"ko"]` (`parseLanguageFilter`); 30/min limit |
 | `GET/POST /api/progress` | `X-User-Id` | `validateProgressPayload` (≤30×30 grid) |
 | `GET /api/history`, `POST /api/history/solved` | `X-User-Id` | |
 | `GET/POST /api/blacklist`, `DELETE /api/blacklist/:id` | `X-User-Id` | |
@@ -24,7 +24,7 @@ Entry: `server/server.js` composes the app (Express 4, plus a `ws` server on `/w
 - JSON body limit 256 kb. General API: 120 req/min per IP (`middleware/rateLimiter.js`). WS: max 20 connections per IP and 35 messages/s, 64 KB per message.
 - Client IP is `req.ip`, which follows `TRUST_PROXY`. WS upgrades use `clientIpFromUpgrade` with the same rule. Never read `X-Forwarded-For` directly.
 - CORS allows only origins in `CORS_ALLOWED_ORIGINS`, or localhost when that's unset. A rejected origin gets a 403 JSON response from `jsonErrorHandler` (`http/security.js`), which also turns bad or oversized bodies into 400/413 JSON.
-- Every response gets `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and `Permissions-Policy`. Production also gets a CSP (`media-src https:` for preview redirects).
+- Every response gets `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and `Permissions-Policy`. Production also gets a CSP (`media-src https:` for preview redirects, `font-src 'self'`, since fonts are self-hosted).
 - **User store:** `server/db.js` → `UserStore` (`server/db/userStore.js`), SQLite `DATA_DIR/users.sqlite` (tables `users`, `progress`, `solved_history`, `blacklist`, `meta`), opened lazily.
   - The old `store.json` (or its `.bak`) is imported once on first open, recorded in `meta`, and then no longer read.
   - Reads (`findUser`, `get*`) never create users; writes do.

@@ -34,7 +34,7 @@ export function getAnimeThemeType(genre = '', prompt = '') {
  * with explicit exemption for non-English cultural genres and prompts
  * (Japanese/Anime, City Pop, K-Pop, Latin, Reggaeton, etc.).
  */
-export function isLanguagePermitted(track, genre = 'all', prompt = '') {
+export function isLanguagePermitted(track, genre = 'all', prompt = '', { languages = null } = {}) {
   // Anime OP/ED tracks from the dedicated anime catalog are always permitted
   if (track?.isAnimeOped) {
     return true;
@@ -54,11 +54,12 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '') {
   // Catalog rows carry a classified language (artist vote + ELD): trust it instead of the
   // stopword heuristics below, which reject English titles like "Viva La Vida" or "Ma Belle".
   // Live-provider candidates are classified from their title and artist the same way.
-  const allowed = allowedLanguagesForContext(genre, prompt);
+  const allowed = Array.isArray(languages) && languages.length > 0 ? languages : allowedLanguagesForContext(genre, prompt);
+  const englishOnly = allowed.length === 1 && allowed[0] === 'en';
   const hasCatalogLanguage = typeof track?.language === 'string' && Boolean(track.language);
   const language = hasCatalogLanguage ? track.language : resolveTrackLanguage({ title, artist });
   if (!allowed.includes(language)) return false;
-  if (hasCatalogLanguage || allowed.length > 1) {
+  if (hasCatalogLanguage || !englishOnly) {
     return !isClassicalOrKidsMismatch(title, artist, context);
   }
 

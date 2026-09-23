@@ -6,7 +6,7 @@ import { db } from '../db.js';
 import { getRandomSongPool } from '../selection/songPool.js';
 import { generateLiveCrossword } from '../../shared/liveCrossword.js';
 import { resolvePreviewRef } from '../services/previewResolver.js';
-import { validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.js';
+import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.js';
 import { logger } from '../logger.js';
 
 export function createMusicRouter({ livePuzzles }) {
@@ -51,6 +51,7 @@ export function createMusicRouter({ livePuzzles }) {
         decade: validatedQuery.decade,
         popularity: validatedQuery.popularity,
         seed: validatedQuery.seed,
+        languages: parseLanguageFilter(req.query.languages).languages,
       });
 
       res.json({ success: true, count: songs.length, songs });
@@ -75,7 +76,7 @@ export function createMusicRouter({ livePuzzles }) {
     }
 
     try {
-      const { genre, minFans, targetWords, recentIds, prompt, artist, album, decade, popularity, seed } = validation.data;
+      const { genre, minFans, targetWords, recentIds, prompt, artist, album, decade, popularity, seed, languages } = validation.data;
 
       logger.info('puzzle', `Generating live puzzle for user "${userId}" | genre: ${genre}, popularity: ${popularity}, prompt: "${prompt || ''}"`);
       const genStart = Date.now();
@@ -92,6 +93,7 @@ export function createMusicRouter({ livePuzzles }) {
         decade,
         popularity,
         seed,
+        languages,
       });
 
       if (songs.length < 6) {
@@ -135,6 +137,7 @@ export function createMusicRouter({ livePuzzles }) {
           album,
           prompt,
           seed,
+          languages: languages || null,
         },
       });
     } catch (err) {

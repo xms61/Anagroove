@@ -106,6 +106,7 @@
 | **Frontend** | React 19, TypeScript, Vite 6, TailwindCSS, Lucide React, Canvas Confetti |
 | **Backend** | Node.js, Express, WebSocket (`ws`), Native HTTP Fetch |
 | **Database** | SQLite via Node 24 `node:sqlite`: music catalog, anime catalog, user store |
+| **Accessibility** | Shared dialog shell (focus trap, Esc, labelled), WCAG AA text contrast, self-hosted fonts |
 | **Audio Engine** | Deezer API & iTunes preview resolver with dynamic fallback self-healing |
 
 ---

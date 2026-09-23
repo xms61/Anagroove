@@ -37,7 +37,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
 8. **Serving:** `GET /api/preview/:ref` calls `resolvePreviewRef`, which tries Deezer `/track/{id}`, then Deezer search, then iTunes, and redirects (302). The URL is cached until 60 s before the signed URL's `exp`.
 
 ## Rules
-- **Language:** catalog rows are judged by their stored `language`; live candidates by `resolveTrackLanguage`. `allowedLanguagesForContext` returns:
+- **Language:** catalog rows are judged by their stored `language`; live candidates by `resolveTrackLanguage`. An explicit `languages` filter (generator chips, `queryPlan.languages`) replaces the theme languages in both the catalog window and the picker. Otherwise `allowedLanguagesForContext` returns:
   - K-pop → ko/en
   - Japanese, city pop or anime → ja/en
   - other international themes → en/ja/ko

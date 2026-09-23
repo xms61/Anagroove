@@ -1,35 +1,24 @@
 import { Puzzle } from '../types/crossword';
 import { getAnonymousUserId } from './apiClient';
-
-function canonicalArtistKey(name: string): string {
-  return (name || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '');
-}
+import { readJson, STORAGE_KEYS, writeJson } from './storage';
+import { canonicalArtistKey } from '../../shared/musicIdentity';
 
 function getRecentlyPlayedIds(): string[] {
-  try {
-    const raw = localStorage.getItem('spotyspice_recent_songs');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  const stored = readJson<string[]>(STORAGE_KEYS.recentSongs, []);
+  return Array.isArray(stored) ? stored : [];
 }
 
+// Local history is optional; live generation remains server-authoritative.
 function recordRecentlyPlayed(ids: string[], artists: string[] = []) {
-  try {
-    const artistKeys = artists.map(a => `artist:${canonicalArtistKey(a)}`).filter(k => k.length > 7);
-    const recent = new Set([...getRecentlyPlayedIds(), ...ids, ...artistKeys]);
-    localStorage.setItem('spotyspice_recent_songs', JSON.stringify([...recent].slice(-500)));
-  } catch {
-    // Local storage is optional; live generation remains server-authoritative.
-  }
+  // Same artist key as the server's recency check (keeps kana, hangul and kanji)
+  const artistKeys = artists.map(a => `artist:${canonicalArtistKey(a || '')}`).filter(k => k.length > 7);
+  const recent = new Set([...getRecentlyPlayedIds(), ...ids, ...artistKeys]);
+  writeJson(STORAGE_KEYS.recentSongs, [...recent].slice(-500));
 }
 
 export interface LivePuzzleOptions {
   genre?: string;
+  languages?: ('en' | 'ja' | 'ko')[];
   targetWords?: number;
   minFans?: number;
   prompt?: string;
@@ -63,6 +52,7 @@ export const dynamicMusicService = {
       decade: opts.decade || undefined,
       popularity: opts.popularity || undefined,
       seed: opts.seed || undefined,
+      languages: opts.languages && opts.languages.length > 0 ? opts.languages : undefined,
       recentIds: getRecentlyPlayedIds().slice(-300),
     };
 

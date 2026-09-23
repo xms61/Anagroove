@@ -61,6 +61,10 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
   // Debounced server auto-save ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // When the current puzzle was loaded (this session), for the solved-history time
+  const startedAtRef = useRef(Date.now());
+  const elapsedSeconds = () => Math.min(86400, Math.round((Date.now() - startedAtRef.current) / 1000));
+
   // Reset state when puzzle changes
   useEffect(() => {
     if (initialLetters && initialLetters.length === puzzle.rows && initialLetters[0]?.length === puzzle.cols) {
@@ -82,6 +86,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     }
     setIsCompleted(false);
     setShowEndScreen(false);
+    startedAtRef.current = Date.now();
   }, [puzzle.id]);
 
   // Debounced server auto-save
@@ -191,7 +196,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
       });
 
       // Record solved puzzle to server
-      apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length);
+      apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length, elapsedSeconds());
 
       // Notify multiplayer room of win
       if (multiplayerRoom && playerId) {
@@ -521,7 +526,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
         spread: 80,
         origin: { y: 0.6 }
       });
-      apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length);
+      apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length, elapsedSeconds());
       if (multiplayerRoom && playerId) {
         socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');
       }

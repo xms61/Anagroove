@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.18.0] - 2026-09-23
+
+### Added
+- **Accessible dialogs:** a shared `<Modal>` and `useDialog` hook give all 8 dialogs and the Lounge drawer:
+  - `role="dialog"` and `aria-modal`
+  - an accessible name and description
+  - a focus trap, Esc to close, and focus returned to the opener
+
+  Before, only the drawer closed on Esc.
+- **Solved History view:** a new Lounge menu item lists every finished puzzle from `GET /api/history` with date, clue count and solve time (now recorded; it was always 0). "Listening Log & Showcase" still opens the current puzzle's tracklist.
+- **EN/JA/KO filter** in the live generator: `languages` on `POST /api/puzzles/live` and `GET /api/music/random`, validated to en/ja/ko, applied to the catalog window and the picker.
+- `useSettings()` and `readSettings()` replace three separate settings parsers. `services/storage.ts` guards every storage access (it was unguarded in `App.tsx` and `useBlacklist`).
+- Self-hosted fonts (`@fontsource/plus-jakarta-sans`, `@fontsource/jetbrains-mono`, OFL-1.1, Latin subsets). No more render-blocking Google Fonts requests; the CSP drops the Google font hosts.
+- 5 new tests: language filter validation, policy override, catalog window.
+
+### Fixed
+- **Recently played artists never matched on the server:**
+  - The client stripped spaces and non-Latin letters from artist keys ("dualipa" vs the server's "dua lipa").
+  - Japanese and Korean artists became empty keys.
+  - The client now uses the shared `canonicalArtistKey`.
+- **Phones overflowed horizontally:** the page was 675 px wide at 375 px. The header now wraps and collapses button labels to icons with `aria-label`s, and the race leaderboard wraps.
+- **Background flash** on load: `index.html` used `#181818` while the CSS used `#0b0e14`. Both now use the palette base, inlined in `<head>`.
+- **Room victory dialog** used an off-palette gray and yellow; it now uses the palette.
+
+### Changed
+- **Palette tokens:** 91 hardcoded hex classes (35 distinct colors) replaced with the `kissa` tokens (`base`/`surface`/`card`/`panel`) and exact Tailwind palette colors.
+- **Contrast and type:** `text-slate-500` on dark surfaces becomes `text-slate-400` (WCAG AA); 9–11 px text becomes 12 px; clue text is 14 px.
+- Docs: `FRONTEND_UI.md`, `API_SECURITY.md`, `TRACK_SELECTION.md`, `README.md`.
+
+---
+
 ## [1.17.0] - 2026-09-23
 
 ### Added
