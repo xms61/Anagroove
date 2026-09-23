@@ -9,7 +9,7 @@ import { EndScreenModal } from './components/EndScreenModal';
 import { LiveGeneratorModal, PuzzleGenerationConfig } from './components/LiveGeneratorModal';
 import { BlacklistModal } from './components/BlacklistModal';
 import { MultiplayerModal } from './components/MultiplayerModal';
-import { LoungeDrawer } from './components/LoungeDrawer';
+import { MenuDrawer } from './components/MenuDrawer';
 import { apiClient, getMultiplayerPlayerId } from './services/apiClient';
 import { useBlacklist } from './hooks/useBlacklist';
 import { useMultiplayer } from './hooks/useMultiplayer';
@@ -29,7 +29,7 @@ import { Button, Panel } from './components/ui';
 /** A saved theme id that no longer exists (e.g. the removed "latin") falls back to Mixed. */
 const knownThemeOr = (id: string) => (themeById(id) ? id : 'all');
 
-type Dialog = 'hint' | 'generator' | 'blacklist' | 'multiplayer' | 'lounge' | 'settings' | 'history';
+type Dialog = 'hint' | 'generator' | 'blacklist' | 'multiplayer' | 'menu' | 'settings' | 'history';
 
 function emptyGrid<T>(puzzle: Puzzle, value: T): T[][] {
   return Array.from({ length: puzzle.rows }, () => Array<T>(puzzle.cols).fill(value));
@@ -83,7 +83,7 @@ export default function App() {
     onGameStarted: () => setOpenDialog(dialog => (dialog === 'multiplayer' ? null : dialog)),
   });
 
-  // Blacklist state
+  // Hidden artists and songs
   const { blacklist, addArtist, addSong, removeItem } = useBlacklist();
 
   const activePuzzle = currentPuzzle || EMPTY_PUZZLE;
@@ -212,7 +212,7 @@ export default function App() {
         onHint={() => setOpenDialog('hint')}
         onCheck={validateGrid}
         onOpenSettings={() => setOpenDialog('settings')}
-        onOpenMenu={() => setOpenDialog('lounge')}
+        onOpenMenu={() => setOpenDialog('menu')}
       />
 
       {multiplayer.room?.mode === 'race' && (
@@ -295,7 +295,7 @@ export default function App() {
         }}
       />
 
-      {/* Blacklist Management Modal */}
+      {/* Hidden artists and songs */}
       <BlacklistModal
         isOpen={openDialog === 'blacklist'}
         onClose={closeDialog}
@@ -354,9 +354,8 @@ export default function App() {
       {/* Solved puzzles from /api/history */}
       <HistoryModal isOpen={openDialog === 'history'} onClose={closeDialog} />
 
-      {/* Unified Lounge Slide-Over Menu */}
-      <LoungeDrawer
-        isOpen={openDialog === 'lounge'}
+      <MenuDrawer
+        isOpen={openDialog === 'menu'}
         onClose={closeDialog}
         onOpenLiveGenerator={() => setOpenDialog('generator')}
         onInstantRandomPuzzle={() => {
@@ -373,23 +372,14 @@ export default function App() {
         activePuzzleTitle={currentPuzzle?.title || 'Live Crossword'}
       />
 
-      {/* Multiplayer victory modal */}
-      <Modal isOpen={Boolean(multiplayer.winnerName)} onClose={multiplayer.dismissWinner} className="border-accent/40 max-w-sm p-8 text-center" closeLabel={null}>
+      {/* Multiplayer victory */}
+      <Modal isOpen={Boolean(multiplayer.winnerName)} onClose={multiplayer.dismissWinner} className="max-w-sm p-8 text-center" closeLabel={null}>
         {({ titleId, descriptionId }) => (
           <>
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-accent/20 border border-accent/40 text-accent flex items-center justify-center">
-              <Trophy className="w-7 h-7" aria-hidden="true" />
-            </div>
-            <h2 id={titleId} className="text-2xl font-black text-accent mb-2">Room Victory!</h2>
-            <p id={descriptionId} className="text-fg text-lg mb-6">{multiplayer.winnerName} solved the puzzle!</p>
-            <button
-              type="button"
-              data-autofocus
-              className="px-6 py-2.5 bg-accent hover:bg-accent text-on-accent font-bold rounded-xl transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              onClick={multiplayer.dismissWinner}
-            >
-              Awesome!
-            </button>
+            <Trophy className="w-12 h-12 mx-auto mb-4 text-accent" aria-hidden="true" />
+            <h2 id={titleId} className="font-display text-3xl leading-tight">Room solved</h2>
+            <p id={descriptionId} className="mt-2 mb-6 text-muted">{multiplayer.winnerName} finished the puzzle.</p>
+            <Button variant="primary" data-autofocus onClick={multiplayer.dismissWinner}>Nice</Button>
           </>
         )}
       </Modal>
