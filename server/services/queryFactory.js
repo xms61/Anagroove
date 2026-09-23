@@ -9,7 +9,7 @@ import {
   isTemporalPermitted,
   isAnimeTrack,
   isJapaneseTrack,
-} from './musicService.js';
+} from '../policy/selectionPolicy.js';
 import { shuffleArray } from '../../shared/shuffle.js';
 
 const PREFERRED_ROTATION = ['title', 'artist', 'keyword', 'title', 'artist', 'keyword'];

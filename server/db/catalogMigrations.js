@@ -233,11 +233,18 @@ function schemaV4(db) {
   if (!trackColumns.has('album_checked_at')) db.exec('ALTER TABLE tracks ADD COLUMN album_checked_at TEXT;');
 }
 
+function schemaV5(db) {
+  // Song selection reads a window in rand_key order (sampleCatalogTracks); without this index
+  // every request sorts all matching rows
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_rand ON tracks(rand_key);');
+}
+
 export const CATALOG_MIGRATIONS = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
   { version: 3, name: 'schema v3: artist languages, enrichment markers, ELD language classifier', up: schemaV3 },
   { version: 4, name: 'schema v4: album enrichment marker', up: schemaV4 },
+  { version: 5, name: 'schema v5: rand_key index for song selection', up: schemaV5 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;

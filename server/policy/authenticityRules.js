@@ -16,7 +16,7 @@ const UTILITY_TITLE = [
   /\blo-?fi\s*remix\b/i, /\bphonk\s*remix\b/i, /\bslowed(\s*\+?\s*reverb)?\b/i, /\bsped\s+up\b/i, /\bspeed\s+up\b/i,
   /\bpitched\b/i, /\bnightcore\b/i, /\bbacking\s+track\b/i, /\bworkout\s+mix\b/i, /\bfitness\s+beats\b/i,
   /\bwhite\s+noise\b/i, /\bsoundtrack\s+cue\b/i, /\b\d+\s*bpm\b/i, /\bbass\s*boost(ed)?\b/i,
-  /\b(drum|waiting|synth)\s*loop\b/i, /\bsans\s+paroles\b/i, /\binstrumental(\s+version)?\b/i,
+  /\b(drum|waiting|synth)\s*loop\b/i, /^untitled\b.*\d+$/i, /\bsans\s+paroles\b/i, /\binstrumental(\s+version)?\b/i,
   /\b(acoustic|piano|guitar|harp)\s+version\b/i, /\bkaraoke(\s+version)?\b/i, /\bno\s*vocals?\b/i, /\bguide\s*vocal\b/i, /\bminus\s*one\b/i,
   /[([](?:piano|acoustic|instrumental|orchestral|violin|cello|harp|flute|guitar|music\s*box|karaoke|backing\s*track)[)\]]/i,
 ];
@@ -40,7 +40,7 @@ const INAUTHENTIC_ARTIST = [
   /\banime\s*(keys|piano|relax|chill|cafe|project|ensemble|orchestra|tribute|band|music|soundtrack)\b/i,
   /\bpeaceful\s*(anime|piano|music)\b/i, /\bultra\s*beats\b/i, /\brelaxing\s*piano\b/i,
   /\bjonathan\s*young\b/i, /\bnatewantstobattle\b/i, /\btsuko\s*g\.?/i, /\brichaadeb\b/i, /\brainych\b/i, /\bamalee\b/i,
-  /\bfonzi\s*m\b/i, /\bmixfactor\b/i, /\bgraham\s*blvd\b/i, /\bparty\s*tyme\b/i, /\bknightsbridge\b/i,
+  /\bfonzi\s*m\b/i, /\bmixfactor\b/i, /\bjapanese\s+city\s+pop\b/i, /\bcity\s+pop\s+(radio|station|channel|collective)\b/i, /\bgraham\s*blvd\b/i, /\bparty\s*tyme\b/i, /\bknightsbridge\b/i,
 ];
 
 const SPOKEN_WORD_ARTIST = [

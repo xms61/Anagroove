@@ -40,16 +40,20 @@ import {
 import { mapItunesTrack, detectStorefront } from '../server/services/itunesMusicProvider.js';
 import { parsePrompt, buildQueryPlan, generateThemeVariations, extractAnimeKeyphrase } from '../server/services/queryBuilder.js';
 import { resolveAnimeCoverImages } from '../server/services/animeImageService.js';
+import { getRandomSongPool, setMusicProviderForTesting } from '../server/selection/songPool.js';
 import {
-  getRandomSongPool,
-  setMusicProviderForTesting,
   isLanguagePermitted,
   isThematicallyPermitted,
   isTemporalPermitted,
   isAuthenticTrack,
   isAnimeTrack,
   isJapaneseTrack,
-} from '../server/services/musicService.js';
+  isAnimeTarget,
+  getAnimeThemeType,
+  allowedLanguagesForContext,
+  resolveReleaseYear,
+} from '../server/policy/selectionPolicy.js';
+import { createRng, weightedOrder } from '../server/selection/random.js';
 import { judgePuzzle, judgeMultiGenerationSuite } from '../server/services/crosswordJudge.js';
 import {
   validateUserId,
@@ -78,13 +82,13 @@ import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../server/db/catal
 import { resolveTrackLanguage, classifyArtistLanguage, scriptLanguage } from '../server/db/languageClassifier.js';
 import { runCatalogCleanup } from '../server/db/catalogCleanup.js';
 import { evaluateCatalogGate } from '../server/db/catalogGate.js';
+import { UserStore } from '../server/db/userStore.js';
 import { recomputeCatalogLanguages } from '../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../server/crawler/enricher.js';
 import { DatabaseSync } from 'node:sqlite';
 import { CatalogValidator } from '../server/db/catalogValidator.js';
 import { AnimeCatalog } from '../server/db/animeCatalog.js';
-import { isAnimeTarget, getAnimeThemeType } from '../server/services/musicService.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
 import { TokenBucketRateLimiter } from '../server/crawler/rateLimiter.js';
 import {
@@ -1040,14 +1044,21 @@ async function runIntegrationTests() {
     }));
     setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
     const filteredPool = await getRandomSongPool({
-      count: 8,
+      count: 5,
       blacklist: [{ type: 'artist', name: 'artist 1' }],
       recentIds: ['deezer:2', 'hit-3']
     });
     assert(
+      filteredPool.length === 5 &&
       filteredPool.every(song => song.id !== 'deezer:2' && song.id !== 'deezer:3' && song.providerArtistId !== '1') &&
       filteredPool.some(song => song.artist === '21 pilots'),
       'Provider pool honors recent Deezer and legacy hit IDs without changing artist displays'
+    );
+    const tierPool = await getRandomSongPool({ count: 7, blacklist: [{ type: 'artist', name: 'artist 1' }], recentIds: ['deezer:2', 'hit-3', 'hit-3'] });
+    const tierIds = tierPool.map(song => song.id);
+    assert(
+      tierPool.length === 7 && tierIds.indexOf('deezer:2') === 5 && tierIds.indexOf('deezer:3') === 6,
+      'Recency tiers fill in order: fresh songs first, then once-played, then twice-played, until the pool is full'
     );
 
     const duplicateAnswerTracks = [
@@ -2678,6 +2689,71 @@ async function runPhase4CleanupTests() {
   assert(lang('Freak On a Leash', 'KoЯn') === 'en' && lang('P.I.M.P.', '50 Cent', 'en') === 'en', 'Stylized names and dotted acronyms stay English');
   assert(classifyArtistLanguage({ titles: ['Brown Sugar', 'The Door', 'Playa Playa'] }).language === 'en', 'A few short English titles do not vote an artist foreign');
   assert(classifyArtistLanguage({ titles: ['Por Esos Ojos', 'La Sala de Espera', 'Mi Corazón Contigo'] }).language === 'es', 'A Spanish catalog still votes es');
+
+  // 1b. Selection policy and sampling (Phase 5)
+  assert(isLanguagePermitted({ title: 'Viva La Vida', artist: 'Coldplay', language: 'en' }, 'pop') === true, 'Catalog language is trusted over stopword heuristics ("Viva La Vida")');
+  assert(isLanguagePermitted({ title: 'Idol', artist: 'YOASOBI', language: 'ja' }, 'pop') === false && isLanguagePermitted({ title: 'Idol', artist: 'YOASOBI', language: 'ja' }, 'all', 'japanese city pop') === true, 'Japanese catalog tracks only appear in Japanese themes');
+  assert(allowedLanguagesForContext('kpop').join() === 'ko,en' && allowedLanguagesForContext('all', 'anime openings').join() === 'ja,en' && allowedLanguagesForContext('rock').join() === 'en', 'Theme languages map to the en/ja/ko catalog');
+  const unmutated = { title: 'Dreams (2004 Remaster)', releaseDate: '2018-01-01' };
+  assert(isTemporalPermitted(unmutated, { start: 2000, end: 2009 }) === true && unmutated.releaseYear === undefined && resolveReleaseYear(unmutated) === 2004, 'isTemporalPermitted is pure; the vintage year comes from resolveReleaseYear');
+  assert(isTemporalPermitted({ title: 'No Year' }, null) === true && isTemporalPermitted({ title: 'No Year' }, { start: 1980, end: 1989 }) === false, 'Unknown years pass without a year window and fail with one');
+  const rngA = createRng('seed-1');
+  const rngB = createRng('seed-1');
+  assert([1, 2, 3].every(() => rngA() === rngB()) && createRng('seed-2')() !== createRng('seed-1')(), 'Seeded RNG is reproducible and seed-dependent');
+  const weightRng = createRng('weights');
+  let heavyFirst = 0;
+  for (let i = 0; i < 400; i++) {
+    if (weightedOrder([{ id: 'light', w: 1 }, { id: 'heavy', w: 9 }], item => item.w, weightRng)[0].id === 'heavy') heavyFirst++;
+  }
+  assert(heavyFirst > 320 && heavyFirst < 400, 'Weighted order puts a 9x heavier item first about 90% of the time');
+
+  const sampleCat = new SqliteCatalog(':memory:');
+  for (let i = 0; i < 30; i++) {
+    sampleCat.upsertTrack({ title: `Sample Song ${i}`, artist: `Sample Artist ${i % 10}`, durationMs: 200000, provider: 'deezer', providerTrackId: String(500 + i), deezerRank: 100000 + i * 20000, releaseYear: 1980 + (i % 20), sampleUrl: `https://cdn.test/${i}.mp3` });
+    sampleCat.insertSample(i + 1, { provider: 'itunes', providerTrackId: `it${i}`, sampleUrl: `https://it.test/${i}.m4a` });
+  }
+  const windowRows = sampleCat.sampleCatalogTracks({ languages: ['en'], poolSize: 50, start: 0.5 });
+  assert(windowRows.length === 30 && new Set(windowRows.map(r => r.id)).size === 30, 'Catalog window wraps around and returns one row per track (no duplicate per sample)');
+  assert(windowRows.every(r => r.sample_url.startsWith('https://cdn.test/')), 'The Deezer sample is preferred when a track has several');
+  const windowAgain = sampleCat.sampleCatalogTracks({ languages: ['en'], poolSize: 10, start: 0.25 });
+  assert(windowAgain.map(r => r.id).join() === sampleCat.sampleCatalogTracks({ languages: ['en'], poolSize: 10, start: 0.25 }).map(r => r.id).join(), 'The same window start returns the same rows');
+  const eighties = sampleCat.sampleCatalogTracks({ yearRange: { start: 1980, end: 1989 }, poolSize: 50 });
+  assert(eighties.length === 20 && eighties.every(r => r.release_year >= 1980 && r.release_year <= 1989), 'Year windows filter in SQL');
+  assert(sampleCat.sampleCatalogTracks({ artist: 'Sample Artist 3', poolSize: 50 }).length === 3 && sampleCat.sampleCatalogTracks({ ftsQuery: '"Song 1"', poolSize: 50 }).length >= 1, 'Artist and text filters narrow the window');
+  sampleCat.close();
+
+  // 1c. SQLite user store with a one-time import of the old JSON store
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-users-'));
+  const legacyPath = path.join(storeDir, 'store.json');
+  fs.writeFileSync(`${legacyPath}.bak`, JSON.stringify({ users: {
+    alice: {
+      userId: 'alice', createdAt: 1000, lastActive: 2000,
+      activeProgress: { puzzleId: 'p2', userLetters: [['A']] },
+      solvedHistory: [{ puzzleId: 'p1', solvedAt: 1500 }, { puzzleId: 'p1', solvedAt: 1600 }],
+      blacklist: [
+        { id: 'b1', name: 'Daft Punk', type: 'artist', dateAdded: 1100 },
+        { id: 'b2', name: 'daft  punk', type: 'artist', dateAdded: 1200 },
+        { id: 'b3', name: 'Same Title', type: 'song', provider: 'deezer', providerTrackId: '101', dateAdded: 1300 },
+        { id: 'bad', name: 'Nope', type: 'album' },
+      ],
+    },
+  } }));
+  fs.writeFileSync(legacyPath, '{ broken json');
+  const users = new UserStore(path.join(storeDir, 'users.sqlite'), { legacyStorePath: legacyPath });
+  assert(users.findUser('alice')?.createdAt === 1000 && users.getProgress('alice')?.puzzleId === 'p2', 'Legacy store is imported from the .bak copy when store.json is corrupt');
+  assert(users.getSolvedHistory('alice').length === 1 && users.getBlacklist('alice').map(b => b.id).join() === 'b1,b3', 'Import drops duplicate history, duplicate blacklist names and invalid types');
+  assert(users.importLegacyStore(legacyPath).imported === false, 'The import runs only once');
+  users.recordSolvedPuzzle('alice', { puzzleId: 'p2', title: 'Two' });
+  assert(users.getProgress('alice') === null && users.getSolvedHistory('alice').map(h => h.puzzleId).join() === 'p1,p2', 'Solving a puzzle clears its progress and appends to history in order');
+  users.addBlacklistItem('alice', { name: 'Same Title', type: 'song' });
+  users.addBlacklistItem('alice', { name: 'DAFT PUNK', type: 'artist' });
+  assert(users.getBlacklist('alice').length === 3 && users.removeBlacklistItem('alice', 'b1').length === 2, 'Generic and provider-scoped entries coexist; duplicates are ignored; removal by id');
+  assert(users.findUser('nobody') === null && users.getBlacklist('nobody').length === 0 && users.findUser('nobody') === null, 'Reads never create users');
+  users.close();
+  const reopened = new UserStore(path.join(storeDir, 'users.sqlite'), { legacyStorePath: legacyPath });
+  assert(reopened.getSolvedHistory('alice').length === 2 && reopened.getBlacklist('alice').length === 2, 'User state persists across restarts without re-importing');
+  reopened.close();
+  fs.rmSync(storeDir, { recursive: true, force: true });
 
   // 2. Text and version normalization
   assert(cleanDisplayText('I&#039;m Not The Only One') === "I'm Not The Only One" && cleanDisplayText('Rock &amp;amp; Roll') === 'Rock & Roll', 'HTML entities are decoded, including double encoding');

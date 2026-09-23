@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.17.0] - 2026-09-23
+
+### Added
+- **Song selection v2** (`server/selection/`):
+  - A random window over the catalog with every filter in SQL: language, originals, popularity window, year range, artist, genres, text theme and recent plays.
+  - The window is read in `rand_key` order from a random start (new `sampleCatalogTracks`, schema **v5** index `idx_tracks_rand`), one row per track, in 2–160 ms on ~300k tracks.
+  - Candidates are weighted by popularity (Efraimidis–Spirakis, α = 0 for obscure/pure, 1 balanced, 2 mainstream) with a seedable sfc32 RNG. The seed is hashed once instead of SHA-256 inside a sort comparator.
+- **Live providers are a fallback only:** used when the catalog window is thin or the picked pool falls short.
+  - Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. The fallback is capped at 10 s.
+  - Results are written to the catalog through the admission policy, so the catalog learns.
+  - Typical prompts now return in 10–200 ms instead of 7–28 s.
+- **SQLite user store** (`server/db/userStore.js`, `users.sqlite`): users, progress, solved history and blacklist tables. `store.json` is imported once on first open (with `.bak` fallback) and then no longer read. Writes are transactional, so nothing needs flushing.
+- 20 new tests: selection policy, RNG and weighting, catalog window, recency tiers, and the user store and its import.
+
+### Fixed
+- **Recency tiers** fill 0 → 1 → 2 → 3+ plays until the pool is full. Before, a small fresh tier plus leftover once-played tracks could under-fill the pool.
+- **Live candidates skipped the catalog's rules:**
+  - Version rules: live versions ("Live at Nassau Coliseum"), re-recordings and language versions ("Soda Pop (Tagalog)") got in.
+  - Language: any Japanese or K-pop context allowed every language (a Spanish "Otro Como Yo" in city pop).
+- **Catalog language is trusted** over stopword heuristics, which rejected English titles like "Viva La Vida".
+- "songs by Queen" also matched Queen Ifrica. Artist targeting now accepts the exact artist or its collaborations ("Queen & David Bowie").
+- **Genre prompts** ("80s rock") also ran the genre word as a title search, which starved the pool and forced a 17 s live fallback.
+- `isTemporalPermitted` no longer mutates the track; `resolveReleaseYear` is separate.
+- **Crossword engine:** the regex that strips bracketed text from titles was mis-escaped and never matched, so answers like "BY" came from "(Inspired by …)". Two-letter function words are no longer answers.
+- Version rules catch "re-recording", tour/dome/arena live recordings, and language-only brackets. Artist names with "Japanese City Pop" and "Untitled … 7" filler titles are inauthentic.
+
+### Changed
+- `musicService.js` (991 lines) is replaced by `server/selection/` (`songPool`, `candidates`, `trackPicker`, `random`) and `server/policy/selectionPolicy.js`.
+- `server.js` (861 lines) now only composes the app (99 lines): `http/` (security, live puzzle store), `routes/` (music, user), `ws/rooms.js`.
+- Deezer candidates keep their duration, ISRC and album id.
+- Docs: `TRACK_SELECTION.md` moved to `server/selection/`; `API_SECURITY.md`, `MULTIPLAYER_WS.md`, `CATALOG_DB.md`, `TESTING.md`, `README.md`, `AGENTS.md`.
+
+---
+
 ## [1.16.0] - 2026-09-23
 
 ### Added

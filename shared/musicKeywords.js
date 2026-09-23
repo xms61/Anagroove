@@ -134,7 +134,7 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
 
   const cleanTitle = unescapedTitle
     .replace(/\s*[([](?:feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
-    .replace(/\s*[([][^)\\]]*[)\\]]/g, '')
+    .replace(/\s*[([][^)\]]*[)\]]/g, '')
     .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.*$/i, '')
     .trim();
 
@@ -179,7 +179,8 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
   const COMMON_STOPWORDS = new Set([
     'THE', 'AND', 'FOR', 'WITH', 'FROM', 'INTO', 'THAT', 'THIS', 'WHAT', 'WHEN',
     'WHERE', 'WHICH', 'YOUR', 'MINE', 'THEM', 'THEY', 'THEIR', 'SOME', 'HAVE',
-    'JUST', 'LIKE', 'OVER', 'DOWN', 'UNDER', 'AGAIN'
+    'JUST', 'LIKE', 'OVER', 'DOWN', 'UNDER', 'AGAIN',
+    'BY', 'OF', 'TO', 'IN', 'ON', 'AT', 'AN', 'OR', 'AS', 'IS', 'IT'
   ]);
 
   // Single keywords from multi-word title (2 to 12 letters)
