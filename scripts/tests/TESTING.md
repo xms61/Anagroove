@@ -2,7 +2,7 @@
 
 | Command | What | Where |
 | :-- | :-- | :-- |
-| `npm test` | Server + shared tests on `node:test`, one process per file, in parallel (~5 s) | `scripts/tests/*.test.js` |
+| `npm test` | Server + shared tests on `node:test`, one process per file, in parallel (~5 s). Dot reporter: failures print in full, passes as dots | `scripts/tests/*.test.js` |
 | `npm run test:coverage` | `npm test` under c8, then gates `server/db`, `server/policy`, `shared` at lines/functions ≥ 85 %, branches ≥ 75 % | `.c8rc.json`, report in `coverage/` |
 | `npm run test:web` | Frontend hooks/components on Vitest + React Testing Library (jsdom) | `src/**/*.test.ts(x)` |
 | `npm run test:e2e` | Playwright smoke test against the production build (`npm run build` first) | `scripts/tests/e2e/*.spec.ts` |

@@ -8,6 +8,7 @@
 ## Version bump (every PR)
 - `patch` for fixes/cleanup, `minor` for new capability.
 - Keep these in sync: `package.json` `version`, `package-lock.json` (`version` + `packages[""].version`), and a new `CHANGELOG.md` entry ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/): Added/Changed/Fixed/Removed).
+- `CHANGELOG.md`: read only the top entry and insert yours above it. Keep about 5 releases there, and move older entries to the top of `docs/CHANGELOG-archive.md`.
 - Update `README.md` when commands, setup, or features change.
 
 ## Pre-commit checklist
