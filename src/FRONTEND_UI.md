@@ -7,6 +7,8 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
 - `hooks/`:
   - `useCrosswordGame.ts`: grid state, cursor, validation, hints, progress, and solve time for history.
   - `useBlacklist.ts`: local + server blacklist sync.
+  - `useMultiplayer.ts`: room state over the WebSocket (room, teammate's last cell, winner) and the create/join/start actions. The game's reactions (`onPuzzle`, `onCoopLetter`, …) are read through a ref, so the hook runs before `useCrosswordGame`, which needs the room.
+- `App.tsx` keeps one `openDialog` value (one dialog at a time) and loads every puzzle through `loadPuzzle`, which resets the grid and stores it for reloads.
   - `useSettings.ts`: the single settings source (`readSettings()` for non-React readers).
   - `useDialog.ts`: dialog focus/Esc behavior.
 - `services/`:

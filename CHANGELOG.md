@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.24.1] - 2026-09-23
+
+### Changed
+- **`App.tsx`: 649 → 534 lines.**
+  - One `openDialog` value replaces seven `isXOpen` booleans (only one dialog can be open).
+  - `loadPuzzle` replaces five copies of "show the puzzle, reset the grid, store it".
+  - `adoptConfig` replaces two copies of the config bookkeeping.
+- **`useMultiplayer`** (new hook) holds the room, the teammate's last cell, the winner, the WebSocket listeners and the create/join/start actions that were inline in `App.tsx`.
+- **`catalogReport.js` replaces `catalogValidator.js` (713 → 170 lines).** The validator recomputed integrity, orphans, duplicate groups, durations and contamination that the gate and the cleanup dry run already report, and its popularity statistics still assumed Deezer ranks. The report now combines the gate, the cleanup dry run and the statistics the gate doesn't compute: coverage, languages, decades, popularity percentiles, genres and the most prolific artists.
+- Checked with the Playwright smoke test (generate, type every answer, solve, 375 px layout) and `db:validate` on a copy of the real catalog.
+
+---
+
 ## [1.24.0] - 2026-09-23
 
 ### Added

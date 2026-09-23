@@ -32,7 +32,7 @@
 | `deezerProvider`, `itunesProvider` | live provider caching, retries, mapping |
 | `validators`, `apiIntegration`, `hardening`, `userStore` | input validation, REST + WS flows, preview 302, CORS/CSP, WS authz and resume, user store |
 | `sqliteCatalog`, `trackNormalization`, `unicodeDedupe`, `popularity`, `languageCorpus`, `authenticity`, `themes` | schema, admission policy, keys, CJK dedupe, popularity, classifier corpus, authenticity corpus |
-| `catalogValidator`, `catalogCleanup`, `crawler`, `musicMoveArr`, `animeCatalog` | validator, cleanup idempotence, gate, harvester, enrichment, ingest |
+| `catalogReport`, `catalogCleanup`, `crawler`, `musicMoveArr`, `animeCatalog` | report, cleanup idempotence, gate, harvester, enrichment, ingest |
 | `blacklist`, `offline`, `fixtureCatalog`, `cli`, `coverage` | blacklist matching, offline mode, CI fixture, script flag parsing, the coverage report on the fixture |
 
 **Writing tests:** one `test()` per behaviour, named after it. Put rule corpora in a table and loop over it (`languageCorpus`, `selectionPolicy`). Use `assert.equal`/`deepEqual` so a failure shows both values. Build shared fixtures with a small function per test (`legacyCatalog()`, `enrichmentFixture()`) instead of state carried from one test to the next. Don't assert on the size of constant lists or on `typeof x === 'function'`.
