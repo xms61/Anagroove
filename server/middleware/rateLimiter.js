@@ -29,7 +29,8 @@ export function createRateLimiter({ windowMs = 60000, max = 100, message = 'Too 
   if (cleanupInterval.unref) cleanupInterval.unref();
 
   return (req, res, next) => {
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    // req.ip honours Express 'trust proxy'; never read X-Forwarded-For directly (spoofable)
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
     const now = Date.now();
 
     const timestamps = hits.get(ip) || [];

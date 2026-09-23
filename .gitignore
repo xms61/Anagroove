@@ -131,3 +131,6 @@ data/anime_metadata_index.json
 
 # Generated reports (db:validate, eval:crosswords, test:prompts)
 reports/
+
+# Local planning docs (never committed)
+docs/plans/

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { blacklistIdentityKey, canonicalArtistKey, canonicalTrackKey } from '../shared/musicIdentity.js';
 import { DATA_DIR } from './paths.js';
+import { onShutdown } from './shutdown.js';
 
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 const TEMP_FILE = path.join(DATA_DIR, 'store.json.tmp');
@@ -111,19 +112,20 @@ function flushSync() {
   saveStoreAtomicSync();
 }
 
-process.on('beforeExit', flushSync);
-process.on('SIGINT', () => {
-  flushSync();
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  flushSync();
-  process.exit(0);
-});
+onShutdown('user-store', flushSync);
 
 export const db = {
   flushSync,
 
+  /**
+   * Read-only lookup. Never creates a user, so reads with random ids cannot grow the store.
+   */
+  findUser(userId) {
+    if (!userId) return null;
+    return store.users[String(userId).slice(0, 64)] || null;
+  },
+
+  /** Returns the user, creating it on first write. */
   getUser(userId) {
     if (!userId) return null;
     const sanitizedId = String(userId).slice(0, 64);
@@ -155,7 +157,7 @@ export const db = {
   },
 
   getProgress(userId) {
-    const user = this.getUser(userId);
+    const user = this.findUser(userId);
     return user ? user.activeProgress : null;
   },
 
@@ -177,12 +179,12 @@ export const db = {
   },
 
   getSolvedHistory(userId) {
-    const user = this.getUser(userId);
+    const user = this.findUser(userId);
     return user ? user.solvedHistory || [] : [];
   },
 
   getBlacklist(userId) {
-    const user = this.getUser(userId);
+    const user = this.findUser(userId);
     return user
       ? (user.blacklist || []).map(item => ({
         ...item,
@@ -221,11 +223,11 @@ export const db = {
   },
 
   removeBlacklistItem(userId, itemId) {
-    const user = this.getUser(userId);
+    const user = this.findUser(userId);
     if (!user) return [];
-    const lookupKey = canonicalArtistKey(String(itemId));
-    user.blacklist = user.blacklist.filter(b => b.id !== itemId && (b.canonicalKey || canonicalArtistKey(b.name)) !== lookupKey);
-    persistStore();
+    const before = user.blacklist.length;
+    user.blacklist = user.blacklist.filter(b => b.id !== itemId);
+    if (user.blacklist.length !== before) persistStore();
     return user.blacklist;
   }
 };

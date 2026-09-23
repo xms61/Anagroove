@@ -20,12 +20,23 @@ export interface MultiplayerRoom {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SocketEventCallback = (payload: any) => void;
 
+/** Seat held in a room; used to resume it automatically after a dropped connection. */
+interface RoomSession {
+  roomCode: string;
+  playerId: string;
+  playerName: string;
+  resumeToken: string;
+}
+
 class SocketService {
   private ws: WebSocket | null = null;
   private listeners: Map<string, Set<SocketEventCallback>> = new Map();
   private isConnecting = false;
   private reconnectDelay = 1500;
   private maxReconnectDelay = 60000;
+  private session: RoomSession | null = null;
+  private pendingPlayerId = '';
+  private pendingName = '';
 
   private connect(): Promise<WebSocket> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -61,12 +72,18 @@ class SocketService {
         this.ws = socket;
         this.reconnectDelay = 1500;
         console.log('👥 Connected to SpotySpice Multiplayer WebSocket');
+        // Reclaim our seat after a reconnect (the server holds it for a short grace period)
+        if (this.session) {
+          const { roomCode, playerId, playerName, resumeToken } = this.session;
+          socket.send(JSON.stringify({ action: 'join_room', roomCode, playerId, playerName, resumeToken }));
+        }
         resolve(socket);
       };
 
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          this.trackSession(data);
           const callbacks = this.listeners.get(data.type);
           if (callbacks) {
             callbacks.forEach(cb => cb(data));
@@ -97,6 +114,30 @@ class SocketService {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private trackSession(data: any) {
+    if (data?.type === 'error' && typeof data.message === 'string' && data.message.startsWith('Room not found')) {
+      this.session = null;
+      return;
+    }
+    if ((data?.type === 'room_created' || data?.type === 'room_joined') && data.room?.code && typeof data.resumeToken === 'string') {
+      const current = this.session;
+      const playerId = current && current.roomCode === data.room.code ? current.playerId : this.pendingPlayerId;
+      if (playerId) {
+        this.session = {
+          roomCode: data.room.code,
+          playerId,
+          playerName: this.pendingName || this.session?.playerName || '',
+          resumeToken: data.resumeToken,
+        };
+      }
+    }
+  }
+
+  public leaveRoomSession() {
+    this.session = null;
+  }
+
   public init() {
     return this.connect().catch(() => {});
   }
@@ -120,11 +161,18 @@ class SocketService {
   }
 
   public createRoom(playerId: string, playerName: string, mode: 'coop' | 'race', livePuzzleToken: string) {
+    this.pendingPlayerId = playerId;
+    this.pendingName = playerName;
     return this.send('create_room', { playerId, playerName, mode, livePuzzleToken });
   }
 
   public joinRoom(roomCode: string, playerId: string, playerName: string) {
-    return this.send('join_room', { roomCode, playerId, playerName });
+    this.pendingPlayerId = playerId;
+    this.pendingName = playerName;
+    const resumeToken = this.session?.roomCode === roomCode.toUpperCase().trim() && this.session.playerId === playerId
+      ? this.session.resumeToken
+      : undefined;
+    return this.send('join_room', { roomCode, playerId, playerName, ...(resumeToken ? { resumeToken } : {}) });
   }
 
   public startGame(roomCode: string, playerId: string, puzzle?: Puzzle) {

@@ -562,6 +562,21 @@ export class SqliteCatalog {
   }
 
   /**
+   * Returns the identifiers needed to mint a fresh preview for one catalog track.
+   */
+  getPreviewLookup(trackId) {
+    if (!Number.isInteger(trackId) || trackId <= 0) return null;
+    this.stmtGetPreviewLookup ??= this.db.prepare(`
+      SELECT t.id, t.isrc, t.display_title AS title, a.display_name AS artist,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id
+      FROM tracks t
+      JOIN artists a ON t.artist_id = a.id
+      WHERE t.id = ?
+    `);
+    return this.stmtGetPreviewLookup.get(trackId) || null;
+  }
+
+  /**
    * Retrieves random playable tracks from SQLite.
    * By default returns tracks with verified audio samples (zero-latency).
    * When allowSampleless is true, also returns candidate tracks needing JIT lazy preview hydration.

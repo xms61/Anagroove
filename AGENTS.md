@@ -14,4 +14,3 @@ Read only the doc(s) matching your task.
 | [src/FRONTEND_UI.md](src/FRONTEND_UI.md) | React components, hooks, styling, accessibility, browser storage |
 | [scripts/SCRIPTS_CLI.md](scripts/SCRIPTS_CLI.md) | Which npm script / CLI does what |
 | [scripts/tests/TESTING.md](scripts/tests/TESTING.md) | Running or writing tests |
-| [docs/plans/](docs/plans/) | Active roadmap (current: `2026-09-23-code-review-plan.md`) |

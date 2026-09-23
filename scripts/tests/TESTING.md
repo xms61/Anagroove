@@ -6,4 +6,4 @@
 - Use `setMusicProviderForTesting(mock)` to stub music providers. Tests must not hit the network.
 - For catalog tests, use `new SqliteCatalog(':memory:')` or a temp path. Never use the singleton for writes.
 - `npm run test:prompts` and `npm run eval:crosswords` are live quality suites (real catalog + network), not unit tests.
-- Planned (plan Phase 7): split into `scripts/tests/*.test.js` on `node:test` with `c8` coverage, and add frontend tests with Vitest + RTL.
+- Planned: split into `scripts/tests/*.test.js` on `node:test` with `c8` coverage, and add frontend tests with Vitest + RTL.

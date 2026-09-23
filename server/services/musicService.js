@@ -8,7 +8,7 @@ import { buildQueryPlan, extractAnimeKeyphrase, toFtsQuery } from './queryBuilde
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.js';
 import { resolveAnimeCoverImages } from './animeImageService.js';
-import { batchResolvePreviews } from './previewResolver.js';
+import { batchResolvePreviews, previewRefForTrack, toPreviewPath } from './previewResolver.js';
 import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
@@ -965,27 +965,42 @@ export async function getRandomSongPool({
     }
   }
 
-  // 4. JIT Lazy Preview Hydration for tracks lacking verified audio previews
-  const needsPreview = songs.filter(s => !s.audioUrl || (!s.audioUrl.startsWith('http') && !s.audioUrl.startsWith('/audio/')));
-  if (needsPreview.length > 0 && musicProvider === deezerMusicProvider) {
-    try {
-      const { resolvedTracks } = await batchResolvePreviews(needsPreview);
-      const resolvedMap = new Map(resolvedTracks.map(t => [t.id, t.audioUrl]));
-      for (const song of songs) {
-        if ((!song.audioUrl || (!song.audioUrl.startsWith('http') && !song.audioUrl.startsWith('/audio/'))) && resolvedMap.has(song.id)) {
-          song.audioUrl = resolvedMap.get(song.id);
-          song.sample_url = song.audioUrl;
+  // 4. Stable preview references. Deezer preview URLs are signed and expire within minutes,
+  // so puzzles carry /api/preview/<provider>:<id> paths that redirect to a fresh URL at play time.
+  if (musicProvider === deezerMusicProvider) {
+    const isLocalAudio = s => typeof s.audioUrl === 'string' && s.audioUrl.startsWith('/audio/');
+    for (const song of songs) {
+      if (!isLocalAudio(song)) song.previewRef = previewRefForTrack(song);
+    }
+
+    // Only tracks without a provider id need a network lookup now; the rest resolve lazily when played
+    const needsLookup = songs.filter(s => !isLocalAudio(s) && (!s.previewRef || s.previewRef.startsWith('catalog:')));
+    if (needsLookup.length > 0) {
+      try {
+        const { resolvedTracks } = await batchResolvePreviews(needsLookup);
+        const resolvedRefs = new Map(resolvedTracks.map(t => [t.id, t.previewRef]));
+        for (const song of needsLookup) {
+          song.previewRef = resolvedRefs.get(song.id) || null;
         }
+      } catch (err) {
+        logger.warn('preview_resolver', `Error during batch preview lookup: ${err.message}`);
       }
-    } catch (err) {
-      logger.warn('preview_resolver', `Error during batch lazy preview hydration: ${err.message}`);
+    }
+
+    for (const song of songs) {
+      if (song.previewRef) {
+        song.audioUrl = toPreviewPath(song.previewRef);
+        song.sample_url = song.audioUrl;
+      } else if (!isLocalAudio(song)) {
+        song.audioUrl = '';
+      }
     }
   }
 
   // Filter out any songs that could not resolve an audio preview in live mode
   const playableSongs = songs.filter(s => {
     if (musicProvider !== deezerMusicProvider) return true;
-    const hasAudio = s.audioUrl && typeof s.audioUrl === 'string' && (s.audioUrl.startsWith('http') || s.audioUrl.startsWith('/audio/'));
+    const hasAudio = typeof s.audioUrl === 'string' && (s.audioUrl.startsWith('/api/preview/') || s.audioUrl.startsWith('/audio/'));
     if (!hasAudio) {
       logger.warn('music_service', `Filtered out track "${s.artist} - ${s.title}" due to missing audio preview`);
     }

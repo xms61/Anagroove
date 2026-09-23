@@ -202,10 +202,7 @@ npm run crawl:status
 SpotySpice features a hybrid high-performance music ingestion architecture:
 - **Scenario C Ingestion**: Stream-ingest millions of tracks from the [MusicMoveArr Datasets](https://github.com/MusicMoveArr/Datasets) (Deezer, Spotify, Tidal, MusicBrainz base dumps and compressed incremental diffs) with zero RAM bloat.
 - **Popularity & Authenticity Filtering**: Ingests high-quality music filtered strictly by `popularity > 30` (or configurable `--min-popularity=31`) and `isAuthenticCandidate`, preventing amateur covers, karaoke, and noise from polluting the database.
-- **Lazy JIT Preview Hydration**: To eliminate the prohibitive bandwidth and latency of downloading millions of audio previews upfront, tracks are ingested with instant metadata (`sample_url = NULL`). When players generate a crossword puzzle:
-  1. SpotySpice selects candidate songs from SQLite in `< 10ms`.
-  2. The **Preview Resolver** (`server/services/previewResolver.js`) rapidly resolves 30-second playable audio previews in parallel (~150ms) using the Deezer track API fast-path (`deezer_id`) with automatic fallback to iTunes API.
-  3. Previews are cached in-memory and asynchronously persisted into `track_samples` in SQLite. Future games featuring those tracks enjoy instant, zero-latency playback!
+- **Stable Preview Links**: Deezer preview URLs are signed and expire within minutes, so puzzles never embed them. Each clue carries a stable `/api/preview/<provider>:<id>` path (`deezer`, `itunes`, or `catalog`). When a clue is played, the **Preview Resolver** (`server/services/previewResolver.js`) redirects (302) to a freshly minted URL: the Deezer track API first, then Deezer search, then iTunes. Resolved URLs are cached in memory until shortly before they expire.
 
 #### Crawler & Ingestion Flags
 | Flag | Default | Description |
@@ -262,7 +259,6 @@ SpotySpice/
 ├── AGENTS.md                   # Map of agent docs (one per area, colocated below)
 ├── .github/                    # CI + manual release workflows, RELEASE_PROCESS.md
 ├── data/                       # most_streamed_artists.csv + gitignored dataset dumps
-├── docs/plans/                 # Roadmaps / implementation plans
 ├── scripts/                    # Crawl, ingest, anime, validation & eval CLIs (SCRIPTS_CLI.md)
 │   ├── run_tests.js            # Unit & integration test runner
 │   └── tests/                  # Test env preload (temp data dir) & TESTING.md
@@ -307,11 +303,14 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 
 | Action | Sent Payload | Description |
 | :--- | :--- | :--- |
-| `create_room` | `{ playerId, playerName, mode, puzzle }` | Creates a new room with a random 6-character code (e.g., `VINYL-89`). |
-| `join_room` | `{ roomCode, playerId, playerName }` | Joins an existing lobby. |
-| `start_game` | `{ roomCode, playerId, puzzle }` | Host triggers game start; resets grids and broadcasts puzzle to all players. |
-| `coop_cell_update` | `{ roomCode, row, col, char, playerId }` | Broadcasts typed character to teammates in real time. |
-| `race_progress_update` | `{ roomCode, progress, playerId }` | Updates opponent percentage progress bars in Versus mode. |
+| `create_room` | `{ playerId, playerName, mode, livePuzzleToken }` | Creates a room for a server-generated puzzle with a code like `VINYL-4821`. The reply includes a private `resumeToken`. |
+| `join_room` | `{ roomCode, playerId, playerName, resumeToken? }` | Joins a lobby. With the `resumeToken`, it reclaims your seat after a dropped connection (held for 30 s). |
+| `start_game` | `{ roomCode }` | Host only (the sender's socket must hold the host seat). Broadcasts the puzzle to all players. |
+| `coop_cell_update` | `{ roomCode, row, col, char }` | Co-op rooms only. Broadcasts a typed character to teammates in real time. |
+| `race_progress_update` | `{ roomCode, progress }` | Updates opponent progress bars in Versus mode. |
+| `puzzle_solved` | `{ roomCode }` | Announces the sender as the winner. |
+
+The server binds each player to its socket on create/join and ignores any `playerId` in later messages. Room actions from sockets that haven't joined are rejected.
 
 ---
 

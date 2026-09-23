@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Puzzle } from '../types/crossword';
 import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban, Loader2, Music } from 'lucide-react';
 import { Song } from '../types/crossword';
+import { playableAudioUrl } from '../services/audioSource';
 
 interface EndScreenModalProps {
   isOpen: boolean;
@@ -150,7 +151,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     )}
                     <button
                       type="button"
-                      onClick={() => handlePlayAudio(song.id, song.audioUrl)}
+                      onClick={() => handlePlayAudio(song.id, playableAudioUrl(song))}
                       className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-90 group-hover:opacity-100 transition cursor-pointer"
                       title={isCurrentPlaying ? "Pause preview" : "Play preview"}
                     >

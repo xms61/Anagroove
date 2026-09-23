@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.13.2] - 2026-09-23
+
+### Fixed
+- **Audio previews that never played:** all ~495k stored Deezer preview URLs are signed and expire within minutes, but the resolver served them as instant hits. Puzzles now carry stable `/api/preview/<provider>:<id>` paths. The new `GET /api/preview/:ref` endpoint redirects (302) to a freshly minted URL (Deezer track API, then Deezer search, then iTunes) and caches it until 60 s before expiry. `resolveTrackPreview` ignores expired URLs (`isPreviewUrlFresh`). Older saved puzzles are routed through the same endpoint by `src/services/audioSource.ts`.
+- **Multiplayer authorization:** identity is bound to the socket on create/join, so later messages can't choose who they act as.
+  - A guest can no longer start the game by sending the host's id.
+  - Sockets that never joined a room can't write cells, progress, or wins into it.
+  - `join_room` with an existing player id requires that seat's `resumeToken`, which closes the seat-hijack hole.
+  - Co-op updates carry the server-assigned name and color. Cell updates are rejected in race rooms.
+- **Reconnects** no longer drop the player. A disconnected seat is held for 30 s and `socketService` reclaims it automatically with its `resumeToken`. A resumed `room_joined` (`resumed: true`) keeps local progress.
+- A disallowed CORS origin now returns a 403 JSON error instead of Express's HTML 500. Malformed or oversized bodies return 400/413 JSON.
+- Blacklist DELETE removes only the item with that id; it used to also remove any item whose name matched the id string.
+- Read-only endpoints (`GET /api/progress`, `/api/history`, `/api/blacklist`, and song-pool/puzzle generation) no longer create users, so random ids can't grow `store.json`.
+
+### Added
+- Security headers on every response (`X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`), plus a CSP in production. `X-Powered-By` is removed.
+- `TRUST_PROXY` env var for Express `trust proxy`. The HTTP limiter keys on `req.ip`, and WebSocket upgrades use `clientIpFromUpgrade`. Neither trusts `X-Forwarded-For` unless configured.
+- `server/shutdown.js` (`onShutdown`) is the single SIGINT/SIGTERM owner. It flushes the user store and runs `PRAGMA wal_checkpoint(TRUNCATE)` on the catalog.
+- 41 new tests: preview expiry and refs, the redirect endpoint, CORS/headers, read-only users, blacklist delete, proxy trust, and WebSocket authorization and resume.
+
+### Changed
+- Room codes are `WORD-NNNN` (was `WORD-NN`), generated with `crypto.randomInt`.
+- Anonymous user and multiplayer ids come from `crypto.getRandomValues` (was `Math.random`), with a safe fallback when storage is blocked.
+- Audio preview requests have their own 300/min limit and don't count toward the general 120/min API limit.
+
+### Removed
+- The implementation plan is no longer tracked. `docs/plans/` is gitignored (planning docs stay local), and agent/section docs no longer reference it.
+
+---
+
 ## [1.13.1] - 2026-09-23
 
 ### Added

@@ -14,7 +14,8 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
 - Fonts: Plus Jakarta Sans and JetBrains Mono.
 
 ## Rules
-- Modals need `role="dialog"`, `aria-modal`, Esc to close, and a focus trap (not done yet; see plan Phase 6).
+- Modals need `role="dialog"`, `aria-modal`, Esc to close, and a focus trap (not done yet).
 - Wrap every `localStorage` access in try/catch. Keys: `spotyspice_user_id`, `spotyspice_settings`, `spotyspice_active_genre`, `spotyspice_active_config`, `spotyspice_active_live_puzzle`, `spotyspice_recent_songs`, `spotyspice_player_name`, `spotyspice_local_blacklist`.
-- Treat audio URLs as short-lived, because Deezer previews expire.
+- Play audio through `playableAudioUrl(song)` (`services/audioSource.ts`). It keeps `/api/preview/...` and `/audio/...` paths and rebuilds a stable path for older saved puzzles that hold expiring Deezer URLs.
+- Multiplayer: `socketService` remembers the room seat (`resumeToken`) and rejoins on reconnect. `room_joined` with `resumed: true` must not reset local progress.
 - `npm run build` runs `tsc` in strict mode, then `vite build`.
