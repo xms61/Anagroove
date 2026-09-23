@@ -67,7 +67,7 @@ export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds =
   // A prompt that maps to genre clusters ("80s rock") is matched on artist genres; running the
   // same words as a title search on top ("rock" in the title) would starve the pool
   const ftsQuery = genres.length > 0 ? '' : toFtsQuery(prompt, { artist: queryPlan.artist });
-  const languages = allowedLanguagesForContext(queryPlan.genre, `${prompt || ''} ${genres.join(' ')}`);
+  const languages = queryPlan.languages || allowedLanguagesForContext(queryPlan.genre, `${prompt || ''} ${genres.join(' ')}`);
   const excludeTrackIds = recentIds
     .filter(id => String(id).startsWith('sqlite:'))
     .map(id => parseInt(String(id).slice('sqlite:'.length), 10))

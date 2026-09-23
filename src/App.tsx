@@ -15,7 +15,11 @@ import { socketService, MultiplayerRoom } from './services/socketService';
 import { useBlacklist } from './hooks/useBlacklist';
 import { dynamicMusicService } from './services/dynamicMusicService';
 import { SettingsModal } from './components/SettingsModal';
-import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle, Settings } from 'lucide-react';
+import { HistoryModal } from './components/HistoryModal';
+import { Modal } from './components/Modal';
+import { useSettings } from './hooks/useSettings';
+import { readJson, readString, STORAGE_KEYS, writeJson, writeString } from './services/storage';
+import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle, Settings, Trophy } from 'lucide-react';
 
 const EMPTY_PUZZLE: Puzzle = {
   id: 'placeholder',
@@ -37,19 +41,8 @@ const EMPTY_PUZZLE: Puzzle = {
 
 export default function App() {
   const playerId = useMemo(() => getMultiplayerPlayerId(), []);
-  const [currentGenre, setCurrentGenre] = useState<string>(() => {
-    return localStorage.getItem('spotyspice_active_genre') || 'all';
-  });
-
-  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(() => {
-    try {
-      const saved = localStorage.getItem('spotyspice_active_live_puzzle');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return null;
-  });
+  const [currentGenre, setCurrentGenre] = useState<string>(() => readString(STORAGE_KEYS.activeGenre, 'all'));
+  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(() => readJson<Puzzle | null>(STORAGE_KEYS.activeLivePuzzle, null));
 
   const [isLoadingPuzzle, setIsLoadingPuzzle] = useState(false);
   const [puzzleError, setPuzzleError] = useState<string | null>(null);
@@ -61,41 +54,12 @@ export default function App() {
   const [isMultiplayerOpen, setIsMultiplayerOpen] = useState(false);
   const [isLoungeDrawerOpen, setIsLoungeDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // Settings state with localStorage persistence
-  const [savedSettings] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('spotyspice_settings') || '{}');
-    } catch {
-      return {};
-    }
-  });
-  const [enableWordAnimations, setEnableWordAnimations] = useState<boolean>(
-    typeof savedSettings.enableWordAnimations === 'boolean' ? savedSettings.enableWordAnimations : true
-  );
-  const [defaultVolume, setDefaultVolume] = useState<number>(
-    typeof savedSettings.defaultVolume === 'number' ? savedSettings.defaultVolume : 0.15
-  );
-
-  const handleToggleWordAnimations = (enabled: boolean) => {
-    setEnableWordAnimations(enabled);
-    try {
-      const current = JSON.parse(localStorage.getItem('spotyspice_settings') || '{}');
-      localStorage.setItem('spotyspice_settings', JSON.stringify({ ...current, enableWordAnimations: enabled }));
-    } catch {
-      // ignore storage errors
-    }
-  };
-
-  const handleChangeDefaultVolume = (vol: number) => {
-    setDefaultVolume(vol);
-    try {
-      const current = JSON.parse(localStorage.getItem('spotyspice_settings') || '{}');
-      localStorage.setItem('spotyspice_settings', JSON.stringify({ ...current, defaultVolume: vol }));
-    } catch {
-      // ignore storage errors
-    }
-  };
+  const { settings, updateSettings } = useSettings();
+  const { enableWordAnimations, defaultVolume } = settings;
+  const handleToggleWordAnimations = (enabled: boolean) => updateSettings({ enableWordAnimations: enabled });
+  const handleChangeDefaultVolume = (volume: number) => updateSettings({ defaultVolume: volume });
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState<MultiplayerRoom | null>(null);
@@ -110,15 +74,9 @@ export default function App() {
 
   const activePuzzle = currentPuzzle || EMPTY_PUZZLE;
 
-  const [activePuzzleConfig, setActivePuzzleConfig] = useState<PuzzleGenerationConfig>(() => {
-    try {
-      const saved = localStorage.getItem('spotyspice_active_config');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore storage parse errors
-    }
-    return { genre: currentGenre, targetWords: 10 };
-  });
+  const [activePuzzleConfig, setActivePuzzleConfig] = useState<PuzzleGenerationConfig>(
+    () => readJson<PuzzleGenerationConfig>(STORAGE_KEYS.activeConfig, { genre: currentGenre, targetWords: 10 })
+  );
 
   const {
     userLetters,
@@ -147,7 +105,7 @@ export default function App() {
     themeId: currentGenre,
     multiplayerRoom,
     playerId,
-    playerName: localStorage.getItem('spotyspice_player_name') || 'Player',
+    playerName: readString(STORAGE_KEYS.playerName, 'Player'),
     playerColor: '#1db954',
   });
 
@@ -162,13 +120,14 @@ export default function App() {
         popularity: config.popularity,
         prompt: config.prompt,
         artist: config.artist,
+        languages: config.languages,
       });
       setCurrentPuzzle(puzzle);
       if (config.genre) setCurrentGenre(config.genre);
       setActivePuzzleConfig(config);
-      localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(puzzle));
-      localStorage.setItem('spotyspice_active_config', JSON.stringify(config));
-      if (config.genre) localStorage.setItem('spotyspice_active_genre', config.genre);
+      writeJson(STORAGE_KEYS.activeLivePuzzle, (puzzle));
+      writeJson(STORAGE_KEYS.activeConfig, (config));
+      if (config.genre) writeString(STORAGE_KEYS.activeGenre, config.genre);
       setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
       setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
       setShowEndScreen(false);
@@ -226,7 +185,7 @@ export default function App() {
       }
       if (data.room?.puzzle) {
         setCurrentPuzzle(data.room.puzzle);
-        localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(data.room.puzzle));
+        writeJson(STORAGE_KEYS.activeLivePuzzle, (data.room.puzzle));
         if (data.room.sharedGrid && Array.isArray(data.room.sharedGrid)) {
           setUserLetters(data.room.sharedGrid);
         } else {
@@ -248,7 +207,7 @@ export default function App() {
       const puzzle = data.puzzle;
       if (puzzle) {
         setCurrentPuzzle(puzzle);
-        localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(puzzle));
+        writeJson(STORAGE_KEYS.activeLivePuzzle, (puzzle));
         if (data.sharedGrid && Array.isArray(data.sharedGrid)) {
           setUserLetters(data.sharedGrid);
         } else {
@@ -327,7 +286,7 @@ export default function App() {
     try {
       const { puzzle: newLobbyPuzzle, livePuzzleToken } = await dynamicMusicService.generateLivePuzzle(themeId === 'mixed' ? 'all' : themeId);
       setCurrentPuzzle(newLobbyPuzzle);
-      localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(newLobbyPuzzle));
+      writeJson(STORAGE_KEYS.activeLivePuzzle, (newLobbyPuzzle));
       setUserLetters(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('')));
       setValidity(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('untested')));
       socketService.createRoom(playerId, playerName, mode, livePuzzleToken);
@@ -347,16 +306,16 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0c0d12] text-slate-100 flex flex-col pb-36">
+    <div className="min-h-screen bg-kissa-base text-slate-100 flex flex-col pb-36">
       {/* Top Clean Minimalist Header */}
-      <header className="border-b border-white/10 bg-[#12141c]/90 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+      <header className="border-b border-white/10 bg-kissa-surface/90 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5 shadow-sm">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           {/* Brand & Live Style Selector */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.35)] shrink-0">
               <Disc3 className={`w-5 h-5 ${isAudioPlaying ? 'animate-spin-slow' : ''}`} />
             </div>
-            <div>
+            <div className="sr-only sm:not-sr-only">
               <h1 className="font-black text-base tracking-tight text-white flex items-center gap-2">
                 <span>SpotySpice</span>
               </h1>
@@ -366,15 +325,15 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsLiveGeneratorOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#1f2333] border border-amber-500/30 hover:border-amber-500/60 text-xs font-semibold text-slate-200 transition cursor-pointer shadow-sm group"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel border border-amber-500/30 hover:border-amber-500/60 text-xs font-semibold text-slate-200 transition cursor-pointer shadow-sm group"
               title="Click to generate a custom live crossword or change musical style"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span className="font-bold text-amber-200 truncate max-w-[130px] sm:max-w-[200px]">
+              <span className="font-bold text-amber-200 truncate max-w-[120px] sm:max-w-[200px]">
                 {currentPuzzle?.title || 'Live Crossword'}
               </span>
               {currentPuzzle && (
-                <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                <span className="text-xs text-slate-400 font-mono hidden sm:inline">
                   ({currentPuzzle.clues.length} clues)
                 </span>
               )}
@@ -383,14 +342,15 @@ export default function App() {
           </div>
 
           {/* Essential Actions: Quick Shuffle, Hint, Check, and Salon Menu (☰) */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Quick Random Shuffle Button */}
             <button
               type="button"
               onClick={() => generateNewPuzzle({ genre: currentGenre, targetWords: 10 })}
               disabled={isLoadingPuzzle}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-50"
               title="Generate a fresh random crossword on the fly"
+              aria-label="Shuffle: new random crossword"
             >
               <Shuffle className={`w-3.5 h-3.5 text-amber-400 ${isLoadingPuzzle ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Shuffle</span>
@@ -401,11 +361,12 @@ export default function App() {
               type="button"
               onClick={() => setIsHintOpen(true)}
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
               title="Get a hint ([Space] Letter, [Tab] Word, [Shift+Tab] Reveal All)"
+              aria-label="Hint"
             >
-              <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-              <span>Hint</span>
+              <Lightbulb className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+              <span className="hidden sm:inline">Hint</span>
             </button>
 
             {/* Check Button */}
@@ -415,17 +376,19 @@ export default function App() {
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-bold shadow-[0_0_12px_rgba(16,185,129,0.3)] transition cursor-pointer active:scale-95 disabled:opacity-40"
               title="Check answers"
+              aria-label="Check answers"
             >
-              <CheckSquare className="w-3.5 h-3.5" />
-              <span>Check</span>
+              <CheckSquare className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Check</span>
             </button>
 
             {/* Settings Button */}
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171a25] hover:bg-[#202536] text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm"
               title="Open Lounge Settings"
+              aria-label="Settings"
             >
               <Settings className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">Settings</span>
@@ -438,9 +401,10 @@ export default function App() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shadow-sm relative ${
                 multiplayerRoom
                   ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
-                  : 'bg-[#171a25] hover:bg-[#202536] text-slate-200 border-white/10 hover:border-amber-500/40'
+                  : 'bg-kissa-card hover:bg-kissa-panel text-slate-200 border-white/10 hover:border-amber-500/40'
               }`}
               title="Open Lounge Menu (Live Generator, Multiplayer, Blacklist, History)"
+              aria-label="Menu"
             >
               <Menu className="w-4 h-4 text-amber-400" />
               <span className="hidden sm:inline">Menu</span>
@@ -456,17 +420,17 @@ export default function App() {
 
       {/* Versus Race Mode Live Leaderboard Bar (if in race mode) */}
       {multiplayerRoom?.mode === 'race' && (
-        <div className="bg-[#191024]/90 border-b border-rose-500/30 px-4 py-2 text-xs">
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+        <div className="bg-rose-950/40 border-b border-rose-500/30 px-4 py-2 text-sm" role="status" aria-label="Race leaderboard">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <span className="font-bold text-rose-300 flex items-center gap-1.5">
-              <Swords className="w-4 h-4 text-rose-400" />
+              <Swords className="w-4 h-4 text-rose-400" aria-hidden="true" />
               <span>VERSUS RACE LEADERBOARD</span>
             </span>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {multiplayerRoom.players.map(p => (
-                <div key={p.id} className="flex items-center gap-2">
-                  <span className="font-medium text-slate-300">{p.name}:</span>
-                  <div className="w-24 bg-black/40 rounded-full h-2 overflow-hidden border border-white/10">
+                <div key={p.id} className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-slate-200 truncate max-w-[8rem]">{p.name}:</span>
+                  <div className="w-16 sm:w-24 bg-black/40 rounded-full h-2 overflow-hidden border border-white/10" aria-hidden="true">
                     <div
                       className="h-full transition-all duration-300"
                       style={{ width: `${p.progress || 0}%`, backgroundColor: p.color || '#f59e0b' }}
@@ -534,7 +498,7 @@ export default function App() {
           </div>
 
           {/* Clue Lists (Across & Down side-by-side) */}
-          <div className="w-full xl:flex-1 xl:max-w-2xl bg-[#131722]/85 border border-white/10 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
+          <div className="w-full xl:flex-1 xl:max-w-2xl bg-kissa-surface/85 border border-white/10 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-200/80 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -574,9 +538,9 @@ export default function App() {
           setCurrentPuzzle(livePuzzle);
           if (config.genre) setCurrentGenre(config.genre);
           setActivePuzzleConfig(config);
-          localStorage.setItem('spotyspice_active_config', JSON.stringify(config));
-          if (config.genre) localStorage.setItem('spotyspice_active_genre', config.genre);
-          localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(livePuzzle));
+          writeJson(STORAGE_KEYS.activeConfig, (config));
+          if (config.genre) writeString(STORAGE_KEYS.activeGenre, config.genre);
+          writeJson(STORAGE_KEYS.activeLivePuzzle, (livePuzzle));
           setUserLetters(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('')));
           setValidity(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('untested')));
           setShowEndScreen(false);
@@ -638,6 +602,9 @@ export default function App() {
         onChangeDefaultVolume={handleChangeDefaultVolume}
       />
 
+      {/* Solved puzzles from /api/history */}
+      <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} />
+
       {/* Unified Lounge Slide-Over Menu */}
       <LoungeDrawer
         isOpen={isLoungeDrawerOpen}
@@ -650,6 +617,7 @@ export default function App() {
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
         onOpenBlacklist={() => setIsBlacklistOpen(true)}
         onOpenSolvedHistory={() => setShowEndScreen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         blacklistCount={blacklist.length}
         multiplayerCode={multiplayerRoom?.code}
@@ -657,21 +625,25 @@ export default function App() {
       />
 
       {/* Multiplayer victory modal */}
-      {victoryData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setVictoryData(null)}>
-          <div className="bg-gray-900 border border-yellow-500/50 rounded-2xl p-8 text-center max-w-sm mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="text-5xl mb-4">🏆</div>
-            <h2 className="text-2xl font-bold text-yellow-400 mb-2">Room Victory!</h2>
-            <p className="text-gray-300 text-lg mb-6">{victoryData.winnerName} solved the puzzle!</p>
+      <Modal isOpen={Boolean(victoryData)} onClose={() => setVictoryData(null)} className="border-amber-500/40 max-w-sm p-8 text-center" closeLabel={null}>
+        {({ titleId, descriptionId }) => (
+          <>
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center">
+              <Trophy className="w-7 h-7" aria-hidden="true" />
+            </div>
+            <h2 id={titleId} className="text-2xl font-black text-amber-300 mb-2">Room Victory!</h2>
+            <p id={descriptionId} className="text-slate-200 text-lg mb-6">{victoryData?.winnerName} solved the puzzle!</p>
             <button
-              className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg transition-colors"
+              type="button"
+              data-autofocus
+              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
               onClick={() => setVictoryData(null)}
             >
               Awesome!
             </button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

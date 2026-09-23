@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { MultiplayerRoom } from '../services/socketService';
 import { Puzzle } from '../types/crossword';
-import { Users, X, Copy, Check, Play, Crown, Zap, Swords, HeartHandshake, Sparkles } from 'lucide-react';
+import { Users, Copy, Check, Play, Crown, Zap, Swords, HeartHandshake, Sparkles } from 'lucide-react';
+import { Modal } from './Modal';
+import { readString, STORAGE_KEYS, writeString } from '../services/storage';
 
 export const MULTIPLAYER_STYLES = [
   { id: 'all', name: 'Mixed & Eclectic', icon: '🎲' },
@@ -39,7 +41,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
   const [playerName, setPlayerName] = useState(() => {
-    return localStorage.getItem('spotyspice_player_name') || `DJ_${Math.floor(100 + Math.random() * 900)}`;
+    return readString(STORAGE_KEYS.playerName) || `DJ_${Math.floor(100 + Math.random() * 900)}`;
   });
   const [joinCode, setJoinCode] = useState('');
   const [selectedMode, setSelectedMode] = useState<'coop' | 'race'>('coop');
@@ -50,7 +52,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
 
   const handleNameChange = (val: string) => {
     setPlayerName(val);
-    localStorage.setItem('spotyspice_player_name', val);
+    writeString(STORAGE_KEYS.playerName, val);
   };
 
   const handleCopyLink = () => {
@@ -63,27 +65,19 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   const isHost = currentRoom?.hostId === playerId;
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-[#121622] border border-cyan-500/25 rounded-2xl max-w-lg w-full p-6 shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative text-slate-100 max-h-[90vh] flex flex-col">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/10 transition cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
+    <Modal isOpen={isOpen} onClose={onClose} className="border-cyan-500/25 max-w-lg p-6 flex flex-col">
+      {({ titleId, descriptionId }) => (
+      <>
         {/* Modal Header */}
         <div className="flex items-center gap-3 pb-4 border-b border-white/10">
           <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/35 text-cyan-300 flex items-center justify-center shadow-sm">
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <h2 id={titleId} className="text-xl font-bold text-white flex items-center gap-2">
               Multiplayer Lobby
             </h2>
-            <p className="text-xs text-slate-400">
+            <p id={descriptionId} className="text-xs text-slate-400">
               Solve musical crosswords together in real-time or race head-to-head!
             </p>
           </div>
@@ -95,7 +89,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
             {/* Room Code Banner */}
             <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/60 to-purple-950/60 border border-cyan-500/30 flex items-center justify-between">
               <div>
-                <span className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">Room Code</span>
+                <span className="text-xs uppercase font-bold text-cyan-300 tracking-wider">Room Code</span>
                 <div className="text-2xl font-mono font-extrabold text-white tracking-widest">{currentRoom.code}</div>
               </div>
               <button
@@ -109,12 +103,12 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
             </div>
 
             {/* Puzzle & Mode Notice */}
-            <div className="p-3 rounded-xl bg-[#181e2c] border border-white/10 flex items-center justify-between text-xs">
+            <div className="p-3 rounded-xl bg-kissa-card border border-white/10 flex items-center justify-between text-xs">
               <span className="text-slate-300 font-semibold flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                 <span>Puzzle: <strong className="text-amber-200">{currentRoom.puzzle?.title || 'Brand New Match Crossword'}</strong></span>
               </span>
-              <span className="text-[11px] font-mono text-slate-400">
+              <span className="text-xs font-mono text-slate-400">
                 {currentRoom.puzzle?.clues?.length || 10} words
               </span>
             </div>
@@ -134,12 +128,12 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                   </>
                 )}
               </span>
-              <span className="text-slate-400 font-mono text-[11px]">{currentRoom.players.length} Player{currentRoom.players.length !== 1 ? 's' : ''}</span>
+              <span className="text-slate-400 font-mono text-xs">{currentRoom.players.length} Player{currentRoom.players.length !== 1 ? 's' : ''}</span>
             </div>
 
             {/* Connected Players List */}
-            <div className="p-3 rounded-xl bg-[#181e2c] border border-white/5 flex flex-col gap-2 max-h-40 overflow-y-auto">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Connected Players</span>
+            <div className="p-3 rounded-xl bg-kissa-card border border-white/5 flex flex-col gap-2 max-h-40 overflow-y-auto">
+              <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">Connected Players</span>
               {currentRoom.players.map((p, idx) => (
                 <div key={p.id || idx} className="flex items-center justify-between p-2 rounded-lg bg-black/40 border border-white/5">
                   <div className="flex items-center gap-2.5">
@@ -153,7 +147,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                   </div>
 
                   {currentRoom.hostId === p.id && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                    <span className="flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
                       <Crown className="w-3 h-3" />
                       <span>Host</span>
                     </span>
@@ -191,12 +185,12 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                 value={playerName}
                 onChange={e => handleNameChange(e.target.value)}
                 placeholder="Enter nickname..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#181e2c] border border-white/10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-kissa-card border border-white/10 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-500"
               />
             </div>
 
             {/* Create vs Join Tabs */}
-            <div className="flex rounded-xl overflow-hidden border border-white/10 bg-[#181e2c] p-1 text-xs font-bold">
+            <div className="flex rounded-xl overflow-hidden border border-white/10 bg-kissa-card p-1 text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setActiveTab('create')}
@@ -234,14 +228,14 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                       className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                         selectedMode === 'coop'
                           ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-inner'
-                          : 'bg-[#181e2c] border-white/5 text-slate-400 hover:bg-[#202738]'
+                          : 'bg-kissa-card border-white/5 text-slate-400 hover:bg-kissa-panel'
                       }`}
                     >
                       <div className="flex items-center gap-1.5 font-bold text-sm text-emerald-300 mb-1">
                         <HeartHandshake className="w-4 h-4" />
                         <span>Co-op Symphony</span>
                       </div>
-                      <div className="text-[11px] text-slate-400 leading-tight">
+                      <div className="text-xs text-slate-400 leading-tight">
                         Shared grid, live sync, solve as a team!
                       </div>
                     </button>
@@ -252,14 +246,14 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                       className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                         selectedMode === 'race'
                           ? 'bg-rose-500/15 border-rose-500 text-white shadow-inner'
-                          : 'bg-[#181e2c] border-white/5 text-slate-400 hover:bg-[#202738]'
+                          : 'bg-kissa-card border-white/5 text-slate-400 hover:bg-kissa-panel'
                       }`}
                     >
                       <div className="flex items-center gap-1.5 font-bold text-sm text-rose-300 mb-1">
                         <Swords className="w-4 h-4" />
                         <span>Versus Race</span>
                       </div>
-                      <div className="text-[11px] text-slate-400 leading-tight">
+                      <div className="text-xs text-slate-400 leading-tight">
                         Head-to-head race with live leaderboard!
                       </div>
                     </button>
@@ -280,7 +274,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                         className={`p-2 rounded-xl border text-xs font-semibold text-left transition cursor-pointer truncate ${
                           selectedTheme === style.id
                             ? 'bg-cyan-500/25 border-cyan-500 text-cyan-200'
-                            : 'bg-[#181e2c] border-white/5 text-slate-300 hover:bg-[#202738]'
+                            : 'bg-kissa-card border-white/5 text-slate-300 hover:bg-kissa-panel'
                         }`}
                       >
                         {style.icon} {style.name}
@@ -309,7 +303,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                     value={joinCode}
                     onChange={e => setJoinCode(e.target.value.toUpperCase())}
                     placeholder="e.g. BEAT-42"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#181e2c] border border-white/10 text-base font-mono font-bold tracking-widest text-center text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 uppercase"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-kissa-card border border-white/10 text-base font-mono font-bold tracking-widest text-center text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-500 uppercase"
                   />
                 </div>
 
@@ -326,7 +320,8 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
             )}
           </div>
         )}
-      </div>
-    </div>
+      </>
+      )}
+    </Modal>
   );
 };

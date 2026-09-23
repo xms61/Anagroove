@@ -2,17 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiClient, BlacklistItem } from '../services/apiClient';
 import { Song } from '../types/crossword';
 import { blacklistIdentityKey, canonicalMusicKey } from '../../shared/musicIdentity';
+import { readJson, STORAGE_KEYS, writeJson } from '../services/storage';
 
-const LOCAL_STORAGE_KEY = 'spotyspice_local_blacklist';
+const LOCAL_STORAGE_KEY = STORAGE_KEYS.localBlacklist;
 
 export function useBlacklist() {
   const [blacklist, setBlacklist] = useState<BlacklistItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
+    const stored = readJson<BlacklistItem[]>(LOCAL_STORAGE_KEY, []);
+    return Array.isArray(stored) ? stored : [];
   });
 
   // Sync from server on mount
@@ -31,13 +28,13 @@ export function useBlacklist() {
           }))).then(() => apiClient.getBlacklist()).then(migrated => {
             if (migrated) {
               setBlacklist(migrated);
-              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(migrated));
+              writeJson(LOCAL_STORAGE_KEY, (migrated));
             }
           });
           return;
         }
         setBlacklist(serverList);
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(serverList));
+        writeJson(LOCAL_STORAGE_KEY, (serverList));
       }
     });
   }, []);
@@ -59,7 +56,7 @@ export function useBlacklist() {
       return;
     }
     setBlacklist(updated);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    writeJson(LOCAL_STORAGE_KEY, (updated));
   }, []);
 
   const addSong = useCallback(async (song: Pick<Song, 'title' | 'provider' | 'providerTrackId'> | string) => {
@@ -79,7 +76,7 @@ export function useBlacklist() {
       return;
     }
     setBlacklist(updated);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    writeJson(LOCAL_STORAGE_KEY, (updated));
   }, []);
 
   const removeItem = useCallback(async (idOrName: string) => {
@@ -89,7 +86,7 @@ export function useBlacklist() {
       return;
     }
     setBlacklist(updated);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    writeJson(LOCAL_STORAGE_KEY, (updated));
   }, []);
 
   const isBlacklisted = useCallback((songTitle: string, artistName: string) => {

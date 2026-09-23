@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Puzzle } from '../types/crossword';
-import { Play, Pause, ExternalLink, X, RotateCcw, Trophy, Ban, Loader2, Music } from 'lucide-react';
+import { Play, Pause, ExternalLink, RotateCcw, Trophy, Ban, Loader2, Music } from 'lucide-react';
+import { Modal } from './Modal';
+import { readSettings } from '../hooks/useSettings';
 import { Song } from '../types/crossword';
 import { playableAudioUrl } from '../services/audioSource';
 
@@ -29,22 +31,10 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const getSavedVolume = () => {
-    try {
-      const saved = localStorage.getItem('spotyspice_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.defaultVolume === 'number') return parsed.defaultVolume;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 0.15;
-  };
 
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = getSavedVolume();
+      audioRef.current.volume = readSettings().defaultVolume;
     }
     return () => {
       if (audioRef.current) {
@@ -66,7 +56,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
       audioRef.current.pause();
       setPlayingSongId(null);
     } else {
-      audioRef.current.volume = getSavedVolume();
+      audioRef.current.volume = readSettings().defaultVolume;
       audioRef.current.src = audioUrl;
       audioRef.current.play().then(() => {
         setPlayingSongId(songId);
@@ -78,22 +68,14 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <Modal isOpen={isOpen} onClose={onClose} className="border-amber-500/25 max-w-2xl p-6 flex flex-col">
+      {({ titleId, descriptionId }) => (
+      <>
       <audio
         ref={audioRef}
         onEnded={() => setPlayingSongId(null)}
         onPause={() => setPlayingSongId(null)}
       />
-
-      <div className="bg-[#121622] border border-amber-500/25 rounded-2xl max-w-2xl w-full p-6 shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative text-slate-100 flex flex-col max-h-[90vh]">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
 
         {/* Top Banner */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
@@ -102,10 +84,10 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
               <Trophy className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-wide text-white">
+              <h2 id={titleId} className="text-xl font-bold tracking-wide text-white">
                 Songs In This Puzzle
               </h2>
-              <p className="text-xs text-slate-400">
+              <p id={descriptionId} className="text-xs text-slate-400">
                 Puzzle Solved! Replay tracks, launch on Spotify, or manage your blacklist.
               </p>
             </div>
@@ -141,7 +123,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                           : 'bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50'
                       }`}>
                         {song.themeSlug ? (
-                          <span className="text-[11px] font-black tracking-wider text-amber-300 drop-shadow">
+                          <span className="text-xs font-black tracking-wider text-amber-300 drop-shadow">
                             {song.themeSlug}
                           </span>
                         ) : (
@@ -172,11 +154,11 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     </span>
                     <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                       {song.themeSlug && (
-                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-bold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
                           {song.themeSlug}
                         </span>
                       )}
-                      <span className="text-[10.5px] text-slate-500 truncate font-mono">
+                      <span className="text-xs text-slate-400 truncate font-mono">
                         {song.animeTitle || song.album}
                       </span>
                     </div>
@@ -191,7 +173,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                       type="button"
                       onClick={() => onBlacklistArtist(song)}
                       title={`Blacklist artist: ${song.artist}`}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px]"
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs"
                     >
                       <Ban className="w-3.5 h-3.5 text-rose-400" />
                       <span className="hidden md:inline">Block Artist</span>
@@ -203,7 +185,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                       type="button"
                       onClick={() => onBlacklistSong(song)}
                       title={`Blacklist track: ${song.title}`}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px]"
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs"
                     >
                       <Ban className="w-3.5 h-3.5 text-rose-400" />
                       <span className="hidden md:inline">Block Track</span>
@@ -220,7 +202,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                       ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white border-rose-500/30'
                       : song.provider === 'deezer'
                         ? 'bg-purple-500/20 text-purple-300 hover:bg-purple-500 hover:text-white border-purple-500/30'
-                        : 'bg-[#1db954]/20 text-[#1db954] hover:bg-[#1db954] hover:text-slate-950 border-[#1db954]/30';
+                        : 'bg-spotifyGreen/20 text-spotifyGreen hover:bg-spotifyGreen hover:text-slate-950 border-spotifyGreen/30';
                     return (
                       <a
                         href={song.providerUrl || song.spotifyUrl}
@@ -279,7 +261,8 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </>
+      )}
+    </Modal>
   );
 };

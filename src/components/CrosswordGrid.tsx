@@ -179,15 +179,15 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
         }}
       >
         <div className={`w-full h-full rounded-full flex items-center justify-center ${isPlaying ? 'animate-spin-slow' : 'spin-paused'}`}>
-          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-700 via-amber-500 to-amber-400 border-4 border-[#0e1219] flex items-center justify-center shadow-inner opacity-40">
-            <div className="w-5 h-5 rounded-full bg-[#0a0d13] border-2 border-amber-300/40" />
+          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-700 via-amber-500 to-amber-400 border-4 border-kissa-base flex items-center justify-center shadow-inner opacity-40">
+            <div className="w-5 h-5 rounded-full bg-kissa-base border-2 border-amber-300/40" />
           </div>
         </div>
       </div>
 
       {/* Grid Container */}
       <div
-        className="relative z-10 grid rounded-xl p-3 sm:p-4 bg-[#0a0d14]/85 border border-white/10 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
+        className="relative z-10 grid rounded-xl p-3 sm:p-4 bg-kissa-base/85 border border-white/10 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
         style={{
           gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
           gridTemplateRows: `repeat(${rows}, ${cellSize}px)`,
@@ -201,7 +201,7 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
                 <div
                   key={`${r}-${c}`}
                   style={{ width: `${cellSize}px`, height: `${cellSize}px` }}
-                  className="rounded-[4px] bg-[#0c1017]/80 border border-white/[0.04]"
+                  className="rounded-[4px] bg-kissa-base/80 border border-white/[0.04]"
                 />
               );
             }
@@ -218,18 +218,18 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
             let borderStyle = 'border border-slate-300 shadow-[0_2px_4px_rgba(0,0,0,0.12)]';
 
             if (isSelected) {
-              bgStyle = 'bg-[#fde047] text-slate-950 font-black z-20 shadow-[0_0_18px_rgba(250,204,21,0.7)]';
+              bgStyle = 'bg-yellow-300 text-slate-950 font-black z-20 shadow-[0_0_18px_rgba(250,204,21,0.7)]';
               borderStyle = 'border-2 border-amber-600 ring-2 ring-amber-400';
             } else if (isInActiveWord) {
-              bgStyle = 'bg-[#fef3c7] text-amber-950 font-black';
+              bgStyle = 'bg-amber-100 text-amber-950 font-black';
               borderStyle = 'border-2 border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.25)]';
             }
 
             if (cellValid === 'wrong') {
-              bgStyle = 'bg-[#fee2e2] text-[#991b1b] font-black';
+              bgStyle = 'bg-red-100 text-red-800 font-black';
               borderStyle = 'border-2 border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]';
             } else if (cellValid === 'correct' && !isSelected && !isInActiveWord) {
-              bgStyle = 'bg-[#dcfce7] text-[#065f46] font-black';
+              bgStyle = 'bg-green-100 text-emerald-800 font-black';
               borderStyle = 'border-2 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]';
             }
 

@@ -62,6 +62,7 @@ import {
   validateBlacklistPayload,
   validateMusicQuery,
   validateLivePuzzlePayload,
+  parseLanguageFilter,
   validateWsMessage,
   validatePreviewRef
 } from '../server/validators.js';
@@ -83,6 +84,7 @@ import { resolveTrackLanguage, classifyArtistLanguage, scriptLanguage } from '..
 import { runCatalogCleanup } from '../server/db/catalogCleanup.js';
 import { evaluateCatalogGate } from '../server/db/catalogGate.js';
 import { UserStore } from '../server/db/userStore.js';
+import { catalogCandidates } from '../server/selection/candidates.js';
 import { recomputeCatalogLanguages } from '../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../server/crawler/enricher.js';
@@ -2721,6 +2723,17 @@ async function runPhase4CleanupTests() {
   assert(eighties.length === 20 && eighties.every(r => r.release_year >= 1980 && r.release_year <= 1989), 'Year windows filter in SQL');
   assert(sampleCat.sampleCatalogTracks({ artist: 'Sample Artist 3', poolSize: 50 }).length === 3 && sampleCat.sampleCatalogTracks({ ftsQuery: '"Song 1"', poolSize: 50 }).length >= 1, 'Artist and text filters narrow the window');
   sampleCat.close();
+
+  // 1b'. Explicit EN/JA/KO filter (Phase 6 generator chips)
+  assert(parseLanguageFilter(['ja', 'KO', 'ja']).languages.join() === 'ja,ko' && parseLanguageFilter('en,ko').languages.join() === 'en,ko' && parseLanguageFilter(undefined).languages === undefined, 'Language filter accepts arrays and comma lists, deduped');
+  assert(!parseLanguageFilter(['es']).valid && !validateLivePuzzlePayload({ languages: 'fr' }).valid && validateLivePuzzlePayload({ languages: ['ja'] }).data.languages.join() === 'ja', 'Only en/ja/ko are accepted');
+  assert(isLanguagePermitted({ title: 'Idol', artist: 'YOASOBI', language: 'ja' }, 'pop', '', { languages: ['ja'] }) === true && isLanguagePermitted({ title: 'Levitating', artist: 'Dua Lipa', language: 'en' }, 'pop', '', { languages: ['ja'] }) === false, 'An explicit filter overrides the theme languages');
+  const filterCat = new SqliteCatalog(':memory:');
+  filterCat.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '901', deezerRank: 800000 });
+  filterCat.upsertTrack({ title: 'アイドル', artist: 'YOASOBI', durationMs: 213000, provider: 'deezer', providerTrackId: '902', deezerRank: 800000, isrc: 'JPU902300400' });
+  const filtered = catalogCandidates({ catalog: filterCat, queryPlan: { genre: 'all', popularity: 'pure', languages: ['ja'] }, prompt: '', rng: createRng('lang') });
+  assert(filtered.length === 1 && filtered[0].language === 'ja', 'The catalog window honors the explicit language filter');
+  filterCat.close();
 
   // 1c. SQLite user store with a one-time import of the old JSON store
   const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-users-'));

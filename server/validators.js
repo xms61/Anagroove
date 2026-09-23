@@ -169,6 +169,21 @@ export function validateBlacklistPayload(body) {
 /**
  * Validates an on-demand live puzzle request.
  */
+const PUZZLE_LANGUAGES = ['en', 'ja', 'ko'];
+
+/**
+ * Optional language filter: an array (JSON body) or comma list (query string) of en/ja/ko.
+ * @returns {{ valid: boolean, languages?: string[] }} languages is undefined when not set
+ */
+export function parseLanguageFilter(value) {
+  if (value === undefined || value === null || value === '') return { valid: true, languages: undefined };
+  const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : null;
+  if (!list || list.length > 3) return { valid: false };
+  const languages = [...new Set(list.map(v => String(v).trim().toLowerCase()))];
+  if (!languages.every(l => PUZZLE_LANGUAGES.includes(l))) return { valid: false };
+  return { valid: true, languages: languages.length > 0 ? languages : undefined };
+}
+
 export function validateLivePuzzlePayload(body) {
   if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
   if (body.genre !== undefined && typeof body.genre !== 'string') return { valid: false, error: 'Invalid genre' };
@@ -180,6 +195,8 @@ export function validateLivePuzzlePayload(body) {
   if (body.minFans !== undefined && !Number.isFinite(Number(body.minFans))) return { valid: false, error: 'Invalid minFans' };
   if (body.targetWords !== undefined && !Number.isFinite(Number(body.targetWords))) return { valid: false, error: 'Invalid targetWords' };
   if (body.recentIds !== undefined && !Array.isArray(body.recentIds)) return { valid: false, error: 'recentIds must be an array' };
+  const languageFilter = parseLanguageFilter(body.languages);
+  if (!languageFilter.valid) return { valid: false, error: 'languages must be a list of en, ja, ko' };
 
   const rawGenre = typeof body.genre === 'string' ? body.genre.trim().toLowerCase() : 'all';
   const genre = rawGenre.replace(/[^a-z0-9_\s-]/g, '').slice(0, 50) || 'all';
@@ -215,6 +232,7 @@ export function validateLivePuzzlePayload(body) {
       decade,
       popularity,
       seed,
+      languages: languageFilter.languages,
     }
   };
 }

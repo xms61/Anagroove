@@ -55,10 +55,10 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
           {clue.id}
         </span>
         <div className="flex flex-col truncate">
-          <span className={`text-xs sm:text-sm font-medium truncate ${isActive ? 'text-slate-950 font-bold' : 'text-slate-200'}`} title={clue.clueText}>
+          <span className={`text-sm font-medium truncate ${isActive ? 'text-slate-950 font-bold' : 'text-slate-200'}`} title={clue.clueText}>
             {clue.clueText}
           </span>
-          <span className={`text-[10px] font-mono ${isActive ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>
+          <span className={`text-xs font-mono ${isActive ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>
             {clue.clueType} • {clue.length} letters
           </span>
         </div>
@@ -70,11 +70,11 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 max-h-[600px] overflow-y-auto pr-1">
       {/* Across (Horizontal) Clues */}
       <div className="flex flex-col">
-        <h3 className="text-sm font-bold text-white mb-2.5 pb-1.5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#131722]/95 backdrop-blur-sm z-10">
+        <h3 className="text-sm font-bold text-white mb-2.5 pb-1.5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-kissa-surface/95 backdrop-blur-sm z-10">
           <span className="flex items-center gap-1.5 text-amber-300">
             <span>Across (Horizontal)</span>
           </span>
-          <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">{acrossClues.length} clues</span>
+          <span className="text-xs font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">{acrossClues.length} clues</span>
         </h3>
         <div className="flex flex-col gap-1.5">
           {acrossClues.map(clue => renderClueItem(clue))}
@@ -83,11 +83,11 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
 
       {/* Down (Vertical) Clues */}
       <div className="flex flex-col">
-        <h3 className="text-sm font-bold text-white mb-2.5 pb-1.5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#131722]/95 backdrop-blur-sm z-10">
+        <h3 className="text-sm font-bold text-white mb-2.5 pb-1.5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-kissa-surface/95 backdrop-blur-sm z-10">
           <span className="flex items-center gap-1.5 text-cyan-300">
             <span>Down (Vertical)</span>
           </span>
-          <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">{downClues.length} clues</span>
+          <span className="text-xs font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">{downClues.length} clues</span>
         </h3>
         <div className="flex flex-col gap-1.5">
           {downClues.map(clue => renderClueItem(clue))}

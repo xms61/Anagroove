@@ -136,7 +136,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.blacklist++;
         continue;
       }
-      if (!isLanguagePermitted(track, queryPlan.genre, policyContext)) {
+      if (!isLanguagePermitted(track, queryPlan.genre, policyContext, { languages: queryPlan.languages })) {
         rejections.language++;
         continue;
       }
