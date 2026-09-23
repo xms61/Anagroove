@@ -11,7 +11,7 @@ Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` 
 WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
 
 ## Migrations (`catalogMigrations.js`)
-- Versions are tracked in `PRAGMA user_version` (currently **v5**). Each migration runs in its own transaction.
+- Versions are tracked in `PRAGMA user_version` (currently **v6**). Each migration runs in its own transaction.
 - They're applied automatically on first catalog use, or explicitly with `npm run db:migrate`.
 - Before migrating a populated file DB, a `VACUUM INTO` copy is written next to it: `catalog.backup-v<from>-<timestamp>.sqlite`, gitignored. Set `SPOTYSPICE_SKIP_DB_BACKUP=1` or pass `--no-backup` to skip it.
 - New schema changes go in a **new** migration entry. Never edit an applied one.
@@ -24,7 +24,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long i
   - `version_type`: `original` or `remaster` (the cleanup deletes every other class).
   - `language`: from `languageClassifier.js` (script, artist vote, ELD title detection); `country_code` is the ISRC **registrant** prefix, not a language.
   - `enriched_at` / `itunes_checked_at` / `album_checked_at`: set once `catalog:enrich` has attempted the Deezer track, iTunes, or Deezer album lookup.
-  - `popularity`: a single **0–100 score**. Raw inputs are kept in `deezer_rank` and `spotify_popularity`.
+  - `popularity`: the **percentile within the track's language**, 0–100 (see Popularity). Raw inputs are kept in `deezer_rank` and `spotify_popularity`.
   - `rand_key`: a random number in [0, 1) for song selection windows (`sampleCatalogTracks`, index `idx_tracks_rand`).
 - `track_samples`: one row per (track, provider) with the preview URL. **Deezer preview URLs are signed and expire** (`hdnea=exp=`, minutes), so treat them as a cache. `previewResolver.isPreviewUrlFresh` decides whether a stored URL is still usable.
 - `track_providers`: `(provider, provider_track_id)` UNIQUE cross-reference, plus `raw_metadata_json`.
@@ -49,12 +49,17 @@ The catalog read path (`sampleCatalogTracks`) only returns `original`/`remaster`
 A match merges provider links, samples, raw popularity, and missing metadata into the existing row. A plain original replaces a remaster as the displayed release. Use `upsertBatch` (one transaction) for bulk writes.
 
 ## Languages after crawls
-`recomputeCatalogLanguages(db)` (`catalogLanguages.js`, also `npm run catalog:enrich -- --languages`) re-votes every artist's language and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
+`recomputeCatalogLanguages(db)` (`catalogLanguages.js`, also `npm run catalog:recompute`) re-votes every artist's language and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
 
 Known limit: without an artist vote, about 2.5% of plain two-word English titles read as es/it ("Quiet Shadow", "Neon Anchor"), so a new artist's first such track can be refused. The vote fixes it once the artist has 3+ titles. A per-word check was measured on the 498k-track catalog and rejected: it would have kept ~1,900 two-word titles as English, and most of them are genuinely foreign.
 
-## Popularity
-- `normalizePopularity`: Spotify popularity is the reference when present. Otherwise the Deezer rank is mapped with `deezerRankToScore` (`20·log10(rank) − 39`, calibrated so the median top-10k hit's rank ≈ 562k maps to 76). A legacy `popularity` > 100 is treated as a Deezer rank.
+## Popularity (`catalogPopularity.js`)
+- **Score:** `recomputeCatalogPopularity(db)` sets `popularity` to the track's percentile by Deezer rank **within its language** (90 = more popular than 90% of that language's tracks). Deezer under-ranks Japanese and Korean music, so each language is ranked on its own. A Spotify popularity can only raise the score. Tracks with neither score 0. Run it after crawls and enrichment: `npm run catalog:recompute` (it also re-votes languages). The cleanup's `fields` step and migration v6 run it too.
+- **New rows** get a provisional score until then (`provisionalPopularity`): the Spotify popularity, else 50 for a Deezer-ranked track, else 0.
+- **Deezer placeholder rank:** Deezer returns exactly `100000` for tracks without play data. `normalizeDeezerRank` turns it into `NULL` (it carried 18,884 stock-music rows to "score 61" before v6).
+- **Floor (admission):** a track stays when its Deezer rank reaches its language's `MIN_DEEZER_RANK` (en 60,000, ja 32,000, ko 110,000: the 30th percentile measured on 2026-09-23), its Spotify popularity is ≥ 30, or its artist has ≥ 5,000 fans. The floors are fixed ranks: a percentile floor would prune a new bottom 30% on every run.
+- **Cover acts:** an artist with ≥ 5 songs, < 50,000 fans, and ≥ 60% of their titles also recorded by an artist with more fans (`findCoverActs`).
+- Floor and cover acts are enforced by the cleanup's `popularity` step and only for **enriched** artists (fans known). Others are reported as `unjudged`.
 - Pass raw values to `upsertTrack` as `deezerRank` / `spotifyPopularity`.
 
 ## Cleanup (`catalogCleanup.js`)
@@ -65,8 +70,9 @@ Known limit: without an artist vote, about 2.5% of plain two-word English titles
 4. `links`: restore missing provider links from samples.
 5. `duplicates`: one row per (artist, base title) among accepted versions. Keeper: plain original, then has a sample, has an ISRC, highest popularity. It gets every provider link and sample, the earliest release year, the max popularity inputs, and a missing ISRC.
 6. `languages` + `policy`: re-vote languages, then delete rows that break the admission policy or have no provider link. They repeat until the vote is stable.
-7. `fields`: normalize ISRC, registrant, year/date, 0–100 popularity, `rand_key`.
-8. `orphans`: samples/providers without a track, artists without tracks.
+7. `popularity`: delete every song of a cover act, then tracks under the popularity floor, both only for enriched artists (see Popularity).
+8. `fields`: normalize ISRC, registrant, year/date, Deezer ranks (legacy ranks in `popularity` move to `deezer_rank`, the placeholder becomes `NULL`), `rand_key`, then recompute the popularity percentiles.
+9. `orphans`: samples/providers without a track, artists without tracks.
 
 The FTS triggers are dropped during the run and the index is rebuilt once at the end.
 

@@ -22,12 +22,14 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
    It then reads up to 400 rows in `rand_key` order from a random start (wrapping around; index `idx_tracks_rand`). That's one row per track, 2–160 ms on ~300k tracks.
 3. **Weighting:** `weightedOrder` with weight `(popularity + 1)^α`. With a seed, both the window start and the keys are reproducible.
 
+   The score is the track's percentile within its language (`server/db/CATALOG_DB.md`, Popularity).
+
    | `popularity` | Score window | α |
    |---|---|---|
-   | `obscure` | 0–60 | 0 (uniform) |
+   | `obscure` | 0–50 | 0 (uniform) |
    | `pure` | 0–100 | 0 |
-   | `balanced` (default) | ≥ 20 | 1 |
-   | `mainstream` | ≥ 50 | 2 |
+   | `balanced` (default) | ≥ 30 | 1 |
+   | `mainstream` | ≥ 75 (top quarter) | 2 |
 
    A named artist drops the popularity floor (deep cuts allowed).
 4. **Live providers are a fallback only:** used when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s. Deezer results go through `upsertTrack` (admission policy), so the catalog learns. `SPOTYSPICE_OFFLINE=1` (`server/offline.js`) turns the fallback and preview lookups off.

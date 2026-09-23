@@ -34,7 +34,8 @@ Catalog files live in `server/data/` (gitignored; override with `SPOTYSPICE_DATA
 
 ```bash
 npm run crawl -- --all                      # Apple charts + Deezer vectors (flags: server/crawler/CRAWLER.md)
-npm run catalog:enrich -- --all             # release years, artist fans/genres, ISRC/rank, iTunes links, languages
+npm run catalog:enrich -- --all             # release years, artist fans/genres, ISRC/rank, iTunes links
+npm run catalog:recompute                   # languages + popularity percentiles (local)
 npm run db:validate                         # diagnostics + cleanup dry run + gate report
 npm run db:sanitize                         # apply the cleanup (writes a backup first)
 ```

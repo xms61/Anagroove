@@ -10,12 +10,13 @@ import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { checkAuthenticity } from '../policy/authenticityRules.js';
 import { createTracksFts } from './catalogMigrations.js';
 import { recomputeCatalogLanguages } from './catalogLanguages.js';
+import { findCoverActs, findTracksBelowFloor, recomputeCatalogPopularity } from './catalogPopularity.js';
 import {
   ACCEPTED_VERSION_TYPES,
   baseTitleKey,
   classifyVersion,
   cleanDisplayText,
-  deezerRankToScore,
+  DEEZER_PLACEHOLDER_RANK,
   extractIsrcCountryCode,
   isAcceptedVersion,
   isAllowedLanguage,
@@ -28,7 +29,7 @@ import {
 // Order matters: rows of one song are merged before artist languages are voted and rows are
 // deleted (so the vote sees the final title set), and provider links are restored before the
 // policy step treats unlinked rows as unusable.
-export const CLEANUP_STEPS = Object.freeze(['text', 'classify', 'recordings', 'links', 'duplicates', 'languages', 'policy', 'fields', 'orphans']);
+export const CLEANUP_STEPS = Object.freeze(['text', 'classify', 'recordings', 'links', 'duplicates', 'languages', 'policy', 'popularity', 'fields', 'orphans']);
 
 const EXAMPLE_LIMIT = 10;
 const ACCEPTED_SQL = ACCEPTED_VERSION_TYPES.map(type => `'${type}'`).join(', ');
@@ -42,7 +43,6 @@ function registerCleanupFunctions(db) {
   db.function('ss_isrc_country', { deterministic: true }, (isrc) => extractIsrcCountryCode(isrc || ''));
   db.function('ss_year', { deterministic: true }, (year) => normalizeReleaseYear(year));
   db.function('ss_date', { deterministic: true }, (date) => normalizeReleaseDate(date));
-  db.function('ss_deezer_score', { deterministic: true }, (rank) => deezerRankToScore(rank));
 }
 
 /** Keeps the N most popular examples seen, for dry-run review. */
@@ -414,7 +414,32 @@ function stepDuplicates(db) {
   return { groups, removed, examples: examples.items };
 }
 
-/** Normalizes stored fields: ISRC format, registrant country, years/dates, 0-100 popularity. */
+/**
+ * Deletes every song of an enriched cover or stock-music act, then tracks under the popularity
+ * floor whose artist has been enriched (rules in catalogPopularity.js). Tracks of artists that
+ * were not enriched yet have unknown fans: they are counted as `unjudged`, not deleted.
+ */
+function stepPopularity(db) {
+  const coverActs = findCoverActs(db);
+  const deleteArtistTracks = db.prepare('DELETE FROM tracks WHERE artist_id = ?');
+  let coverTracks = 0;
+  for (const act of coverActs) coverTracks += Number(deleteArtistTracks.run(act.id).changes);
+
+  const { below, unjudged } = findTracksBelowFloor(db);
+  const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
+  for (const id of below) deleteTrack.run(id);
+
+  return {
+    deleted: coverTracks + below.length,
+    belowFloor: below.length,
+    coverActs: coverActs.length,
+    coverTracks,
+    unjudged,
+    examples: { coverActs: coverActs.slice(0, EXAMPLE_LIMIT).map(act => ({ artist: act.name, tracks: act.tracks, copied: act.copied })) },
+  };
+}
+
+/** Normalizes stored fields: ISRC format, registrant country, years/dates, Deezer ranks and the popularity score. */
 function stepFields(db) {
   const isrcNormalized = db.prepare(`
     UPDATE OR IGNORE tracks SET isrc = ss_isrc(isrc)
@@ -434,22 +459,17 @@ function stepFields(db) {
     UPDATE tracks SET release_year = COALESCE(ss_year(release_year), ss_year(release_date))
     WHERE release_year IS NOT COALESCE(ss_year(release_year), ss_year(release_date))
   `).run().changes;
-  const popularityExpr = `CASE
-      WHEN spotify_popularity IS NOT NULL THEN MAX(0, MIN(100, spotify_popularity))
-      WHEN deezer_rank IS NOT NULL AND deezer_rank > 0 THEN ss_deezer_score(deezer_rank)
-      WHEN popularity > 100 THEN ss_deezer_score(popularity)
-      ELSE MAX(0, MIN(100, COALESCE(popularity, 0)))
-    END`;
-  const popularity = db.prepare(`
-    UPDATE tracks SET popularity = ${popularityExpr} WHERE popularity IS NOT ${popularityExpr}
-  `).run().changes;
+  // Legacy rows kept the Deezer rank in `popularity`; the placeholder rank carries no signal
+  const ranks = db.prepare('UPDATE tracks SET deezer_rank = popularity WHERE deezer_rank IS NULL AND popularity > 100').run().changes
+    + db.prepare(`UPDATE tracks SET deezer_rank = NULL WHERE deezer_rank = ${DEEZER_PLACEHOLDER_RANK}`).run().changes;
+  const popularity = recomputeCatalogPopularity(db);
   const explicit = db.prepare(`
     UPDATE tracks SET is_explicit = CASE WHEN is_explicit THEN 1 ELSE 0 END WHERE is_explicit NOT IN (0, 1) OR is_explicit IS NULL
   `).run().changes;
   const randKeys = db.prepare(`
     UPDATE tracks SET rand_key = (ABS(RANDOM()) % 1000000000) / 1000000000.0 WHERE rand_key IS NULL OR rand_key = 0
   `).run().changes;
-  return { isrcNormalized, isrcCleared, countryCodes, dates, years, popularity, explicit, randKeys };
+  return { isrcNormalized, isrcCleared, countryCodes, dates, years, ranks, popularity, explicit, randKeys };
 }
 
 function stepOrphans(db) {
@@ -467,6 +487,7 @@ const STEP_IMPLEMENTATIONS = {
   duplicates: stepDuplicates,
   languages: stepLanguages,
   policy: stepPolicy,
+  popularity: stepPopularity,
   fields: stepFields,
   orphans: stepOrphans,
 };

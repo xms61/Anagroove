@@ -4,14 +4,14 @@ import { UsageError, intFlag, listFlag, parseFlags } from '../lib/cli.js';
 import { buildEnrichPlan, DEFAULT_LIMITS } from '../enrich_catalog.js';
 import { buildCrawlPlan, DEFAULT_VECTOR_LIMITS } from '../crawl_catalog.js';
 
-const OFF = { albums: null, deezer: null, artists: null, itunes: null, languages: false };
+const OFF = { albums: null, deezer: null, artists: null, itunes: null };
 
 const ENRICH_CASES = [
   ['--albums=5', { ...OFF, albums: 5 }],
   ['--albums 30000', { ...OFF, albums: 30000 }],
-  ['--artists=80000 --languages', { ...OFF, artists: 80000, languages: true }],
-  ['--all', { ...DEFAULT_LIMITS, languages: true }],
-  ['--all --artists=80000', { ...DEFAULT_LIMITS, artists: 80000, languages: true }],
+  ['--artists=80000 --deezer=10', { ...OFF, artists: 80000, deezer: 10 }],
+  ['--all', { ...DEFAULT_LIMITS }],
+  ['--all --artists=80000', { ...DEFAULT_LIMITS, artists: 80000 }],
 ];
 for (const [args, expected] of ENRICH_CASES) {
   test(`enrich plan: ${args}`, () => {
@@ -26,6 +26,7 @@ const USAGE_ERRORS = [
   ['a negative limit', ['--albums=-5']],
   ['a limit without a value', ['--albums']],
   ['a positional argument', ['albums']],
+  ['the removed --languages step (now catalog:recompute)', ['--languages']],
 ];
 for (const [name, argv] of USAGE_ERRORS) {
   test(`enrich plan: ${name}`, () => {

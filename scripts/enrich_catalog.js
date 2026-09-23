@@ -11,18 +11,16 @@ Fills catalog metadata from provider APIs. Resumable: rerun to continue.
   npm run catalog:enrich -- --deezer=5000             Deezer track lookups: ISRC, release date, rank
   npm run catalog:enrich -- --artists=1000            artist fans and genres
   npm run catalog:enrich -- --itunes=200              strict iTunes cross-reference (~15 req/min: keep it small)
-  npm run catalog:enrich -- --languages               recompute artist and track languages (local)
   npm run catalog:enrich -- --all                     every step with default limits
   npm run catalog:enrich -- --all --artists=80000     every step, one limit overridden
 
-Steps can be combined. Flags must follow "--".`;
+Steps can be combined. Flags must follow "--". Afterwards run \`npm run catalog:recompute\`.`;
 
 export const DEFAULT_LIMITS = Object.freeze({ albums: 2000, deezer: 2000, artists: 500, itunes: 100 });
 const LIMIT_STEPS = Object.keys(DEFAULT_LIMITS);
 
 const OPTIONS = {
   all: { type: 'boolean' },
-  languages: { type: 'boolean' },
   ...Object.fromEntries(LIMIT_STEPS.map(step => [step, { type: 'string' }])),
 };
 
@@ -33,8 +31,6 @@ export function buildEnrichPlan(argv, env = {}) {
   for (const step of LIMIT_STEPS) {
     plan[step] = intFlag(flags, step) ?? (flags.all ? DEFAULT_LIMITS[step] : null);
   }
-  plan.languages = Boolean(flags.all || flags.languages);
-
   if (!Object.values(plan).some(Boolean)) {
     throw new UsageError('Choose at least one step, or --all.');
   }
@@ -70,10 +66,6 @@ async function main(plan) {
   if (plan.itunes) {
     console.log(`\n- iTunes cross-reference (up to ${plan.itunes})`);
     console.log(`\n  ${JSON.stringify(await catalogEnricher.crossReferenceItunes({ limit: plan.itunes, onProgress: progress }))}`);
-  }
-  if (plan.languages) {
-    console.log('\n- Recomputing artist and track languages');
-    console.log(`  ${JSON.stringify(catalogEnricher.recomputeLanguages())}`);
   }
 
   sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');

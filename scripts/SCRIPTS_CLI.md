@@ -14,7 +14,8 @@ Flags go after `--` (`npm run db:migrate -- --no-backup`). Every script rejects 
 | `npm run db:gate:fixture` | Build the fixture catalog in a temp dir and run the validation gate on it |
 | `npm run test:ci` | lint + typecheck + test:coverage + test:web + db:gate:fixture |
 | `npm run crawl -- --all` | Crawl: Apple charts, then Deezer vectors. Name vectors to run only those (`-- --artists=250`; flags in `server/crawler/CRAWLER.md`) |
-| `npm run catalog:enrich -- --all` | Fill release years by album, ISRC/year/rank by track, artist fans/genres, and strict iTunes links; recompute languages. Name steps to run only those (`-- --albums=N --deezer=N --artists=N --itunes=N --languages`) |
+| `npm run catalog:enrich -- --all` | Fill release years by album, ISRC/year/rank by track, artist fans/genres, and strict iTunes links. Name steps to run only those (`-- --albums=N --deezer=N --artists=N --itunes=N`) |
+| `npm run catalog:recompute` | Local, after crawls and enrichment: re-vote artist/track languages, then recompute the per-language popularity percentiles (`-- --db=path`) |
 | `npm run catalog:genres` | Apply curated artist genre clusters |
 | `npm run crawl:artists` / `crawl:playlists` / `crawl:status` | Artist-only / playlist-only / catalog metrics |
 | `npm run crawl:top10k` | Ingest Anna's Archive Spotify top‑10k |

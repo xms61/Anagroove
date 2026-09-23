@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { deezerRankToScore } from '../../server/db/trackNormalization.js';
+import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
 import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../../server/db/catalogMigrations.js';
 
 const GET_LUCKY_DEEZER = {
@@ -128,10 +128,12 @@ test('a plain original replaces the remaster as the displayed release and keeps 
   catalog.close();
 });
 
-test('a legacy Deezer rank passed as popularity is normalized to 0-100', () => {
+test('a legacy Deezer rank passed as popularity is stored as the rank; the placeholder rank is dropped', () => {
   const { catalog, ingest, row } = freshCatalog();
   const legacy = ingest({ title: 'Legacy Rank Song', artist: 'Old Crawler', popularity: 950000 });
-  assert.equal(row(legacy.trackId, 'popularity').popularity, deezerRankToScore(950000));
+  assert.deepEqual({ ...row(legacy.trackId, 'deezer_rank, popularity') }, { deezer_rank: 950000, popularity: PROVISIONAL_POPULARITY });
+  const placeholder = ingest({ title: 'Stock Tune', artist: 'Library Band', deezerRank: 100000 });
+  assert.deepEqual({ ...row(placeholder.trackId, 'deezer_rank, popularity') }, { deezer_rank: null, popularity: 0 });
   catalog.close();
 });
 
@@ -182,11 +184,11 @@ test('a legacy v0 catalog migrates to the latest version, and re-running is a no
   assert.equal(lisa.canonical_title, '紅蓮華');
   assert.equal(lisa.language, 'ja', 'Han title with a JP ISRC');
   assert.equal(lisa.deezer_rank, 562000, 'a legacy rank in `popularity` moves to deezer_rank');
-  assert.equal(lisa.popularity, 76);
+  assert.equal(lisa.popularity, 0, 'v6: the only ranked Japanese track is the bottom of its language');
   assert.equal(heyJude.canonical_title, 'heyjude');
   assert.equal(heyJude.version_type, 'remaster');
   assert.equal(heyJude.spotify_popularity, 88, 'Spotify popularity comes from the raw provider metadata');
-  assert.equal(heyJude.popularity, 88);
+  assert.equal(heyJude.popularity, 88, 'v6: a Spotify popularity raises the percentile');
   assert.equal(legacyDb.prepare('SELECT COUNT(*) AS c FROM tracks_fts WHERE tracks_fts MATCH ?').get('"紅蓮華"').c, 1);
 
   assert.equal(runCatalogMigrations(legacyDb).applied.length, 0);

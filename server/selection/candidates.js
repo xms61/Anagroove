@@ -8,19 +8,22 @@
  *             catalog through upsertTrack so the next request finds them locally.
  *   anime     the isolated anime OP/ED catalog.
  */
-import { deezerRankToScore } from '../db/trackNormalization.js';
+import { normalizeDeezerRank, provisionalPopularity } from '../db/trackNormalization.js';
 import { toFtsQuery } from '../services/queryBuilder.js';
 import { allowedLanguagesForContext } from '../policy/selectionPolicy.js';
 import { logger } from '../logger.js';
 import { weightedOrder } from './random.js';
 import { genresForPrompt } from '../../shared/themes.js';
 
-/** Popularity setting -> catalog score window and weighting exponent (0 = uniform). */
+/**
+ * Popularity setting -> window on the catalog's percentile score and weighting exponent
+ * (0 = uniform). Mainstream is the top quarter of each language, balanced drops the bottom 30%.
+ */
 export const POPULARITY_SAMPLING = Object.freeze({
-  obscure: { minPopularity: 0, maxPopularity: 60, alpha: 0 },
+  obscure: { minPopularity: 0, maxPopularity: 50, alpha: 0 },
   pure: { minPopularity: 0, maxPopularity: 100, alpha: 0 },
-  balanced: { minPopularity: 20, maxPopularity: 100, alpha: 1 },
-  mainstream: { minPopularity: 50, maxPopularity: 100, alpha: 2 },
+  balanced: { minPopularity: 30, maxPopularity: 100, alpha: 1 },
+  mainstream: { minPopularity: 75, maxPopularity: 100, alpha: 2 },
 });
 
 const CATALOG_POOL_SIZE = 400;
@@ -144,7 +147,7 @@ export function learnFromExternal(catalog, candidates) {
   return catalog.upsertBatch(batch);
 }
 
-/** Popularity of an external candidate on the catalog's 0-100 scale. */
+/** Popularity of an external candidate: its own score, else the provisional catalog score. */
 export function externalPopularity(candidate) {
-  return Number(candidate.popularity) || deezerRankToScore(candidate.rank);
+  return Number(candidate.popularity) || provisionalPopularity({ deezerRank: normalizeDeezerRank(candidate.rank) });
 }

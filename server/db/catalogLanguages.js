@@ -1,7 +1,7 @@
 /**
  * Recomputes artist-level languages (voted over each artist's catalog) and re-resolves every
  * track's language with them. Pure local work: no network. Used by migration v3 and by
- * `npm run catalog:enrich -- --languages` after new crawls.
+ * `npm run catalog:recompute` after new crawls.
  */
 import { classifyArtistLanguage, resolveTrackLanguage } from './languageClassifier.js';
 
