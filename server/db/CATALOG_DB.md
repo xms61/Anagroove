@@ -11,7 +11,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long i
 ## Tables (`sqliteCatalog._createTables`)
 - `artists`: `canonical_name` UNIQUE, `display_name`, and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json` and `fans_count`.
 - `tracks`: `isrc` UNIQUE, `canonical_title`, `display_title`, `artist_id`, `album_name`, `duration_ms`, `release_year`/`release_date`, `country_code` (ISRC prefix, which is the *registrant*, not the language), `language`, `popularity`, `is_explicit`.
-- `track_samples`: one row per (track, provider) with the preview URL. **Deezer preview URLs are signed and expire** (`hdnea=exp=`), so treat them as a cache, never as ground truth.
+- `track_samples`: one row per (track, provider) with the preview URL. **Deezer preview URLs are signed and expire** (`hdnea=exp=`, minutes), so treat them as a cache. `previewResolver.isPreviewUrlFresh` decides whether a stored URL is still usable.
 - `track_providers`: `(provider, provider_track_id)` UNIQUE cross-reference.
 - `crawl_queue`: crawl tasks.
 - `tracks_fts`: FTS5. **Currently broken** (declared `content='tracks'` with columns `tracks` doesn't have), so queries fall back to `LIKE`.

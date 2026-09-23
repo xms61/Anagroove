@@ -4,6 +4,18 @@
 
 const USER_ID_REGEX = /^[a-zA-Z0-9_-]{3,64}$/;
 const ROOM_CODE_REGEX = /^[A-Za-z]{3,10}-\d{2,4}$/;
+const RESUME_TOKEN_REGEX = /^[a-f0-9]{32}$/;
+const PREVIEW_REF_REGEX = /^(deezer|itunes|catalog):\d{1,20}$/;
+
+/**
+ * Validates a stable audio preview reference ("deezer:123", "itunes:456", "catalog:7").
+ * @returns {string | null}
+ */
+export function validatePreviewRef(ref) {
+  if (typeof ref !== 'string') return null;
+  const trimmed = ref.trim();
+  return PREVIEW_REF_REGEX.test(trimmed) ? trimmed : null;
+}
 
 /**
  * Validates format and length of anonymous user ID.
@@ -270,6 +282,14 @@ export function validateWsMessage(data) {
 
   if (data.playerId && !USER_ID_REGEX.test(String(data.playerId))) {
     return { valid: false, error: 'Invalid playerId format' };
+  }
+
+  if ((data.action === 'create_room' || data.action === 'join_room') && !data.playerId) {
+    return { valid: false, error: 'playerId is required to create or join a room' };
+  }
+
+  if (data.resumeToken !== undefined && (typeof data.resumeToken !== 'string' || !RESUME_TOKEN_REGEX.test(data.resumeToken))) {
+    return { valid: false, error: 'Invalid resumeToken format' };
   }
 
   if (data.roomCode) {

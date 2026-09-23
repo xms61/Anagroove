@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Clue } from '../types/crossword';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, AlertCircle } from 'lucide-react';
+import { playableAudioUrl } from '../services/audioSource';
 
 interface AudioPlayerBarProps {
   activeClue?: Clue;
@@ -82,7 +83,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
     setLoadError(false);
     audioRef.current.volume = isMuted ? 0 : volume;
-    audioRef.current.src = activeClue.song.audioUrl;
+    audioRef.current.src = playableAudioUrl(activeClue.song);
     audioRef.current.currentTime = 0;
     setCurrentTime(0);
     setProgress(0);

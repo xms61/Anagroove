@@ -169,7 +169,7 @@ Combine these signals into one `classifyLanguage({title, album, artist, artistTi
 
 ## 3. Implementation plan (one PR per phase, following AGENTS release rules)
 
-### Phase 0: Agent docs, hygiene, isolation (patch)
+### Phase 0: Agent docs, hygiene, isolation (patch) ✅ v1.13.1 (#18)
 - **Restructure `agents.md` for token cost (requested):**
   - **`AGENTS.md` becomes a map only** (about 15 lines, down from 150 lines / ~2.7k tokens). Each line gives a doc path and **when to read it**, e.g. `server/db/CATALOG_DB.md — read before touching schema, ingest, dedupe or sanitizer`. There is no other content. Guardrails (never push `main`, never commit `*.sqlite`/`.env`) live in the release doc, and the map entry for it says "read before any commit/PR".
   - **Colocated section docs with distinct names**, so a search or an agent pulls only the one it needs:
@@ -194,7 +194,7 @@ Combine these signals into one `classifyLanguage({title, album, artist, artistTi
 - **Runtime alignment:** Node 24 in CI, the Dockerfile, and `.nvmrc`. `.dockerignore` excludes `server/data/*`, `data/*.json` dumps, `*.sqlite*`, `reports/`, `.gemini`, and `.idea`. Pick one port pair (e.g. API 3001 / Vite 3000) across `.env.example`, `vite.config.ts`, and the server. Remove `GEMINI_API_KEY` from `.env.example` unless the judge actually uses it.
 - **Deletions:** remove the unused files in §1.6, including the offline pools and their scripts (D3), and `.agents/skills/` once its content is folded in (D4). Remove `GEMINI_API_KEY` and `SPOTIFY_*` references from `.env.example` and the docs (D5).
 
-### Phase 1: Correctness hot‑fixes (patch)
+### Phase 1: Correctness hot‑fixes (patch) ✅ v1.13.2
 - **C1:** add the `GET /api/preview/:trackId` 302 endpoint plus the `preview_cache` expiry check. `resolveTrackPreview` must ignore an expired `exp=`. The frontend uses the endpoint URL.
 - **C5 multiplayer:** the server binds `playerId` to the socket on create/join, ignores message‑supplied `playerId` for authz, and requires `currentRoomCode === data.roomCode`. `start_game` is host‑only by socket identity. Reconnect uses a per‑player `resumeToken` (random 128‑bit, returned on join), with a 30 s grace period before a disconnected player is removed. The client rejoins on reconnect. Room codes become 6 chars.
 - **Security basics:**

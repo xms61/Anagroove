@@ -217,6 +217,13 @@ export default function App() {
 
     const offJoined = socketService.on('room_joined', (data) => {
       setMultiplayerRoom(data.room);
+      if (data.resumed) {
+        // Reconnected to our existing seat: keep local progress, only catch up on co-op letters
+        if (data.room?.mode === 'coop' && Array.isArray(data.room.sharedGrid)) {
+          setUserLetters(data.room.sharedGrid);
+        }
+        return;
+      }
       if (data.room?.puzzle) {
         setCurrentPuzzle(data.room.puzzle);
         localStorage.setItem('spotyspice_active_live_puzzle', JSON.stringify(data.room.puzzle));

@@ -1,21 +1,42 @@
 import { CellValidity } from '../types/crossword';
 
-export function getAnonymousUserId(): string {
-  let id = localStorage.getItem('spotyspice_user_id');
-  if (!id) {
-    id = 'anon_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-    localStorage.setItem('spotyspice_user_id', id);
+/**
+ * The anonymous user id doubles as a bearer secret for progress/blacklist data,
+ * so it is generated from the CSPRNG (getRandomValues also works on plain-http LAN hosts).
+ */
+function randomId(prefix: string): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return prefix + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const idCache = new Map<string, string>();
+
+function readOrCreateId(getStorage: () => Storage, key: string, prefix: string): string {
+  const cached = idCache.get(key);
+  if (cached) return cached;
+  let id = '';
+  try {
+    const storage = getStorage();
+    id = storage.getItem(key) || '';
+    if (!id) {
+      id = randomId(prefix);
+      storage.setItem(key, id);
+    }
+  } catch {
+    // Storage blocked (privacy mode): keep one id for this page load
+    id = id || randomId(prefix);
   }
+  idCache.set(key, id);
   return id;
 }
 
+export function getAnonymousUserId(): string {
+  return readOrCreateId(() => localStorage, 'spotyspice_user_id', 'anon_');
+}
+
 export function getMultiplayerPlayerId(): string {
-  let id = sessionStorage.getItem('spotyspice_mp_player_id');
-  if (!id) {
-    id = 'player_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-    sessionStorage.setItem('spotyspice_mp_player_id', id);
-  }
-  return id;
+  return readOrCreateId(() => sessionStorage, 'spotyspice_mp_player_id', 'player_');
 }
 
 const headers = () => ({
