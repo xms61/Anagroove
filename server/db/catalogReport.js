@@ -107,7 +107,7 @@ function renderGate(gate) {
 /** The markdown report. */
 export function renderValidationReport({ dbPath, stats, cleanup = null, gate = null }) {
   const { overview } = stats;
-  return `# SpotySpice catalog validation
+  return `# Anagroove catalog validation
 
 Generated ${new Date().toISOString()} for \`${dbPath}\`.
 

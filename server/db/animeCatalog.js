@@ -208,7 +208,7 @@ export class AnimeCatalog {
 
   /**
    * Retrieves random playable anime tracks with verified sample audio.
-   * Formatted directly for consumption by SpotySpice's crossword solver.
+   * Formatted directly for consumption by Anagroove's crossword solver.
    */
   getRandomAnimeTracks({
     count = 10,

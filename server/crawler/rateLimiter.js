@@ -50,7 +50,7 @@ export const itunesRateLimiter = new TokenBucketRateLimiter({
   maxTokens: 3,
 });
 
-const DEFAULT_USER_AGENT = 'SpotySpice-MusicIndexer/1.0 (+https://github.com/xms61/SpotySpice)';
+const DEFAULT_USER_AGENT = 'Anagroove-MusicIndexer/1.0 (+https://github.com/xms61/SpotySpice)';
 
 /**
  * Executes a polite fetch with rate limiting and retry on 429/503.

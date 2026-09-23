@@ -54,4 +54,4 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
 - `npm run build` runs `tsc` in strict mode, then `vite build`.
 
 ## Known gaps
-- "SpotySpice" and Spotify green (`spotifyGreen`) are a trademark risk if the app goes public.
+- Spotify green (`spotifyGreen`) is a trademark risk if the app goes public.

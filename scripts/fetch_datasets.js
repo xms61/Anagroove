@@ -50,7 +50,7 @@ async function fetchFile(url, dest) {
 
 async function main() {
   console.log('================================================================');
-  console.log('   SPOTYSPICE DATASET PREPARATION UTILITY');
+  console.log('   ANAGROOVE DATASET PREPARATION UTILITY');
   console.log('================================================================\n');
 
   for (const dir of [BASE_TABLES_DIR, CHANGES_DIR, 'data/downloads']) {

@@ -38,10 +38,10 @@ COPY data/ ./data/
 COPY --from=builder /app/dist ./dist
 
 # Create runtime non-root user and ensure data directories have write permissions
-RUN addgroup -S spotyspice && adduser -S spotyspice -G spotyspice && \
-    mkdir -p /app/server/data && chown -R spotyspice:spotyspice /app
+RUN addgroup -S anagroove && adduser -S anagroove -G anagroove && \
+    mkdir -p /app/server/data && chown -R anagroove:anagroove /app
 
-USER spotyspice
+USER anagroove
 
 EXPOSE 3000
 

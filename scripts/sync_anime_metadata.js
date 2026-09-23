@@ -47,7 +47,7 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
       const startTime = Date.now();
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'SpotySpice-CrosswordEngine/1.0 (+https://github.com/xms61/SpotySpice)'
+          'User-Agent': 'Anagroove-CrosswordEngine/1.0 (+https://github.com/xms61/SpotySpice)'
         }
       });
 

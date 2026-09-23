@@ -9,7 +9,7 @@ import { evaluateCatalogGate } from '../../server/db/catalogGate.js';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 
 test('the CI fixture catalog is fully admitted, passes the gate and serves puzzles', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-fixture-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-fixture-'));
   const dbPath = path.join(dir, 'catalog.sqlite');
   const { tracks } = buildFixtureCatalog(dbPath);
   assert.equal(tracks, 92);

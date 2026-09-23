@@ -11,6 +11,7 @@ interface StoredClue {
 
 async function loadPuzzle(page: Page) {
   await page.goto('/');
+  await expect(page).toHaveTitle(/^Anagroove/);
   // The first visit generates a puzzle from the fixture catalog and stores it locally
   await expect(page.getByRole('button', { name: /^1[AD]\b/ }).first()).toBeVisible({ timeout: 30_000 });
   const puzzle = await page.evaluate(() => JSON.parse(localStorage.getItem('spotyspice_active_live_puzzle') || 'null'));

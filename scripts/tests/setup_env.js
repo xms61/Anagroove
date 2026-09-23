@@ -16,7 +16,7 @@ const owner = process.env.SPOTYSPICE_TEST_DATA_OWNER;
 const inherited = owner && owner !== String(process.pid);
 
 if (!process.env.SPOTYSPICE_DATA_DIR || inherited) {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-test-'));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-test-'));
   process.env.SPOTYSPICE_DATA_DIR = dataDir;
   process.env.SPOTYSPICE_TEST_DATA_OWNER = String(process.pid);
 

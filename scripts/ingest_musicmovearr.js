@@ -85,7 +85,7 @@ export function parseDelimitedLine(line = '', delimiter = ',') {
 }
 
 /**
- * Converts raw row values into a standardized SpotySpice catalog candidate.
+ * Converts raw row values into a standardized Anagroove catalog candidate.
  */
 export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer') {
   const getVal = (fieldNames) => {
@@ -354,7 +354,7 @@ export async function streamIngestSql(filePath, provider = 'deezer', stats) {
 
 async function main() {
   const startTime = Date.now();
-  console.log('🎵 SpotySpice MusicMoveArr Dataset Ingestor (Scenario C)');
+  console.log('🎵 Anagroove MusicMoveArr Dataset Ingestor (Scenario C)');
   console.log(`   Popularity floor: Spotify >= ${minPopularity} or the language's Deezer rank floor`);
   console.log(`   Sample Hydration: LAZY (on-the-fly JIT during gameplay)`);
   console.log(`   Dry Run: ${isDryRun ? 'YES (No DB Writes)' : 'NO (Persisting to SQLite)'}`);
