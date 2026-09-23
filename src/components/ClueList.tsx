@@ -12,20 +12,20 @@ const getClueBadgeClass = (clueId: string) => {
   const isAcross = clueId.includes('A');
   const palette = isAcross
     ? [
-        'bg-orange-500 text-slate-950',
-        'bg-cyan-400 text-slate-950',
-        'bg-rose-500 text-white',
-        'bg-emerald-400 text-slate-950',
-        'bg-pink-400 text-slate-950',
-        'bg-amber-400 text-slate-950',
+        'bg-accent text-on-accent',
+        'bg-hi text-on-accent',
+        'bg-bad text-fg',
+        'bg-ok text-on-accent',
+        'bg-bad text-on-accent',
+        'bg-accent text-on-accent',
       ]
     : [
-        'bg-blue-500 text-white',
-        'bg-teal-400 text-slate-950',
-        'bg-red-500 text-white',
-        'bg-yellow-400 text-slate-950',
-        'bg-purple-500 text-white',
-        'bg-indigo-400 text-white',
+        'bg-hi text-fg',
+        'bg-ok text-on-accent',
+        'bg-bad text-fg',
+        'bg-accent text-on-accent',
+        'bg-hi text-fg',
+        'bg-hi text-fg',
       ];
   return palette[num % palette.length];
 };
@@ -45,8 +45,8 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
         onClick={() => onSelectClue(clue)}
         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all cursor-pointer border ${
           isActive
-            ? 'bg-white text-slate-950 border-white shadow-[0_4px_16px_rgba(0,0,0,0.3)] font-semibold scale-[1.01]'
-            : 'bg-transparent text-slate-300 hover:bg-white/5 hover:text-white border-transparent'
+            ? 'bg-fg text-on-accent border-line shadow-[0_4px_16px_rgba(0,0,0,0.3)] font-semibold scale-[1.01]'
+            : 'bg-transparent text-fg hover:bg-fg/5 hover:text-fg border-transparent'
         }`}
       >
         <span
@@ -55,10 +55,10 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
           {clue.id}
         </span>
         <div className="flex flex-col truncate">
-          <span className={`text-sm font-medium truncate ${isActive ? 'text-slate-950 font-bold' : 'text-slate-200'}`} title={clue.clueText}>
+          <span className={`text-sm font-medium truncate ${isActive ? 'text-on-accent font-bold' : 'text-fg'}`} title={clue.clueText}>
             {clue.clueText}
           </span>
-          <span className={`text-xs font-mono ${isActive ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>
+          <span className={`text-xs font-mono ${isActive ? 'text-muted font-semibold' : 'text-muted'}`}>
             {clue.clueType} • {clue.length} letters
           </span>
         </div>
@@ -70,11 +70,11 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 max-h-[600px] overflow-y-auto pr-1">
       {/* Across (Horizontal) Clues */}
       <div className="flex flex-col">
-        <h3 className="text-sm font-bold text-white mb-2.5 pb-1.5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-kissa-surface/95 backdrop-blur-sm z-10">
-          <span className="flex items-center gap-1.5 text-amber-300">
+        <h3 className="text-sm font-bold text-fg mb-2.5 pb-1.5 border-b border-line/5 flex items-center justify-between sticky top-0 bg-surface/95 backdrop-blur-sm z-10">
+          <span className="flex items-center gap-1.5 text-accent">
             <span>Across (Horizontal)</span>
           </span>
-          <span className="text-xs font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">{acrossClues.length} clues</span>
+          <span className="text-xs font-mono text-muted bg-fg/5 px-2 py-0.5 rounded-full">{acrossClues.length} clues</span>
         </h3>
         <div className="flex flex-col gap-1.5">
           {acrossClues.map(clue => renderClueItem(clue))}
@@ -83,11 +83,11 @@ export const ClueList: React.FC<ClueListProps> = ({ clues, activeClue, onSelectC
 
       {/* Down (Vertical) Clues */}
       <div className="flex flex-col">
-        <h3 className="text-sm font-bold text-white mb-2.5 pb-1.5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-kissa-surface/95 backdrop-blur-sm z-10">
-          <span className="flex items-center gap-1.5 text-cyan-300">
+        <h3 className="text-sm font-bold text-fg mb-2.5 pb-1.5 border-b border-line/5 flex items-center justify-between sticky top-0 bg-surface/95 backdrop-blur-sm z-10">
+          <span className="flex items-center gap-1.5 text-hi">
             <span>Down (Vertical)</span>
           </span>
-          <span className="text-xs font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-full">{downClues.length} clues</span>
+          <span className="text-xs font-mono text-muted bg-fg/5 px-2 py-0.5 rounded-full">{downClues.length} clues</span>
         </h3>
         <div className="flex flex-col gap-1.5">
           {downClues.map(clue => renderClueItem(clue))}

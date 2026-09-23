@@ -13,9 +13,24 @@ interface CrosswordGridProps {
   onMoveCursor: (dr: number, dc: number) => void;
   onApplyHint?: (type: 'letter' | 'word' | 'puzzle') => void;
   teammateCell?: { row: number; col: number; name: string; color: string } | null;
-  isPlaying?: boolean;
   celebratingCells?: { row: number; col: number; delay: number }[];
   enableWordAnimations?: boolean;
+}
+
+const GAP = 3;
+const MIN_CELL = 20;
+const MAX_CELL = 44;
+const MAX_GRID_HEIGHT = 540;
+/** Board padding (p-3 / sm:p-5) plus its 1 px border on both sides. */
+const boardChrome = (width: number) => 2 * (width < 640 ? 12 : 20) + 2;
+const ARROWS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+
+function cellClasses(state: { selected: boolean; wrong: boolean; inWord: boolean; correct: boolean }): string {
+  if (state.selected) return 'bg-cursor text-cursor-fg shadow-cursor z-10';
+  if (state.wrong) return 'bg-bad-cell text-cell-fg border-2 border-bad';
+  if (state.inWord) return 'bg-word text-cell-fg border border-word-line';
+  if (state.correct) return 'bg-ok-cell text-cell-fg border-2 border-ok';
+  return 'bg-cell text-cell-fg border border-cell-line hover:brightness-110';
 }
 
 export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
@@ -30,19 +45,12 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   onMoveCursor,
   onApplyHint,
   teammateCell,
-  isPlaying = false,
   celebratingCells = [],
   enableWordAnimations = true,
 }) => {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const [containerWidth, setContainerWidth] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return Math.min(window.innerWidth - 32, 560);
-    }
-    return 500;
-  });
+  const [containerWidth, setContainerWidth] = useState(() => Math.min(window.innerWidth - 32, 560));
 
   useEffect(() => {
     hiddenInputRef.current?.focus();
@@ -51,77 +59,48 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        if (entry.contentRect.width > 0) {
-          setContainerWidth(entry.contentRect.width);
-        }
-      }
+      const width = entries[0]?.contentRect.width;
+      if (width) setContainerWidth(width);
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        onApplyHint?.('puzzle');
-      } else {
-        onApplyHint?.('word');
-      }
-    } else if (e.key === ' ' || e.code === 'Space') {
-      e.preventDefault();
-      onApplyHint?.('letter');
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      onMoveCursor(-1, 0);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      onMoveCursor(1, 0);
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      onMoveCursor(0, -1);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      onMoveCursor(0, 1);
-    } else if (e.key === 'Backspace') {
-      e.preventDefault();
-      onBackspace();
-    } else if (/^[a-zA-Z0-9]$/.test(e.key)) {
-      e.preventDefault();
-      onInputLetter(e.key);
-    }
+  /** Hints, arrows and Backspace. Returns true when the key was handled. */
+  const handleCommandKey = (e: React.KeyboardEvent): boolean => {
+    if (e.key === 'Tab') onApplyHint?.(e.shiftKey ? 'puzzle' : 'word');
+    else if (e.key === ' ' || e.code === 'Space') onApplyHint?.('letter');
+    else if (e.key === 'Backspace') onBackspace();
+    else if (ARROWS[e.key]) onMoveCursor(...ARROWS[e.key]);
+    else return false;
+    e.preventDefault();
+    return true;
   };
 
-  const gapSize = 3;
   const cols = puzzle.cols || 1;
   const rows = puzzle.rows || 1;
-
-  // Compute maximum available dimensions:
-  // Desktop max width: ~540px to sit comfortably over vinyl
-  // Mobile max width: containerWidth - 32px
-  const maxAvailableWidth = Math.min(containerWidth - 32, 540);
-  const maxAvailableHeight = 540;
-
-  const maxCellWidth = Math.floor((maxAvailableWidth - (cols - 1) * gapSize) / cols);
-  const maxCellHeight = Math.floor((maxAvailableHeight - (rows - 1) * gapSize) / rows);
-
-  // Cell size bounded between 26px (compact mobile layout) and 46px (spacious desktop)
-  const cellSize = Math.max(26, Math.min(46, Math.min(maxCellWidth, maxCellHeight)));
-
-  const letterFontSize = Math.max(15, Math.round(cellSize * 0.58));
-  const numberFontSize = Math.max(8.5, Math.round(cellSize * 0.27));
-  const gridWidth = cols * cellSize + (cols - 1) * gapSize;
-  const gridHeight = rows * cellSize + (rows - 1) * gapSize;
+  const available = Math.min(containerWidth, 600) - boardChrome(containerWidth);
+  const fitWidth = Math.floor((available - (cols - 1) * GAP) / cols);
+  const fitHeight = Math.floor((MAX_GRID_HEIGHT - (rows - 1) * GAP) / rows);
+  const cellSize = Math.max(MIN_CELL, Math.min(MAX_CELL, fitWidth, fitHeight));
+  const letterFontSize = Math.round(cellSize * 0.5);
+  const numberFontSize = Math.max(8, Math.round(cellSize * 0.26));
 
   return (
     <div
       ref={containerRef}
-      className="relative flex items-center justify-center p-4 sm:p-6 select-none outline-none overflow-hidden"
+      className="relative w-full flex justify-center select-none outline-none"
       onClick={() => hiddenInputRef.current?.focus()}
       tabIndex={0}
-      onKeyDown={handleKeyDown}
+      onKeyDown={e => {
+        if (handleCommandKey(e)) return;
+        if (/^[a-zA-Z0-9]$/.test(e.key)) {
+          e.preventDefault();
+          onInputLetter(e.key);
+        }
+      }}
     >
+      {/* Receives typing on touch keyboards; letters arrive through onChange */}
       <input
         ref={hiddenInputRef}
         type="text"
@@ -131,172 +110,85 @@ export const CrosswordGrid: React.FC<CrosswordGridProps> = ({
         autoCorrect="off"
         spellCheck="false"
         onChange={e => {
-          const val = e.target.value;
-          if (val) {
-            const lastChar = val.slice(-1);
-            if (/^[a-zA-Z0-9]$/.test(lastChar)) {
-              onInputLetter(lastChar);
-            }
-          }
+          const lastChar = e.target.value.slice(-1);
+          if (/^[a-zA-Z0-9]$/.test(lastChar)) onInputLetter(lastChar);
           e.target.value = '';
         }}
         onKeyDown={e => {
-          if (e.key === 'Tab') {
-            e.preventDefault();
-            if (e.shiftKey) {
-              onApplyHint?.('puzzle');
-            } else {
-              onApplyHint?.('word');
-            }
-          } else if (e.key === ' ' || e.code === 'Space') {
-            e.preventDefault();
-            onApplyHint?.('letter');
-          } else if (e.key === 'Backspace') {
-            e.preventDefault();
-            onBackspace();
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            onMoveCursor(-1, 0);
-          } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            onMoveCursor(1, 0);
-          } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            onMoveCursor(0, -1);
-          } else if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            onMoveCursor(0, 1);
-          }
+          if (handleCommandKey(e)) e.stopPropagation();
         }}
       />
 
-      {/* Vinyl Record Center Turntable Backdrop */}
-      <div
-        className="absolute rounded-full vinyl-grooves pointer-events-none transition-transform duration-700 ease-out"
-        style={{
-          width: `${Math.max(gridWidth, gridHeight) + 120}px`,
-          height: `${Math.max(gridWidth, gridHeight) + 120}px`,
-        }}
-      >
-        <div className={`w-full h-full rounded-full flex items-center justify-center ${isPlaying ? 'animate-spin-slow' : 'spin-paused'}`}>
-          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-700 via-amber-500 to-amber-400 border-4 border-kissa-base flex items-center justify-center shadow-inner opacity-40">
-            <div className="w-5 h-5 rounded-full bg-kissa-base border-2 border-amber-300/40" />
-          </div>
-        </div>
-      </div>
+      <div className="max-w-full overflow-x-auto p-3 sm:p-5 bg-glass border border-line rounded-panel shadow-panel">
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
+            gridTemplateRows: `repeat(${rows}, ${cellSize}px)`,
+            gap: `${GAP}px`,
+          }}
+        >
+          {puzzle.grid.map((rowCells, r) =>
+            rowCells.map((cell, c) => {
+              if (cell.isBlock) {
+                return <div key={`${r}-${c}`} className="rounded-cell bg-fg/[0.04]" />;
+              }
 
-      {/* Grid Container */}
-      <div
-        className="relative z-10 grid rounded-xl p-3 sm:p-4 bg-kissa-base/85 border border-white/10 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
-        style={{
-          gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
-          gridTemplateRows: `repeat(${rows}, ${cellSize}px)`,
-          gap: `${gapSize}px`,
-        }}
-      >
-        {puzzle.grid.map((rowCells, r) =>
-          rowCells.map((cell, c) => {
-            if (cell.isBlock) {
+              const selected = selectedCell.row === r && selectedCell.col === c;
+              const cellValidity = validity[r]?.[c] || 'untested';
+              const wrong = cellValidity === 'wrong';
+              const letter = userLetters[r]?.[c] || '';
+              const isTeammate = teammateCell?.row === r && teammateCell?.col === c;
+              const celebration = enableWordAnimations ? celebratingCells.find(item => item.row === r && item.col === c) : undefined;
+
               return (
-                <div
+                <button
                   key={`${r}-${c}`}
-                  style={{ width: `${cellSize}px`, height: `${cellSize}px` }}
-                  className="rounded-[4px] bg-kissa-base/80 border border-white/[0.04]"
-                />
-              );
-            }
-
-            const isSelected = selectedCell.row === r && selectedCell.col === c;
-            const isInActiveWord = isCellInActiveWord(r, c);
-            const letter = userLetters[r]?.[c] || '';
-            const cellValid = validity[r]?.[c] || 'untested';
-            const isTeammate = teammateCell?.row === r && teammateCell?.col === c;
-            const celebration = celebratingCells?.find(item => item.row === r && item.col === c);
-
-            // Crisp, high-contrast floating crossword tiles
-            let bgStyle = 'bg-white text-slate-900 hover:bg-amber-50/50';
-            let borderStyle = 'border border-slate-300 shadow-[0_2px_4px_rgba(0,0,0,0.12)]';
-
-            if (isSelected) {
-              bgStyle = 'bg-yellow-300 text-slate-950 font-black z-20 shadow-[0_0_18px_rgba(250,204,21,0.7)]';
-              borderStyle = 'border-2 border-amber-600 ring-2 ring-amber-400';
-            } else if (isInActiveWord) {
-              bgStyle = 'bg-amber-100 text-amber-950 font-black';
-              borderStyle = 'border-2 border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.25)]';
-            }
-
-            if (cellValid === 'wrong') {
-              bgStyle = 'bg-red-100 text-red-800 font-black';
-              borderStyle = 'border-2 border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]';
-            } else if (cellValid === 'correct' && !isSelected && !isInActiveWord) {
-              bgStyle = 'bg-green-100 text-emerald-800 font-black';
-              borderStyle = 'border-2 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]';
-            }
-
-            const celebrationClass = (enableWordAnimations && celebration) ? 'animate-letter-correct-pop z-30' : '';
-            const celebrationDelay = (enableWordAnimations && celebration) ? `${celebration.delay}ms` : undefined;
-
-            return (
-              <button
-                key={`${r}-${c}`}
-                type="button"
-                onClick={e => {
-                  e.stopPropagation();
-                  onSelectCell(r, c);
-                  hiddenInputRef.current?.focus();
-                }}
-                style={{
-                  width: `${cellSize}px`,
-                  height: `${cellSize}px`,
-                  animationDelay: celebrationDelay,
-                }}
-                className={`relative rounded-[4px] font-bold flex items-center justify-center transition-all cursor-pointer tile-shadow ${bgStyle} ${borderStyle} ${celebrationClass}`}
-              >
-                {/* Red studio tape corner mark on selected cell (positioned top-right to avoid clue numbers) */}
-                {isSelected && (
-                  <div className="absolute top-0 right-0 w-0 h-0 border-t-[8px] border-t-rose-500 border-l-[8px] border-l-transparent pointer-events-none" />
-                )}
-
-                {/* Multiplayer Teammate Indicator */}
-                {isTeammate && !isSelected && (
-                  <div
-                    className="absolute inset-0 border-2 rounded-sm pointer-events-none animate-pulse"
-                    style={{ borderColor: teammateCell.color }}
-                  >
-                    <span
-                      className="absolute -top-3.5 left-0 text-[8px] px-1 py-0.2 rounded text-white font-bold leading-tight shadow"
-                      style={{ backgroundColor: teammateCell.color }}
-                    >
-                      {teammateCell.name}
-                    </span>
-                  </div>
-                )}
-
-                {/* Clue Number Indicator */}
-                {cell.number && (
-                  <span
-                    className="absolute top-[1px] left-[2px] leading-none text-slate-500 font-bold pointer-events-none"
-                    style={{ fontSize: `${numberFontSize}px` }}
-                  >
-                    {cell.number}
-                  </span>
-                )}
-
-                {/* Entered Character */}
-                <span
-                  className="font-sans font-black tracking-tight uppercase select-none"
-                  style={{
-                    fontSize: `${letterFontSize}px`,
-                    lineHeight: 1,
-                    marginTop: `${Math.max(1, Math.round(cellSize * 0.08))}px`,
+                  type="button"
+                  aria-label={`Row ${r + 1}, column ${c + 1}${letter ? `, ${letter}` : ', empty'}${wrong ? ', wrong' : ''}`}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onSelectCell(r, c);
+                    hiddenInputRef.current?.focus();
                   }}
+                  style={celebration ? { animationDelay: `${celebration.delay}ms` } : undefined}
+                  className={`relative rounded-cell font-extrabold flex items-center justify-center transition-colors cursor-pointer ${cellClasses({
+                    selected,
+                    wrong,
+                    inWord: isCellInActiveWord(r, c),
+                    correct: cellValidity === 'correct',
+                  })} ${celebration ? 'animate-letter-correct-pop z-20' : ''}`}
                 >
-                  {letter}
-                </span>
-              </button>
-            );
-          })
-        )}
+                  {cell.number && (
+                    <span
+                      className={`absolute top-[2px] left-[3px] leading-none font-bold pointer-events-none ${selected ? 'text-cursor-fg/70' : 'text-cell-num'}`}
+                      style={{ fontSize: `${numberFontSize}px` }}
+                    >
+                      {cell.number}
+                    </span>
+                  )}
+
+                  <span className="uppercase leading-none" style={{ fontSize: `${letterFontSize}px` }}>{letter}</span>
+
+                  {wrong && !selected && (
+                    <span aria-hidden="true" className="absolute left-1.5 right-1.5 top-1/2 h-0.5 bg-bad -rotate-[35deg] pointer-events-none" />
+                  )}
+
+                  {isTeammate && !selected && (
+                    <span className="absolute inset-0 border-2 rounded-cell pointer-events-none" style={{ borderColor: teammateCell.color }}>
+                      <span
+                        className="absolute -top-4 left-0 text-[10px] px-1 rounded-cell text-on-accent font-bold leading-tight whitespace-nowrap"
+                        style={{ backgroundColor: teammateCell.color }}
+                      >
+                        {teammateCell.name}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

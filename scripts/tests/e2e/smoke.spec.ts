@@ -50,3 +50,13 @@ test('no horizontal scrolling on a 375 px phone', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test('the theme picked in Settings applies and survives a reload', async ({ page }) => {
+  await loadPuzzle(page);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'city');
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByLabel('Theme').selectOption('berlin');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'berlin');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'berlin');
+});

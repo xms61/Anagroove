@@ -11,8 +11,11 @@ interface UseCrosswordGameOptions {
   multiplayerRoom?: MultiplayerRoom | null;
   playerId?: string;
   playerName?: string;
+  /** Co-op cursor colour sent with each letter; the server assigns the real one. */
   playerColor?: string;
 }
+
+const DEFAULT_PLAYER_COLOR = '#3de0ff';
 
 // Copy of a letter grid with one cell changed. Key handlers build the next grid from the
 // rendered state for their own checks and saves, and apply the change with a functional
@@ -31,7 +34,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     multiplayerRoom,
     playerId,
     playerName,
-    playerColor,
+    playerColor = DEFAULT_PLAYER_COLOR,
   } = options;
 
   // User input grid: 2D array of string
@@ -278,7 +281,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
         uppercase,
         playerId,
         playerName || 'Teammate',
-        playerColor || '#1db954'
+        playerColor
       );
     }
 
@@ -362,7 +365,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
           '',
           playerId,
           playerName || 'Teammate',
-          playerColor || '#1db954'
+          playerColor
         );
       }
     } else if (activeClue) {
@@ -385,7 +388,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
             '',
             playerId,
             playerName || 'Teammate',
-            playerColor || '#1db954'
+            playerColor
           );
         }
       }
@@ -441,7 +444,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
             correctChar,
             playerId,
             playerName || 'Teammate',
-            playerColor || '#1db954'
+            playerColor
           );
         }
 
@@ -477,7 +480,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
               correctChar,
               playerId,
               playerName || 'Teammate',
-              playerColor || '#1db954'
+              playerColor
             );
           }
         }

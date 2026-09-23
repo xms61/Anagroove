@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   /** Accessible dialog name; rendered by the caller, linked through `titleId`. */
   children: (ids: { titleId: string; descriptionId: string }) => React.ReactNode;
-  /** Panel classes: width, padding and the accent border color (e.g. `border-amber-500/25`). */
+  /** Panel classes: width and padding (e.g. `max-w-md p-6`). */
   className?: string;
   /** Close when the dimmed backdrop is clicked (default true). */
   closeOnBackdrop?: boolean;
@@ -23,7 +23,7 @@ export const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
   children,
-  className = 'max-w-md p-6 border-white/10',
+  className = 'max-w-md p-6',
   closeOnBackdrop = true,
   closeLabel = 'Close',
 }) => {
@@ -36,7 +36,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-bg/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onMouseDown={event => {
         if (closeOnBackdrop && event.target === event.currentTarget) onClose();
       }}
@@ -48,7 +48,7 @@ export const Modal: React.FC<ModalProps> = ({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
-        className={`bg-kissa-surface border rounded-2xl w-full shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative text-slate-100 outline-none max-h-[90vh] overflow-y-auto ${className}`}
+        className={`bg-panel border border-line rounded-panel w-full shadow-[0_24px_60px_rgba(0,0,0,0.6)] relative text-fg outline-none max-h-[90vh] overflow-y-auto ${className}`}
       >
         {closeLabel !== null && (
           <button
@@ -56,7 +56,7 @@ export const Modal: React.FC<ModalProps> = ({
             onClick={onClose}
             aria-label={closeLabel}
             title={closeLabel}
-            className="absolute top-4 right-4 z-10 text-slate-300 hover:text-white p-1 rounded-full hover:bg-white/10 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
+            className="absolute top-4 right-4 z-10 text-muted hover:text-fg p-2 rounded-control hover:bg-raised transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>

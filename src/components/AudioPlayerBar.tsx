@@ -212,26 +212,26 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       />
 
       {/* Floating Analog Preamp Deck */}
-      <div className="bg-kissa-surface/95 backdrop-blur-xl text-slate-100 rounded-2xl px-5 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.85)] flex flex-col sm:flex-row items-center justify-between gap-4 border border-amber-500/30 relative overflow-hidden">
+      <div className="bg-surface/95 backdrop-blur-xl text-fg rounded-2xl px-5 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.85)] flex flex-col sm:flex-row items-center justify-between gap-4 border border-accent/30 relative overflow-hidden">
         {/* Subtle brass plate top edge */}
-        <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-accent/40 to-transparent pointer-events-none" />
 
         {/* Left: Active Clue Info with VU Meter & Letter Pips */}
         <div className="flex items-center gap-3.5 w-full sm:w-auto overflow-hidden">
           {/* Dual VU Meter / Analog Level Indicator */}
-          <div className="w-10 h-10 rounded-xl bg-kissa-base border border-amber-500/30 flex items-center justify-center shrink-0 p-1.5 shadow-inner">
+          <div className="w-10 h-10 rounded-xl bg-bg border border-accent/30 flex items-center justify-center shrink-0 p-1.5 shadow-inner">
             {isPlaying ? (
               <div className="flex items-end gap-[3px] h-5">
-                <div className="w-1 bg-amber-400 rounded-full animate-eq-1" />
-                <div className="w-1 bg-amber-500 rounded-full animate-eq-2" />
-                <div className="w-1 bg-amber-300 rounded-full animate-eq-3" />
-                <div className="w-1 bg-amber-500 rounded-full animate-eq-4" />
+                <div className="w-1 bg-accent rounded-full animate-eq-1" />
+                <div className="w-1 bg-accent rounded-full animate-eq-2" />
+                <div className="w-1 bg-accent rounded-full animate-eq-3" />
+                <div className="w-1 bg-accent rounded-full animate-eq-4" />
               </div>
             ) : (
               <div className="flex items-center gap-[2px] opacity-40">
-                <div className="w-1 h-2 bg-amber-600 rounded-full" />
-                <div className="w-1 h-3.5 bg-amber-600 rounded-full" />
-                <div className="w-1 h-1.5 bg-amber-600 rounded-full" />
+                <div className="w-1 h-2 bg-accent rounded-full" />
+                <div className="w-1 h-3.5 bg-accent rounded-full" />
+                <div className="w-1 h-1.5 bg-accent rounded-full" />
               </div>
             )}
           </div>
@@ -239,20 +239,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           {activeClue ? (
             <div className="flex flex-col truncate">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black rounded-md font-mono text-xs shrink-0 shadow-sm">
+                <span className="px-2.5 py-0.5 bg-accent text-on-accent font-black rounded-md font-mono text-xs shrink-0 shadow-sm">
                   {activeClue.id}
                 </span>
-                <span className="text-xs text-slate-400 font-mono uppercase tracking-wider">
+                <span className="text-xs text-muted font-mono uppercase tracking-wider">
                   {activeClue.clueType} • {activeClue.length} LETTERS
                 </span>
               </div>
-              <span className="text-sm font-semibold truncate text-white mt-0.5" title={activeClue.clueText}>
+              <span className="text-sm font-semibold truncate text-fg mt-0.5" title={activeClue.clueText}>
                 {activeClue.clueText}
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-slate-400 text-sm">
-              <span className="text-amber-400 font-mono text-xs uppercase tracking-wider">READY •</span>
+            <div className="flex items-center gap-2 text-muted text-sm">
+              <span className="text-accent font-mono text-xs uppercase tracking-wider">READY •</span>
               <span>Select any clue to play its blind 30s preview</span>
             </div>
           )}
@@ -261,8 +261,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         {/* Right: Tactile Analog Controls & Volume */}
         <div className="flex items-center gap-3 shrink-0">
           {loadError && (
-            <span className="text-xs text-amber-300 flex items-center gap-1 font-medium bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-500/30">
-              <AlertCircle className="w-3 h-3 text-amber-400" /> Preview unavailable
+            <span className="text-xs text-accent flex items-center gap-1 font-medium bg-accent/15 px-2 py-0.5 rounded-full border border-accent/30">
+              <AlertCircle className="w-3 h-3 text-accent" /> Preview unavailable
             </span>
           )}
 
@@ -271,7 +271,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             type="button"
             onClick={onPrevClue}
             title="Previous Clue"
-            className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full text-slate-300 hover:text-white transition cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center hover:bg-fg/10 rounded-full text-fg hover:text-fg transition cursor-pointer"
           >
             <SkipBack className="w-4 h-4 fill-current" />
           </button>
@@ -281,7 +281,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             type="button"
             onClick={togglePlay}
             title={isPlaying ? "Pause" : "Play Clue Audio"}
-            className="w-10 h-10 bg-gradient-to-tr from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-95 text-slate-950 rounded-full flex items-center justify-center shadow-[0_0_18px_rgba(245,158,11,0.45)] transition-all cursor-pointer font-black"
+            className="w-10 h-10 bg-gradient-to-tr from-accent to-accent hover:from-accent hover:to-accent active:scale-95 text-on-accent rounded-full flex items-center justify-center transition-all cursor-pointer font-black"
           >
             {isPlaying ? (
               <Pause className="w-4 h-4 fill-current" />
@@ -295,17 +295,17 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             type="button"
             onClick={onNextClue}
             title="Next Clue"
-            className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full text-slate-300 hover:text-white transition cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center hover:bg-fg/10 rounded-full text-fg hover:text-fg transition cursor-pointer"
           >
             <SkipForward className="w-4 h-4 fill-current" />
           </button>
 
           {/* Volume Control */}
-          <div className="flex items-center gap-2 ml-1 border-l border-white/10 pl-3">
+          <div className="flex items-center gap-2 ml-1 border-l border-line/10 pl-3">
             <button
               type="button"
               onClick={toggleMute}
-              className="text-slate-400 hover:text-amber-300 p-1 cursor-pointer transition"
+              className="text-muted hover:text-accent p-1 cursor-pointer transition"
             >
               {isMuted || volume === 0 ? (
                 <VolumeX className="w-4 h-4" />
@@ -320,15 +320,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               step="0.05"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="w-14 sm:w-16 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              className="w-14 sm:w-16 h-1.5 bg-raised rounded-lg appearance-none cursor-pointer accent-accent"
             />
           </div>
         </div>
       </div>
 
       {/* Interactive Audio Sample Scrubber Bar */}
-      <div className="w-full bg-kissa-base border-x border-b border-amber-500/30 rounded-b-xl px-4 py-1.5 -mt-1 mx-auto max-w-[calc(100%-16px)] flex items-center gap-3 shadow-lg select-none">
-        <span className="text-xs font-mono text-amber-300 font-bold w-9 text-right shrink-0">
+      <div className="w-full bg-bg border-x border-b border-accent/30 rounded-b-xl px-4 py-1.5 -mt-1 mx-auto max-w-[calc(100%-16px)] flex items-center gap-3 shadow-lg select-none">
+        <span className="text-xs font-mono text-accent font-bold w-9 text-right shrink-0">
           {formatSeconds(currentTime)}
         </span>
 
@@ -343,31 +343,31 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           className="flex-1 h-3 flex items-center cursor-pointer group relative"
         >
           {/* Background track */}
-          <div className="w-full h-1.5 group-hover:h-2 bg-slate-800 rounded-full overflow-hidden transition-all relative">
+          <div className="w-full h-1.5 group-hover:h-2 bg-raised rounded-full overflow-hidden transition-all relative">
             {/* Played gradient progress */}
             <div
-              className="bg-gradient-to-r from-amber-600 via-amber-400 to-amber-300 h-full rounded-full transition-all duration-75"
+              className="bg-gradient-to-r from-accent via-accent to-accent h-full rounded-full transition-all duration-75"
               style={{ width: `${progress}%` }}
             />
           </div>
           {/* Seeker playhead thumb */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-amber-300 rounded-full border-2 border-slate-950 shadow-[0_0_8px_rgba(245,158,11,0.8)] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-accent rounded-full border-2 border-line opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
             style={{ left: `${progress}%` }}
           />
         </div>
 
-        <span className="text-xs font-mono text-slate-400 font-semibold w-9 shrink-0">
+        <span className="text-xs font-mono text-muted font-semibold w-9 shrink-0">
           {formatSeconds(duration)}
         </span>
 
         {/* Quick -5s / +5s skip controls */}
-        <div className="flex items-center gap-1 shrink-0 border-l border-white/10 pl-2">
+        <div className="flex items-center gap-1 shrink-0 border-l border-line/10 pl-2">
           <button
             type="button"
             onClick={() => handleSkipSeconds(-5)}
             title="Skip back 5 seconds"
-            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
+            className="px-1.5 py-0.5 rounded bg-fg/5 hover:bg-fg/15 text-xs font-mono text-fg hover:text-fg transition cursor-pointer"
           >
             -5s
           </button>
@@ -375,7 +375,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             type="button"
             onClick={() => handleSkipSeconds(5)}
             title="Skip forward 5 seconds"
-            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
+            className="px-1.5 py-0.5 rounded bg-fg/5 hover:bg-fg/15 text-xs font-mono text-fg hover:text-fg transition cursor-pointer"
           >
             +5s
           </button>
@@ -383,7 +383,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       </div>
 
       {/* Vintage Salon Subtitle */}
-      <p className="text-xs text-slate-400/80 mt-1 text-center font-mono">
+      <p className="text-xs text-muted/80 mt-1 text-center font-mono">
         Blind Audio Preview • Artists and track titles revealed upon solving
       </p>
     </div>
