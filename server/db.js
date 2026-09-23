@@ -1,12 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { blacklistIdentityKey, canonicalArtistKey, canonicalTrackKey } from '../shared/musicIdentity.js';
+import { DATA_DIR } from './paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const DATA_DIR = path.join(__dirname, 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 const TEMP_FILE = path.join(DATA_DIR, 'store.json.tmp');
 const BACKUP_FILE = path.join(DATA_DIR, 'store.json.bak');

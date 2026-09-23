@@ -1,11 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { DATA_DIR } from '../paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '..', 'data');
 const DEFAULT_ANIME_DB_PATH = path.join(DATA_DIR, 'anime_catalog.sqlite');
 
 export function normalizeAnimeText(str) {

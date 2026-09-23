@@ -4,13 +4,38 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .git
+.github
 .gitignore
 .dockerignore
 .env
 .env.*
 .vscode
+.idea
+.gemini
+.agents
 *.zip
 scratch
 .system_generated
 .DS_Store
 Thumbs.db
+
+# Runtime data: never bake catalogs, user store, or dumps into the image
+server/data/*.sqlite*
+server/data/store.json*
+data/base_tables
+data/changes
+data/downloads
+data/anime_samples
+data/Anime OPED
+data/*.html
+data/*.gz
+data/animethemes_dump.json
+data/anime_metadata_index.json
+*.sqlite*
+*.bak
+*.tmp
+
+# Generated output & docs not needed at runtime
+reports
+docs
+coverage

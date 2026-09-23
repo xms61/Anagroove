@@ -1,14 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { logger } from '../logger.js';
+import { DATA_DIR } from '../paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const DATA_DIR = path.resolve(__dirname, '../data');
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'catalog.sqlite');
 
 /**
