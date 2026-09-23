@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { classifyVersion, baseTitleKey, deezerRankToScore } from '../../server/db/trackNormalization.js';
+import { classifyVersion, baseTitleKey } from '../../server/db/trackNormalization.js';
 import { runCatalogCleanup } from '../../server/db/catalogCleanup.js';
 import { evaluateCatalogGate } from '../../server/db/catalogGate.js';
 
@@ -116,11 +116,11 @@ test('artists whose names only differed by HTML entities are merged', () => {
   catalog.close();
 });
 
-test('Japanese and Korean rows survive with a normalized ISRC, registrant and 0-100 popularity', () => {
+test('Japanese and Korean rows survive with a normalized ISRC, registrant and Deezer rank', () => {
   const { catalog, db, ids } = legacyCatalog();
   runCatalogCleanup(db, { apply: true });
-  const idol = db.prepare('SELECT language, isrc, country_code, popularity FROM tracks WHERE id = ?').get(ids.idol);
-  assert.deepEqual({ ...idol }, { language: 'ja', isrc: 'JPU902300400', country_code: 'JP', popularity: deezerRankToScore(900000) });
+  const idol = db.prepare('SELECT language, isrc, country_code, deezer_rank FROM tracks WHERE id = ?').get(ids.idol);
+  assert.deepEqual({ ...idol }, { language: 'ja', isrc: 'JPU902300400', country_code: 'JP', deezer_rank: 900000 }, 'the legacy rank moved out of popularity');
   assert.equal(db.prepare("SELECT language FROM tracks WHERE display_title = '봄날'").get()?.language, 'ko');
   assert.equal(db.prepare('SELECT COUNT(*) AS c FROM artists WHERE id NOT IN (SELECT artist_id FROM tracks)').get().c, 0, 'artists without tracks are deleted');
   catalog.close();
@@ -132,7 +132,7 @@ test('a second cleanup run changes nothing', () => {
   const again = runCatalogCleanup(db, { apply: true });
   const changed = again.steps
     .filter(s => s.name !== 'fts' && s.name !== 'languages')
-    .flatMap(s => Object.entries(s).filter(([k, v]) => typeof v === 'number' && !['ms', 'rounds'].includes(k) && v !== 0));
+    .flatMap(s => Object.entries(s).filter(([k, v]) => typeof v === 'number' && !['ms', 'rounds', 'unjudged'].includes(k) && v !== 0));
   assert.deepEqual(changed, []);
   assert.equal(again.after.tracks, again.before.tracks);
   catalog.close();

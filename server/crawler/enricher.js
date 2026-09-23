@@ -11,13 +11,12 @@
  *   languages local         -> recompute artist/track languages (no network)
  */
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
-import { recomputeCatalogLanguages } from '../db/catalogLanguages.js';
 import {
   ALLOWED_LANGUAGES,
   baseTitleKey,
   extractIsrcCountryCode,
+  normalizeDeezerRank,
   normalizeIsrc,
-  normalizePopularity,
   normalizeReleaseDate,
   normalizeReleaseYear,
 } from '../db/trackNormalization.js';
@@ -83,7 +82,6 @@ export class CatalogEnricher {
         release_year = COALESCE(release_year, ?),
         release_date = COALESCE(release_date, ?),
         deezer_rank = COALESCE(?, deezer_rank),
-        popularity = ?,
         enriched_at = datetime('now'),
         updated_at = datetime('now')
       WHERE id = ?
@@ -116,10 +114,11 @@ export class CatalogEnricher {
       }
       const releaseDate = normalizeReleaseDate(data.release_date);
       const releaseYear = row.release_year ? null : normalizeReleaseYear(releaseDate || '');
-      const rank = Number(data.rank) > 0 ? Math.max(Number(data.rank), row.deezer_rank || 0) : row.deezer_rank;
-      const popularity = normalizePopularity({ spotifyPopularity: row.spotify_popularity, deezerRank: rank });
+      // The score follows at the next `npm run catalog:recompute`
+      const fetchedRank = normalizeDeezerRank(data.rank);
+      const rank = fetchedRank ? Math.max(fetchedRank, row.deezer_rank || 0) : row.deezer_rank;
 
-      update.run(isrc, extractIsrcCountryCode(isrc), releaseYear, releaseDate, rank || null, popularity, row.id);
+      update.run(isrc, extractIsrcCountryCode(isrc), releaseYear, releaseDate, rank || null, row.id);
       stats.updated++;
       if (isrc) stats.isrcFilled++;
       if (releaseYear) stats.yearFilled++;
@@ -313,11 +312,6 @@ export class CatalogEnricher {
       if (stats.checked % 25 === 0) onProgress({ step: 'itunes', ...stats, total: work.length });
     }
     return stats;
-  }
-
-  /** Local language recompute (after crawls add titles/ISRCs to artists). */
-  recomputeLanguages() {
-    return recomputeCatalogLanguages(this.db);
   }
 }
 

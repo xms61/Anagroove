@@ -40,7 +40,11 @@ const INAUTHENTIC_ARTIST = [
   /\banime\s*(keys|piano|relax|chill|cafe|project|ensemble|orchestra|tribute|band|music|soundtrack)\b/i,
   /\bpeaceful\s*(anime|piano|music)\b/i, /\bultra\s*beats\b/i, /\brelaxing\s*piano\b/i,
   /\bjonathan\s*young\b/i, /\bnatewantstobattle\b/i, /\btsuko\s*g\.?/i, /\brichaadeb\b/i, /\brainych\b/i, /\bamalee\b/i,
-  /\bfonzi\s*m\b/i, /\bmixfactor\b/i, /\bjapanese\s+city\s+pop\b/i, /\bcity\s+pop\s+(radio|station|channel|collective)\b/i, /\bgraham\s*blvd\b/i, /\bparty\s*tyme\b/i, /\bknightsbridge\b/i,
+  /\bfonzi\s*m\b/i, /\bmix\s*factor\b/i, /\bjapanese\s+city\s+pop\b/i,
+  // "Various Artists" in other languages, stock/background music labels and cover "factories"
+  /^(verschiedene|diverse)\s+interpreten$/i, /^artistes\s+divers$/i, /^v[aá]rios\s+artistas$/i, /^artisti\s+vari$/i,
+  /\bstingray\s+music\b/i, /\b(fake\s+music|ultimate\s+remix|punk\s+rock|remix)\s+factory\b/i, /\br&b\s+songbook\b/i,
+  /\bsleepy\s+tunes\b/i, /^relax(ing)?\s+(r&b|soul|jazz|music)\b/i, /^(dj\s+hits|hits,?\s+etc\.?)$/i, /^\d{2}'?s\s+greatest\s+hits$/i, /\bcity\s+pop\s+(radio|station|channel|collective)\b/i, /\bgraham\s*blvd\b/i, /\bparty\s*tyme\b/i, /\bknightsbridge\b/i,
 ];
 
 const SPOKEN_WORD_ARTIST = [

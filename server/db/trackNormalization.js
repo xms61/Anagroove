@@ -216,38 +216,28 @@ export function isValidDuration(durationMs) {
 // ---------------------------------------------------------------------------
 
 /**
- * Maps a Deezer rank (0 - ~1,000,000) onto the Spotify-style 0-100 popularity scale.
- *
- * Calibrated on the 6,681 catalog tracks that carry both a Deezer rank and a Spotify
- * popularity (Anna's Archive top-10k): their median Deezer rank (~562k, log10 5.75)
- * sits at Spotify ~76. The sample only covers hits, so the slope is a documented
- * choice: +20 points per 10x rank, giving rank 10k -> 41, 100k -> 61, 1M -> 81,
- * and the "> 30" admission floor at roughly rank 2,800.
+ * Deezer returns exactly this rank for tracks it has no play data for (18,884 catalog tracks
+ * had it, against about 6 per neighbouring value). It says nothing about popularity.
  */
-export const DEEZER_SCORE_SLOPE = 20;
-export const DEEZER_SCORE_OFFSET = -39;
+export const DEEZER_PLACEHOLDER_RANK = 100000;
 
-export function deezerRankToScore(rank) {
-  const value = Number(rank);
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  const score = Math.round(DEEZER_SCORE_SLOPE * Math.log10(value) + DEEZER_SCORE_OFFSET);
-  return Math.max(0, Math.min(100, score));
+/** A usable Deezer rank, or null (missing, invalid or the placeholder). */
+export function normalizeDeezerRank(rank) {
+  const value = Math.round(Number(rank));
+  return Number.isFinite(value) && value > 0 && value !== DEEZER_PLACEHOLDER_RANK ? value : null;
 }
 
 /**
- * Single 0-100 popularity score. Spotify popularity is the reference when present;
- * otherwise a Deezer rank is mapped; a legacy `popularity` above 100 is a Deezer rank.
+ * Popularity a new row gets until `recomputeCatalogPopularity` ranks it against the catalog:
+ * the Spotify popularity when known, the middle of the scale for a Deezer-ranked track,
+ * otherwise 0.
  */
-export function normalizePopularity({ popularity = null, deezerRank = null, spotifyPopularity = null } = {}) {
+export const PROVISIONAL_POPULARITY = 50;
+
+export function provisionalPopularity({ deezerRank = null, spotifyPopularity = null } = {}) {
   const spotify = Number(spotifyPopularity);
   if (spotifyPopularity !== null && spotifyPopularity !== undefined && Number.isFinite(spotify)) {
     return Math.max(0, Math.min(100, Math.round(spotify)));
   }
-  const rank = Number(deezerRank);
-  if (deezerRank !== null && deezerRank !== undefined && Number.isFinite(rank) && rank > 0) {
-    return deezerRankToScore(rank);
-  }
-  const legacy = Number(popularity);
-  if (!Number.isFinite(legacy) || legacy <= 0) return 0;
-  return legacy > 100 ? deezerRankToScore(legacy) : Math.round(legacy);
+  return normalizeDeezerRank(deezerRank) ? PROVISIONAL_POPULARITY : 0;
 }

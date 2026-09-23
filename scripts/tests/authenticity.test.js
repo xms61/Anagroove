@@ -21,3 +21,30 @@ for (const [why, candidate, expected] of CANDIDATES) {
     assert.equal(isAuthenticCandidate(candidate), expected);
   });
 }
+
+// Artists found in the catalog on 2026-09-23 (stock music, covers, "Various Artists") and real
+// acts with similar names. [artist, authentic]
+const ARTISTS = [
+  ['Mix Factor', false],
+  ['Stingray Music', false],
+  ['Verschiedene Interpreten', false],
+  ['Various Artists', false],
+  ['Punk Rock Factory', false],
+  ['Fake Music Factory', false],
+  ['R&B Songbook', false],
+  ['Sleepy Tunes', false],
+  ['Relax R&B Soul', false],
+  ['DJ Hits', false],
+  ['Hits, Etc.', false],
+  ["80's Greatest Hits", false],
+  ['C+C Music Factory', true],
+  ['Electric Light Orchestra', true],
+  ['Orchestral Manoeuvres in the Dark', true],
+  ['Sleep Token', true],
+  ['Sleeping With Sirens', true],
+];
+for (const [artist, expected] of ARTISTS) {
+  test(`artist "${artist}" is ${expected ? 'authentic' : 'rejected'}`, () => {
+    assert.equal(isAuthenticCandidate({ title: 'Some Song', artist, preview: PREVIEW, duration: 200 }), expected);
+  });
+}

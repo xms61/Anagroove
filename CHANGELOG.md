@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.22.0] - 2026-09-23
+
+### Changed
+- **Popularity is the track's percentile within its language (schema v6).** The old log mapping (`20·log10(rank) − 39`) squeezed 94% of the catalog into scores 40–80, so the popularity settings barely differed. Deezer also under-ranks Japanese and Korean music (the median Japanese rank was the placeholder), so each language is now ranked on its own. A Spotify popularity can only raise a score.
+  - On a copy of the real catalog, migration v6 took 3.1 s, the scores spread evenly over 0–100, and the hits (Bohemian Rhapsody, Blinding Lights, Dynamite) score 98–100.
+  - `npm run catalog:recompute` (new) re-votes languages and recomputes the percentiles after crawls and enrichment. The cleanup's `fields` step and migration v6 run it too.
+  - New rows get a provisional score until then: their Spotify popularity, else 50 for a Deezer-ranked track, else 0.
+- **Selection windows:** mainstream ≥ 75 (the top quarter), balanced ≥ 30, obscure ≤ 50.
+- `catalog:enrich` no longer has a `--languages` step (use `catalog:recompute`), and Deezer enrichment updates the rank but leaves the score to the recompute.
+
+### Added
+- **Popularity floor and cover acts** (`server/db/catalogPopularity.js`, new cleanup step `popularity`, only for artists whose fans are known from enrichment):
+  - A track stays when its Deezer rank reaches its language's floor (en 60,000, ja 32,000, ko 110,000: the 30th percentile on 2026-09-23), its Spotify popularity is ≥ 30, or its artist has ≥ 5,000 fans.
+  - The floors are fixed ranks, so repeated cleanups are idempotent.
+  - A cover act has ≥ 5 songs, < 50,000 fans, and ≥ 60% of its titles also recorded by an artist with more fans. All its songs are deleted.
+  - Before enrichment, below-floor tracks are reported as `unjudged` and kept.
+  - Upper bound on the real catalog: about 83,800 tracks below the floor and 13,700 cover-act tracks. The top cover acts found: Mix Factor, Stingray Music, Hindley Street Country Club, The Pop Posse, Kidz Bop Kids, 100% Hit Crew.
+- Dump ingest (`ingest_musicmovearr.js`) applies the floor instead of the old "score > 30".
+- New authenticity patterns: "Various Artists" in German/French/Spanish/Portuguese/Italian, Stingray Music, cover "factories", R&B Songbook, Sleepy Tunes, "Relax …" acts, DJ Hits, "80's Greatest Hits". The existing `mixfactor` rule never matched "Mix Factor".
+- Tests: rank normalization, provisional scores, per-language percentiles, the floor table, enriched vs unjudged, cover acts, idempotence of the popularity step, and an artist contamination corpus with real acts that have similar names (C+C Music Factory, Electric Light Orchestra, Sleep Token).
+
+### Fixed
+- **Deezer's placeholder rank `100000`** (18,884 tracks with no play data) is now `NULL`. It used to score 61, so stock music counted as "mainstream".
+
+### Removed
+- `deezerRankToScore` and `normalizePopularity`. Migration v2 keeps a private copy of the old mapping so it replays unchanged.
+
+---
+
 ## [1.21.0] - 2026-09-23
 
 ### Added

@@ -10,7 +10,7 @@
   - `enrichDeezerTracks`: `/track/{id}` → ISRC, release date, rank. An ISRC already owned by another row counts as a duplicate conflict and is left for merging.
   - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres.
   - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
-  - `recomputeLanguages`: local; runs the artist vote and re-resolves track languages.
+  - Languages and popularity are recomputed locally by `npm run catalog:recompute` (`recomputeCatalogLanguages`, `recomputeCatalogPopularity`).
 - `authenticityFilter.js` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.js`.
 - `rateLimiter.js`: token buckets plus `politeFetch` (User-Agent, retry on 429/503). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3.
 
@@ -24,13 +24,13 @@
 
 Artist votes on text need 6+ words and a 0.15 lead over English (otherwise `en`). Non-CJK scripts count only when they make up at least half the letters ("KoЯn" is not Russian). Deletion is irreversible, so doubtful titles stay English.
 
-After crawls add titles, run `npm run catalog:enrich -- --languages`.
+After crawls and enrichment, run `npm run catalog:recompute` (languages, then popularity percentiles).
 
 ## Ingest scripts
 | Script | Source |
 |---|---|
 | `scripts/crawl_catalog.js` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
-| `scripts/enrich_catalog.js` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N --languages`, or `--all` for every step with default limits (overrides allowed) |
+| `scripts/enrich_catalog.js` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N`, or `--all` for every step with default limits (overrides allowed). Then `scripts/recompute_catalog.js` (`npm run catalog:recompute`) |
 | `scripts/ingest_annas_spotify.js` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
 | `scripts/ingest_musicmovearr.js` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
 | `scripts/fetch_datasets.js` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
@@ -48,7 +48,7 @@ All scripts parse flags strictly (`scripts/lib/cli.js`, Node's `util.parseArgs`)
 
 ## Ingest policy
 `sqliteCatalog.upsertTrack` enforces it for every writer: only `en`/`ja`/`ko`, original recordings (a remaster counts), authentic music, and a duration of 45 s–20 min. Rejections are counted by reason (`getRejectionStats()`).
-- Pass raw popularity as `deezerRank` (Deezer `rank`) or `spotifyPopularity` (0–100). The catalog stores one 0–100 score, and ingest scripts filter on score > 30.
+- Pass raw popularity as `deezerRank` (Deezer `rank`) or `spotifyPopularity` (0–100). The catalog keeps both and derives a per-language percentile (`server/db/catalogPopularity.js`). Dump ingest skips rows under the popularity floor (Spotify ≥ 30 or the language's Deezer rank floor); the cleanup enforces the floor for crawled rows once artists are enriched.
 - Never invent values (e.g. a default duration). Leave fields unknown so they're rejected or enriched later.
 - Details: `server/db/CATALOG_DB.md`.
 

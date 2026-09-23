@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { deezerRankToScore } from '../../server/db/trackNormalization.js';
+import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
 import {
   resolveTrackPreview,
   batchResolvePreviews,
@@ -25,7 +25,7 @@ test('a dump row maps to an upsert candidate without a preview URL', () => {
   assert.equal(candidate.artist, 'Daft Punk');
   assert.equal(candidate.durationMs, 320000, 'seconds become milliseconds');
   assert.equal(candidate.deezerRank, 850000);
-  assert.equal(candidate.popularity, deezerRankToScore(850000));
+  assert.equal(candidate.popularity, PROVISIONAL_POPULARITY, 'ranked against the catalog by catalog:recompute');
   assert.equal(candidate.countryCode, 'US');
   assert.equal(candidate.language, 'en');
   assert.equal(candidate.sampleUrl, null, 'previews are resolved lazily');

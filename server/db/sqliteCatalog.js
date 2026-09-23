@@ -16,9 +16,10 @@ import {
   isAcceptedVersion,
   isAllowedLanguage,
   isValidDuration,
+  normalizeDeezerRank,
   normalizeIsrc,
-  normalizePopularity,
   normalizeReleaseDate,
+  provisionalPopularity,
   normalizeReleaseYear,
 } from './trackNormalization.js';
 
@@ -306,11 +307,11 @@ export class SqliteCatalog {
     const releaseDate = normalizeReleaseDate(rawReleaseDate);
     const releaseYear = normalizeReleaseYear(rawReleaseYear) ?? (releaseDate ? normalizeReleaseYear(releaseDate) : null);
     const legacyRank = deezerRank === null && Number(popularity) > 100 ? Number(popularity) : null;
-    const rank = Number(deezerRank ?? legacyRank) > 0 ? Math.round(Number(deezerRank ?? legacyRank)) : null;
+    const rank = normalizeDeezerRank(deezerRank ?? legacyRank);
     const spotify = spotifyPopularity !== null && spotifyPopularity !== undefined && Number.isFinite(Number(spotifyPopularity))
       ? Math.max(0, Math.min(100, Math.round(Number(spotifyPopularity))))
       : null;
-    const score = normalizePopularity({ popularity, deezerRank: rank, spotifyPopularity: spotify });
+    const score = provisionalPopularity({ deezerRank: rank, spotifyPopularity: spotify });
 
     const artistRow = this.getOrCreateArtist({
       name: artist,

@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.21.0",
+  "version": "1.22.0",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -30,6 +30,7 @@
     "crawl:status": "node scripts/crawl_catalog.js --status",
     "db:migrate": "node scripts/migrate_catalog.js",
     "catalog:enrich": "node scripts/enrich_catalog.js",
+    "catalog:recompute": "node scripts/recompute_catalog.js",
     "catalog:genres": "node scripts/populate_artist_genres.js",
     "db:validate": "node scripts/validate_and_sanitize_db.js",
     "db:sanitize": "node scripts/validate_and_sanitize_db.js --fix",

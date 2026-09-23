@@ -4,7 +4,8 @@ import path from 'path';
 import readline from 'readline';
 import zlib from 'zlib';
 import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.js';
-import { normalizePopularity } from '../server/db/trackNormalization.js';
+import { normalizeDeezerRank, provisionalPopularity } from '../server/db/trackNormalization.js';
+import { isAbovePopularityFloor } from '../server/db/catalogPopularity.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
@@ -48,6 +49,12 @@ const baseDirPath = flags['base-dir'];
 const incrementalDirPath = flags['incremental-dir'];
 const providerOverride = (flags.provider ?? 'deezer').toLowerCase();
 const batchSize = flags.batchSize || 2000;
+
+/** Spotify popularity from the dump reaches --min-popularity, or the Deezer rank reaches its language's floor. */
+function passesPopularityFloor(candidate) {
+  return (candidate.spotifyPopularity ?? -1) >= minPopularity
+    || isAbovePopularityFloor({ language: candidate.language, deezerRank: candidate.deezerRank });
+}
 
 /**
  * Parses a standard CSV/TSV line respecting quoted fields.
@@ -112,9 +119,10 @@ export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer')
   }
 
   const rawValue = parseInt(rawPopularity || '0', 10) || 0;
-  // Values above 100 are Deezer ranks (0 - ~1,000,000); keep the raw rank and map it to the 0-100 score
-  const deezerRank = rawValue > 100 ? rawValue : null;
-  const popularity = normalizePopularity({ popularity: rawValue, deezerRank });
+  // Values above 100 are Deezer ranks (0 - ~1,000,000); 1-100 is a Spotify popularity
+  const deezerRank = rawValue > 100 ? normalizeDeezerRank(rawValue) : null;
+  const spotifyPopularity = rawValue > 0 && rawValue <= 100 ? rawValue : null;
+  const popularity = provisionalPopularity({ deezerRank, spotifyPopularity });
 
   const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
   const isExplicit = explicitVal === '1' || String(explicitVal).toLowerCase() === 'true';
@@ -132,6 +140,7 @@ export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer')
     durationMs, // 0 when unknown: the catalog rejects it instead of storing a made-up length
     popularity,
     deezerRank,
+    spotifyPopularity,
     isrc: cleanIsrc,
     releaseYear: Number.isFinite(releaseYear) ? releaseYear : null,
     releaseDate: releaseDate || null,
@@ -210,7 +219,7 @@ export async function streamIngestCsv(filePath, provider = 'deezer', stats) {
     if (!candidate) continue;
 
     // Filter: Popularity threshold
-    if (candidate.popularity < minPopularity) {
+    if (!passesPopularityFloor(candidate)) {
       stats.skippedPopularity++;
       continue;
     }
@@ -297,7 +306,7 @@ export async function streamIngestSql(filePath, provider = 'deezer', stats) {
 
       if (!candidate) continue;
 
-      if (candidate.popularity < minPopularity) {
+      if (!passesPopularityFloor(candidate)) {
         stats.skippedPopularity++;
         continue;
       }
@@ -346,7 +355,7 @@ export async function streamIngestSql(filePath, provider = 'deezer', stats) {
 async function main() {
   const startTime = Date.now();
   console.log('🎵 SpotySpice MusicMoveArr Dataset Ingestor (Scenario C)');
-  console.log(`   Popularity Filter: strictly > 30 (min-popularity: ${minPopularity})`);
+  console.log(`   Popularity floor: Spotify >= ${minPopularity} or the language's Deezer rank floor`);
   console.log(`   Sample Hydration: LAZY (on-the-fly JIT during gameplay)`);
   console.log(`   Dry Run: ${isDryRun ? 'YES (No DB Writes)' : 'NO (Persisting to SQLite)'}`);
 
@@ -399,7 +408,7 @@ async function main() {
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`\n\n🎉 Ingestion Completed in ${elapsedSec}s!`);
     console.log(`   Lines Processed: ${stats.totalLines.toLocaleString()}`);
-    console.log(`   Filtered by Popularity (<= 30): ${stats.skippedPopularity.toLocaleString()}`);
+    console.log(`   Below the popularity floor: ${stats.skippedPopularity.toLocaleString()}`);
     console.log(`   Filtered by Authenticity: ${stats.skippedAuthenticity.toLocaleString()}`);
     console.log(`   Qualified Tracks: ${stats.qualifiedCandidates.toLocaleString()}`);
     console.log(`   Newly Inserted Canonical Tracks: ${stats.insertedCanonical.toLocaleString()}`);

@@ -9,10 +9,11 @@ import { logger } from '../logger.js';
 import {
   baseTitleKey,
   classifyVersion,
-  deezerRankToScore,
+  DEEZER_PLACEHOLDER_RANK,
   detectTrackLanguage,
 } from './trackNormalization.js';
 import { recomputeCatalogLanguages } from './catalogLanguages.js';
+import { recomputeCatalogPopularity } from './catalogPopularity.js';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 
 function baselineSchema(db) {
@@ -154,7 +155,14 @@ function registerNormalizationFunctions(db) {
   db.function('ss_base_title', { deterministic: true }, (title) => baseTitleKey(title || ''));
   db.function('ss_version_type', { deterministic: true }, (title, album) => classifyVersion(title || '', album || ''));
   db.function('ss_language', { deterministic: true }, (title, artist, isrc) => detectTrackLanguage(title || '', artist || '', { isrc }));
-  db.function('ss_deezer_score', { deterministic: true }, (rank) => deezerRankToScore(rank));
+  db.function('ss_deezer_score', { deterministic: true }, (rank) => legacyDeezerScore(rank));
+}
+
+/** The 0-100 mapping of a Deezer rank used before v6 (20 * log10(rank) - 39). Kept so v2 replays unchanged. */
+function legacyDeezerScore(rank) {
+  const value = Number(rank);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round(20 * Math.log10(value) - 39)));
 }
 
 function schemaV2(db) {
@@ -239,12 +247,22 @@ function schemaV5(db) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_rand ON tracks(rand_key);');
 }
 
+function schemaV6(db) {
+  db.exec(`
+    UPDATE tracks SET deezer_rank = NULL WHERE deezer_rank = ${DEEZER_PLACEHOLDER_RANK};
+    -- The cleanup's cover-act check looks up other artists' songs by base title
+    CREATE INDEX IF NOT EXISTS idx_tracks_title ON tracks(canonical_title);
+  `);
+  recomputeCatalogPopularity(db);
+}
+
 export const CATALOG_MIGRATIONS = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
   { version: 3, name: 'schema v3: artist languages, enrichment markers, ELD language classifier', up: schemaV3 },
   { version: 4, name: 'schema v4: album enrichment marker', up: schemaV4 },
   { version: 5, name: 'schema v5: rand_key index for song selection', up: schemaV5 },
+  { version: 6, name: 'schema v6: Deezer placeholder rank dropped, popularity as a per-language percentile', up: schemaV6 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;

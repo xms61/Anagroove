@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { isAuthenticTrack } from '../../server/policy/selectionPolicy.js';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { baseTitleKey, deezerRankToScore } from '../../server/db/trackNormalization.js';
+import { baseTitleKey, PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
 import { runCatalogMigrations } from '../../server/db/catalogMigrations.js';
 import { recomputeCatalogLanguages } from '../../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../../server/policy/authenticityRules.js';
@@ -146,7 +146,7 @@ function enrichmentFixture() {
   return { catalog, tracks, row, enricher: new CatalogEnricher(catalog, { fetchImpl }) };
 }
 
-test('Deezer track enrichment fills ISRC, year, registrant and rank', async () => {
+test('Deezer track enrichment fills ISRC, year, registrant and rank, and leaves the score', async () => {
   const { catalog, tracks, row, enricher } = enrichmentFixture();
   await enricher.enrichDeezerTracks({ limit: 10 });
   const levitating = row(tracks.levitating);
@@ -154,7 +154,7 @@ test('Deezer track enrichment fills ISRC, year, registrant and rank', async () =
   assert.equal(levitating.release_year, 2020);
   assert.equal(levitating.country_code, 'GB');
   assert.equal(levitating.deezer_rank, 900000);
-  assert.equal(levitating.popularity, deezerRankToScore(900000));
+  assert.equal(levitating.popularity, PROVISIONAL_POPULARITY, 'the score waits for catalog:recompute');
   catalog.close();
 });
 
