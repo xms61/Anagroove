@@ -2,22 +2,38 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../paths.js';
+import { checkAuthenticity } from '../policy/authenticityRules.js';
 
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'catalog.sqlite');
 
-// Junk & authenticity patterns to detect in catalog
-export const JUNK_TITLE_PATTERNS = [
-  /\b(karaoke|tribute|backing\s+track|instrumental\s+version|piano\s+version|acoustic\s+version|music\s+box)\b/i,
-  /[(](piano|acoustic|instrumental|orchestral|violin|cello|harp|flute|guitar|music\s*box|karaoke|backing\s*track)[)]/i,
-  /\b(no\s+vocals?|track\s*-\s*no\s+vocal|bass\s+boosted|drum\s+loop|waiting\s+loop)\b/i,
-  /\b(workout\s+mix|fitness\s+beats|white\s+noise|lullaby|8-?bit|phonk\s+remix|slowed\s*\+?\s*reverb)\b/i,
-];
+const CONTAMINATION_LABELS = {
+  spoken_word: 'Audio Drama / Spoken Word',
+  cover: 'Cover / Karaoke',
+  artist: 'Soundalike / Utility Artist',
+  utility: 'Audio Utility / Backing Track',
+  album: 'Cover / Utility Album',
+};
 
-export const JUNK_ARTIST_PATTERNS = [
-  /\b(karaoke|tribute|soundalike|cover\s+band|cover\s+crew|midifine|karaoke\s+all\s*stars)\b/i,
-  /\b(relaxing\s+piano|peaceful\s+anime|anime\s+keys|ultra\s+beats|sweet\s+little\s+band|rockabye\s+baby)\b/i,
-  /\b(sleep\s+sounds|white\s+noise|meditation\s+spa|nature\s+sounds)\b/i,
-];
+/** One-line summary of a cleanup step's counters for the report. */
+function describeStep(step) {
+  const parts = Object.entries(step)
+    .filter(([key, value]) => typeof value === 'number' && key !== 'ms')
+    .map(([key, value]) => `${key}: ${value.toLocaleString()}`);
+  if (step.reasons) {
+    parts.push(...Object.entries(step.reasons).filter(([, value]) => value > 0).map(([key, value]) => `${key}: ${value.toLocaleString()}`));
+  }
+  if (step.rebuilt) parts.push('rebuilt');
+  return parts.join(', ') || '—';
+}
+
+function describeExample(example) {
+  if (example.merged !== undefined) return `artist \`${example.merged}\` merged into \`${example.kept}\``;
+  if (example.kept !== undefined) {
+    const who = example.artist ? `**${example.artist}** ` : '';
+    return `${who}kept \`${example.kept}\`, removed ${example.removed.map(r => `\`${r}\``).join(', ')}`;
+  }
+  return `**${example.artist}** – \`${example.title}\`${example.detail ? ` (${example.detail})` : ''} · pop ${example.popularity}`;
+}
 
 export class CatalogValidator {
   constructor(dbPath = DEFAULT_DB_PATH) {
@@ -122,7 +138,7 @@ export class CatalogValidator {
   }
 
   /**
-   * 3. Duplication Analysis (Exact & Soft Semantic Duplicates)
+   * 3. Duplication Analysis: rows sharing (artist, base title) break the one-row-per-song rule
    */
   findDuplicates() {
     // Exact ISRC Duplicates (should be 0 due to unique constraint, check for empty/whitespace)
@@ -131,7 +147,6 @@ export class CatalogValidator {
       WHERE isrc IS NOT NULL AND (LENGTH(TRIM(isrc)) != 12 OR isrc LIKE '% %')
     `).get().c;
 
-    // Soft Duplicates: Same artist + same canonical title + similar duration (<= 3000ms delta)
     const softDuplicatesQuery = this.db.prepare(`
       SELECT 
         t1.id AS id1, t2.id AS id2,
@@ -144,20 +159,13 @@ export class CatalogValidator {
       JOIN tracks t2 ON t1.artist_id = t2.artist_id 
         AND t1.canonical_title = t2.canonical_title 
         AND t1.id < t2.id
-        AND ABS(t1.duration_ms - t2.duration_ms) <= 3000
       JOIN artists a ON t1.artist_id = a.id
-      LIMIT 1000
+      LIMIT 15
     `).all();
 
     const softDuplicateClustersCount = this.db.prepare(`
       SELECT COUNT(*) as c FROM (
-        SELECT t1.id
-        FROM tracks t1
-        JOIN tracks t2 ON t1.artist_id = t2.artist_id 
-          AND t1.canonical_title = t2.canonical_title 
-          AND t1.id < t2.id
-          AND ABS(t1.duration_ms - t2.duration_ms) <= 3000
-        GROUP BY t1.artist_id, t1.canonical_title
+        SELECT 1 FROM tracks GROUP BY artist_id, canonical_title HAVING COUNT(*) > 1
       )
     `).get().c;
 
@@ -255,73 +263,23 @@ export class CatalogValidator {
       }
     }
 
-    // Contamination Analysis:
-    // 1. Spoken Word / Radio Plays / Audiobooks (Hörspiele)
-    const audiobooksCount = this.db.prepare(`
-      SELECT COUNT(t.id) as c FROM tracks t
-      JOIN artists a ON t.artist_id = a.id
-      WHERE a.canonical_name LIKE '%gruselkabinett%'
-         OR a.canonical_name LIKE '%drei%'
-         OR a.canonical_name LIKE '%funffreunde%'
-         OR a.canonical_name LIKE '%benjaminblumchen%'
-         OR a.canonical_name LIKE '%bibiblocksberg%'
-         OR a.canonical_name LIKE '%tkkg%'
-         OR a.canonical_name LIKE '%corneliafunke%'
-         OR a.canonical_name LIKE '%johnsinclair%'
-         OR a.genres_json LIKE '%audiobook%'
-         OR a.genres_json LIKE '%spoken word%'
-         OR a.genres_json LIKE '%hörspiel%'
-    `).get().c;
-
-    // 2. Budget Soundalike Cover Bands & Karaoke Ensembles
-    const soundalikesCount = this.db.prepare(`
-      SELECT COUNT(t.id) as c FROM tracks t
-      JOIN artists a ON t.artist_id = a.id
-      WHERE a.canonical_name LIKE '%grahamblvd%'
-         OR a.canonical_name LIKE '%partytyme%'
-         OR a.canonical_name LIKE '%knightsbridge%'
-         OR a.canonical_name LIKE '%thehitcrew%'
-         OR a.canonical_name LIKE '%countdownsingers%'
-         OR a.canonical_name LIKE '%karaoke%'
-         OR a.canonical_name LIKE '%midifine%'
-         OR a.canonical_name LIKE '%covercrew%'
-         OR a.canonical_name LIKE '%coverband%'
-         OR a.canonical_name LIKE '%soundalike%'
-    `).get().c;
-
-    // 3. Audio Modifications & Utility Tracks (Workout, White Noise, Sleep, Phonk Loops)
-    const audioUtilitiesCount = this.db.prepare(`
-      SELECT COUNT(t.id) as c FROM tracks t
-      JOIN artists a ON t.artist_id = a.id
-      WHERE a.canonical_name LIKE '%mixfactor%'
-         OR a.canonical_name LIKE '%whitenoise%'
-         OR a.canonical_name LIKE '%sleepsound%'
-         OR a.canonical_name LIKE '%relaxing%'
-         OR t.display_title LIKE '%workout mix%'
-         OR t.display_title LIKE '%white noise%'
-         OR t.display_title LIKE '%bass boosted%'
-         OR t.display_title LIKE '%backing track%'
-    `).get().c;
-
-    // Sample contaminated tracks
-    const sampleContaminated = this.db.prepare(`
-      SELECT t.id, t.display_title AS title, a.display_name AS artist, t.popularity,
-             CASE
-               WHEN a.canonical_name LIKE '%gruselkabinett%' OR a.canonical_name LIKE '%drei%' OR a.canonical_name LIKE '%funffreunde%' THEN 'Audio Drama / Spoken Word'
-               WHEN a.canonical_name LIKE '%grahamblvd%' OR a.canonical_name LIKE '%partytyme%' OR a.canonical_name LIKE '%knightsbridge%' THEN 'Soundalike Cover Band'
-               ELSE 'Audio Utility / Backing Track'
-             END AS contamination_type
-      FROM tracks t
-      JOIN artists a ON t.artist_id = a.id
-      WHERE a.canonical_name LIKE '%gruselkabinett%'
-         OR a.canonical_name LIKE '%drei%'
-         OR a.canonical_name LIKE '%funffreunde%'
-         OR a.canonical_name LIKE '%grahamblvd%'
-         OR a.canonical_name LIKE '%partytyme%'
-         OR a.canonical_name LIKE '%knightsbridge%'
-         OR a.canonical_name LIKE '%mixfactor%'
-      LIMIT 15
-    `).all();
+    // Contamination: the shared authenticity rules (the crawler and upsertTrack use the same ones)
+    const contaminationCounts = { spoken_word: 0, cover: 0, utility: 0, artist: 0, album: 0 };
+    const sampleContaminated = [];
+    for (const row of this.db.prepare(`
+      SELECT t.id, t.display_title AS title, t.album_name AS album, a.display_name AS artist, t.popularity
+      FROM tracks t JOIN artists a ON t.artist_id = a.id
+    `).iterate()) {
+      const { authentic, reason } = checkAuthenticity(row);
+      if (authentic) continue;
+      contaminationCounts[reason]++;
+      if (sampleContaminated.length < 15) {
+        sampleContaminated.push({ ...row, contamination_type: CONTAMINATION_LABELS[reason] });
+      }
+    }
+    const audiobooksCount = contaminationCounts.spoken_word;
+    const soundalikesCount = contaminationCounts.cover + contaminationCounts.artist;
+    const audioUtilitiesCount = contaminationCounts.utility + contaminationCounts.album;
 
     return {
       durationAnomalies: {
@@ -567,176 +525,10 @@ export class CatalogValidator {
   }
 
   /**
-   * 6. Sanitization & Deduplication Repair Engine
-   * @param {Object} options
-   * @param {boolean} [options.dryRun=true]
-   * @param {boolean} [options.mergeSoftDuplicates=true]
-   * @param {boolean} [options.removeOrphans=true]
-   * @param {boolean} [options.vacuum=false]
-   */
-  sanitize(options = { dryRun: true, mergeSoftDuplicates: true, removeOrphans: true, removeOrphanArtists: false, purgeContamination: false, vacuum: false }) {
-    const actions = {
-      orphansRemoved: { tracks: 0, samples: 0, providers: 0, artists: 0 },
-      duplicatesMerged: 0,
-      tracksDeleted: 0,
-      contaminatedPurged: 0,
-    };
-
-    if (options.dryRun) {
-      const orphans = this.findOrphans();
-      const dupes = this.findDuplicates();
-      const anomalies = this.findDataAnomalies();
-      return {
-        dryRun: true,
-        proposedActions: {
-          orphanedTracksToRemove: orphans.orphanedTracksCount,
-          orphanedSamplesToRemove: orphans.orphanedSamplesCount,
-          orphanedProvidersToRemove: orphans.orphanedProvidersCount,
-          orphanedArtistsToRemove: orphans.orphanedArtistsCount,
-          softDuplicatesToMerge: dupes.softDuplicateClustersCount,
-          contaminatedTracksToPurge: anomalies.contamination.totalContaminatedCount,
-        },
-      };
-    }
-
-    // Live Sanitization Mode inside transaction
-    this.db.exec('BEGIN TRANSACTION;');
-    try {
-      if (options.removeOrphans) {
-        // Delete orphaned samples
-        const delSamples = this.db.prepare(`
-          DELETE FROM track_samples WHERE id IN (
-            SELECT s.id FROM track_samples s LEFT JOIN tracks t ON s.track_id = t.id WHERE t.id IS NULL
-          )
-        `).run();
-        actions.orphansRemoved.samples = delSamples.changes;
-
-        // Delete orphaned providers
-        const delProviders = this.db.prepare(`
-          DELETE FROM track_providers WHERE id IN (
-            SELECT p.id FROM track_providers p LEFT JOIN tracks t ON p.track_id = t.id WHERE t.id IS NULL
-          )
-        `).run();
-        actions.orphansRemoved.providers = delProviders.changes;
-
-        // Delete orphaned tracks
-        const delTracks = this.db.prepare(`
-          DELETE FROM tracks WHERE id IN (
-            SELECT t.id FROM tracks t LEFT JOIN artists a ON t.artist_id = a.id WHERE a.id IS NULL
-          )
-        `).run();
-        actions.orphansRemoved.tracks = delTracks.changes;
-      }
-
-      if (options.mergeSoftDuplicates) {
-        // Find soft duplicate pairs
-        const duplicatePairs = this.db.prepare(`
-          SELECT 
-            t1.id AS primary_id, t2.id AS duplicate_id,
-            t1.popularity AS pop1, t2.popularity AS pop2
-          FROM tracks t1
-          JOIN tracks t2 ON t1.artist_id = t2.artist_id 
-            AND t1.canonical_title = t2.canonical_title 
-            AND t1.id < t2.id
-            AND ABS(t1.duration_ms - t2.duration_ms) <= 3000
-        `).all();
-
-        const processedDuplicateIds = new Set();
-
-        const moveSamplesStmt = this.db.prepare(`
-          UPDATE OR IGNORE track_samples SET track_id = ? WHERE track_id = ?
-        `);
-        const moveProvidersStmt = this.db.prepare(`
-          UPDATE OR IGNORE track_providers SET track_id = ? WHERE track_id = ?
-        `);
-        const deleteTrackStmt = this.db.prepare(`
-          DELETE FROM tracks WHERE id = ?
-        `);
-
-        for (const pair of duplicatePairs) {
-          if (processedDuplicateIds.has(pair.duplicate_id)) continue;
-
-          // Pick the track with higher popularity as primary
-          const primaryId = pair.pop1 >= pair.pop2 ? pair.primary_id : pair.duplicate_id;
-          const duplicateId = pair.pop1 >= pair.pop2 ? pair.duplicate_id : pair.primary_id;
-
-          if (processedDuplicateIds.has(duplicateId)) continue;
-          processedDuplicateIds.add(duplicateId);
-
-          // Re-link samples and providers to primary track
-          moveSamplesStmt.run(primaryId, duplicateId);
-          moveProvidersStmt.run(primaryId, duplicateId);
-
-          // Delete the duplicate track (cascade will clean up remaining unmerged records)
-          deleteTrackStmt.run(duplicateId);
-          actions.duplicatesMerged++;
-          actions.tracksDeleted++;
-        }
-      }
-
-      if (options.purgeContamination) {
-        const delContaminated = this.db.prepare(`
-          DELETE FROM tracks WHERE id IN (
-            SELECT t.id FROM tracks t
-            JOIN artists a ON t.artist_id = a.id
-            WHERE a.canonical_name LIKE '%gruselkabinett%'
-               OR a.canonical_name LIKE '%drei%'
-               OR a.canonical_name LIKE '%funffreunde%'
-               OR a.canonical_name LIKE '%benjaminblumchen%'
-               OR a.canonical_name LIKE '%bibiblocksberg%'
-               OR a.canonical_name LIKE '%tkkg%'
-               OR a.canonical_name LIKE '%corneliafunke%'
-               OR a.canonical_name LIKE '%johnsinclair%'
-               OR a.canonical_name LIKE '%grahamblvd%'
-               OR a.canonical_name LIKE '%partytyme%'
-               OR a.canonical_name LIKE '%knightsbridge%'
-               OR a.canonical_name LIKE '%thehitcrew%'
-               OR a.canonical_name LIKE '%countdownsingers%'
-               OR a.canonical_name LIKE '%karaoke%'
-               OR a.canonical_name LIKE '%mixfactor%'
-               OR a.genres_json LIKE '%audiobook%'
-               OR a.genres_json LIKE '%hörspiel%'
-          )
-        `).run();
-        actions.contaminatedPurged = delContaminated.changes;
-      }
-
-      if (options.removeOrphanArtists) {
-        const delArtists = this.db.prepare(`
-          DELETE FROM artists WHERE id IN (
-            SELECT a.id FROM artists a LEFT JOIN tracks t ON a.id = t.artist_id WHERE t.id IS NULL
-          )
-        `).run();
-        actions.orphansRemoved.artists = delArtists.changes;
-      }
-
-      this.db.exec('COMMIT;');
-    } catch (err) {
-      this.db.exec('ROLLBACK;');
-      throw err;
-    }
-
-    // Run WAL compaction if requested
-    if (options.vacuum) {
-      try {
-        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
-        this.db.exec('VACUUM;');
-      } catch (err) {
-        console.warn('WAL checkpoint/vacuum note:', err.message);
-      }
-    }
-
-    return {
-      dryRun: false,
-      actionsExecuted: actions,
-    };
-  }
-
-  /**
    * 7. Generate Comprehensive Markdown Validation Report
    */
   generateMarkdownReport(reportData) {
-    const { pragmas, orphans, duplicates, anomalies, stats, sanitization } = reportData;
+    const { pragmas, orphans, duplicates, anomalies, stats, cleanup = null, gate = null } = reportData;
     const now = new Date().toISOString();
 
     const report = `# SpotySpice Database Validation & Analytics Report
@@ -755,7 +547,7 @@ export class CatalogValidator {
 | **Referential Integrity** | ${orphans.orphanedTracksCount === 0 && orphans.orphanedSamplesCount === 0 && orphans.orphanedProvidersCount === 0 ? '✅ PASS' : '⚠️ WARN'} | Orphan tracks: ${orphans.orphanedTracksCount}, Orphan samples: ${orphans.orphanedSamplesCount}, Orphan providers: ${orphans.orphanedProvidersCount} |
 | **Audio Sample Coverage** | ✅ HEALTHY | **${stats.overview.sampleCoveragePct}%** of tracks have verified playback preview samples |
 | **Cross-Provider Referencing** | ✅ HEALTHY | **${stats.overview.crossReferencedTracks.toLocaleString()}** tracks (${stats.overview.crossReferencedPct}%) multi-linked across providers |
-| **Semantic Deduplication** | ${duplicates.softDuplicateClustersCount === 0 ? '✅ CLEAN' : 'ℹ️ DETECTED'} | **${duplicates.softDuplicateClustersCount.toLocaleString()}** soft duplicate candidate clusters identified |
+| **Song Deduplication** | ${duplicates.softDuplicateClustersCount === 0 ? '✅ CLEAN' : 'ℹ️ DETECTED'} | **${duplicates.softDuplicateClustersCount.toLocaleString()}** groups of one song stored more than once |
 | **Language & Geographic Scope** | ✅ DIVERSE | **${stats.languageDistribution.length}** distinct languages, **${stats.countryDistribution.length}+** ISRC country codes |
 
 ---
@@ -871,25 +663,47 @@ ${stats.topArtists.map((a, i) => `| #${i + 1} | **${a.artist}** | ${a.tracks.toL
 *Sample Contaminated Entries:*
 ${anomalies.contamination.sample.map(c => `  - **${c.artist}** - \`${c.title}\` [Type: ${c.contamination_type}]`).join('\n')}
 
-### Soft Semantic Duplicates
-- **Duplicate Candidate Clusters**: **${duplicates.softDuplicateClustersCount.toLocaleString()}**
+### Duplicate Songs (same artist + base title)
+- **Duplicate Groups**: **${duplicates.softDuplicateClustersCount.toLocaleString()}**
 - *Sample Clusters Detected*:
 ${duplicates.softDuplicatesSample.map(d => `  - **${d.artist}**: \`${d.title1}\` (${d.dur1}ms, Pop: ${d.pop1}) vs \`${d.title2}\` (${d.dur2}ms, Pop: ${d.pop2}) [IDs: ${d.id1}, ${d.id2}]`).join('\n')}
 
 ---
 
-## 7. Sanitization Engine Actions & Options
+## 7. Cleanup (\`npm run db:sanitize\`)
 
-${sanitization.dryRun
-  ? `> [!NOTE]
-  > **Dry Run Mode**: No mutations were performed on the database.  
-  > Run with \`--fix\` to merge the ${duplicates.softDuplicateClustersCount.toLocaleString()} duplicate clusters and clean orphaned records.`
-  : `> [!IMPORTANT]
-  > **Live Sanitization Executed**:  
-  > - Duplicates Merged: **${sanitization.actionsExecuted.duplicatesMerged.toLocaleString()}**  
-  > - Redundant Tracks Removed: **${sanitization.actionsExecuted.tracksDeleted.toLocaleString()}**  
-  > - Orphaned Records Cleaned: **${sanitization.actionsExecuted.orphansRemoved.samples} samples, ${sanitization.actionsExecuted.orphansRemoved.providers} providers**`
-}
+${cleanup
+  ? `${cleanup.applied
+    ? '> [!IMPORTANT]\n> **Cleanup applied.**'
+    : '> [!NOTE]\n> **Dry run**: the counts below are what `npm run db:sanitize` would change (computed, then rolled back).'}
+
+Tracks ${cleanup.before.tracks.toLocaleString()} → **${cleanup.after.tracks.toLocaleString()}**, artists ${cleanup.before.artists.toLocaleString()} → **${cleanup.after.artists.toLocaleString()}**, samples ${cleanup.before.samples.toLocaleString()} → ${cleanup.after.samples.toLocaleString()}, provider links ${cleanup.before.providers.toLocaleString()} → ${cleanup.after.providers.toLocaleString()}
+
+| Step | Changes | Time |
+| :--- | :--- | ---: |
+${cleanup.steps.map(step => `| \`${step.name}\` | ${describeStep(step)} | ${step.ms.toLocaleString()} ms |`).join('\n')}
+
+### Most popular affected rows
+${cleanup.steps.flatMap(step => {
+    if (!step.examples) return [];
+    const groups = Array.isArray(step.examples) ? { [step.name]: step.examples } : step.examples;
+    return Object.entries(groups)
+      .filter(([, items]) => items.length > 0)
+      .map(([label, items]) => `**${step.name === label ? label : `${step.name} / ${label}`}**\n${items.map(item => `- ${describeExample(item)}`).join('\n')}`);
+  }).join('\n\n')}`
+  : '_Cleanup was not evaluated._'}
+
+---
+
+## 8. Validation Gate (\`npm run db:validate -- --ci\`)
+
+${gate
+  ? `${gate.ok ? '✅ **PASS**' : '❌ **FAIL**'}
+
+| Check | Status | Value | Limit |
+| :--- | :---: | ---: | :--- |
+${gate.checks.map(check => `| ${check.label} | ${check.ok ? '✅' : '❌'} | ${Number.isInteger(check.value) ? check.value.toLocaleString() : check.value.toFixed(4)} | ${check.limit} |`).join('\n')}`
+  : '_Gate was not evaluated._'}
 
 ---
 `;

@@ -227,10 +227,17 @@ function schemaV3(db) {
   recomputeCatalogLanguages(db);
 }
 
+function schemaV4(db) {
+  const trackColumns = new Set(db.prepare('PRAGMA table_info(tracks)').all().map(c => c.name));
+  // Set once the track's Deezer album has been looked up for its release date (catalog:enrich --albums)
+  if (!trackColumns.has('album_checked_at')) db.exec('ALTER TABLE tracks ADD COLUMN album_checked_at TEXT;');
+}
+
 export const CATALOG_MIGRATIONS = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
   { version: 3, name: 'schema v3: artist languages, enrichment markers, ELD language classifier', up: schemaV3 },
+  { version: 4, name: 'schema v4: album enrichment marker', up: schemaV4 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;

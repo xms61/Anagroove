@@ -3,6 +3,7 @@
  * Every step selects its own work list with SQL and stamps what it attempted, so runs are
  * resumable, can be capped with a limit, and never re-request the same row forever.
  *
+ *   albums    /album/{id}   -> release date for every catalog track on the album
  *   deezer    /track/{id}   -> ISRC, release date, rank (popularity) for in-scope tracks
  *   artists   /artist/{id}  -> fan count; /album/{id} -> genres
  *   itunes    iTunes search -> strict artist + base title + duration match, attached to the
@@ -108,7 +109,7 @@ export class CatalogEnricher {
       if (isrc) {
         const owner = isrcOwner.get(isrc);
         if (owner && owner.id !== row.id) {
-          // Another row is the same recording: a duplicate for the cleanup phase to merge
+          // Another row is the same recording: a duplicate for `npm run db:sanitize` to merge
           stats.isrcConflicts++;
           isrc = null;
         }
@@ -123,6 +124,73 @@ export class CatalogEnricher {
       if (isrc) stats.isrcFilled++;
       if (releaseYear) stats.yearFilled++;
       if (stats.checked % 100 === 0) onProgress({ step: 'deezer', ...stats, total: work.length });
+    }
+    return stats;
+  }
+
+  /**
+   * Deezer /album/{id}: one request dates every catalog track on the album (the stored albumId
+   * plus any catalog track whose Deezer id is in the album's track list). Albums with the most
+   * popular undated tracks go first.
+   */
+  async enrichAlbums({ limit = 2000, onProgress = () => {} } = {}) {
+    const work = this.db.prepare(`
+      SELECT json_extract(p.raw_metadata_json, '$.albumId') AS album_id,
+             GROUP_CONCAT(t.id) AS track_ids,
+             MAX(t.popularity) AS popularity
+      FROM tracks t
+      JOIN track_providers p ON p.track_id = t.id AND p.provider = 'deezer'
+      WHERE ${IN_SCOPE}
+        AND t.release_year IS NULL
+        AND t.album_checked_at IS NULL
+        AND json_valid(p.raw_metadata_json)
+        AND json_extract(p.raw_metadata_json, '$.albumId') IS NOT NULL
+      GROUP BY album_id
+      ORDER BY popularity DESC
+      LIMIT ?
+    `).all(limit);
+
+    const trackByDeezerId = this.db.prepare("SELECT track_id FROM track_providers WHERE provider = 'deezer' AND provider_track_id = ?");
+    const dateTrack = this.db.prepare(`
+      UPDATE tracks SET
+        release_year = COALESCE(release_year, ?),
+        release_date = COALESCE(release_date, ?),
+        album_checked_at = datetime('now'),
+        updated_at = datetime('now')
+      WHERE id = ? AND release_year IS NULL
+    `);
+    const markChecked = this.db.prepare("UPDATE tracks SET album_checked_at = datetime('now') WHERE id = ?");
+
+    const stats = { checked: 0, yearFilled: 0, missing: 0, errors: 0 };
+    for (const row of work) {
+      if (this.abortRequested) break;
+      stats.checked++;
+      const trackIds = new Set(String(row.track_ids).split(',').map(Number));
+      const { status, data } = await this._getJson(`https://api.deezer.com/album/${row.album_id}`, deezerRateLimiter);
+      if (status === 'error') {
+        stats.errors++; // left un-stamped so a later run retries
+        continue;
+      }
+      const releaseDate = status === 'ok' ? normalizeReleaseDate(data.release_date) : null;
+      const releaseYear = releaseDate ? normalizeReleaseYear(releaseDate) : null;
+      if (!releaseYear) {
+        if (status === 'missing') stats.missing++;
+        for (const id of trackIds) markChecked.run(id);
+        continue;
+      }
+      for (const track of data.tracks?.data || []) {
+        const owner = trackByDeezerId.get(String(track.id));
+        if (owner) trackIds.add(owner.track_id);
+      }
+      this.db.exec('BEGIN;');
+      try {
+        for (const id of trackIds) stats.yearFilled += dateTrack.run(releaseYear, releaseDate, id).changes;
+        this.db.exec('COMMIT;');
+      } catch (err) {
+        this.db.exec('ROLLBACK;');
+        throw err;
+      }
+      if (stats.checked % 100 === 0) onProgress({ step: 'albums', ...stats, total: work.length });
     }
     return stats;
   }

@@ -30,7 +30,7 @@ const SPOKEN_WORD_TITLE = [
 
 const INAUTHENTIC_ARTIST = [
   /\bkaraoke\b/i, /\btribute\b/i, /\bsoundalike\b/i, /\bthe\s+hit\s+crew\b/i, /\bcountdown\s+singers\b/i,
-  /\bcover\s+(band|crew)\b/i, /\bmidifine\b/i, /\blittle\s+v\.?(?=\s|$)/i, /\bpellek\b/i, /\bshironeko\b/i,
+  /\bcover\s+(band|crew)\b/i, /\bcovers\b/i, /\bmidifine\b/i, /\blittle\s+v\.?(?=\s|$)/i, /\bpellek\b/i, /\bshironeko\b/i,
   /\bpickin'\s+on\b/i, /\brockabye\s+baby!?/i, /\bsweet\s+little\s+band\b/i, /\bwhite\s+noise\b/i,
   /\bsleep\s+sounds\b/i, /\bnature\s+sounds\b/i, /\bmeditation\s+spa\b/i, /\bradio\s+theatre\b/i,
   /\bworkout\s+(music|dj|mix|party|electronica|hits|mafia)\b/i, /\bpower\s+music\s+workout\b/i, /\bfitness\s+workout\b/i,

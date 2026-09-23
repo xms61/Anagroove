@@ -6,6 +6,7 @@
   - `harvestArtistDiscography` skips an artist whose top tracks vote a language outside en/ja/ko before any album or related-artist requests.
   - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.
 - `enricher.js` (`CatalogEnricher`) fills in metadata. Each step picks its own worklist with SQL and stamps what it has tried (`tracks.enriched_at`, `tracks.itunes_checked_at`, `artists.enriched_at`), so runs are resumable and never loop.
+  - `enrichAlbums`: `/album/{id}` (album id from the stored Deezer payload) → release date for every catalog track on the album, including tracks matched through the album's track list. About 9 tracks per request. Run it before `enrichDeezerTracks`.
   - `enrichDeezerTracks`: `/track/{id}` → ISRC, release date, rank. An ISRC already owned by another row counts as a duplicate conflict and is left for merging.
   - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres.
   - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
@@ -19,7 +20,9 @@
 ## Language (`server/db/languageClassifier.js`)
 1. Script: hangul → ko, kana → ja. Han-only text is ja/ko with a JP/KR ISRC or artist, otherwise zh.
 2. Artist vote (`artists.primary_language`, from `classifyArtistLanguage`): hangul/kana titles or a majority of JP/KR ISRCs make an artist ja/ko; otherwise ELD runs on their joined titles. Japanese and Korean artists keep romanized or English-titled songs.
-3. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4. Artist **names** are never run through the text detector.
+3. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4. Either way it must beat the English score by `requiredMargin(words)` (0.3 for 2 words, 0.2 for 3, 0.15 for 4+), and 2-word titles can only be ruled es/pt/fr/de/it. Words have 2+ letters, so dotted acronyms don't count. Artist **names** are never run through the text detector.
+
+Artist votes on text need 6+ words and a 0.15 lead over English (otherwise `en`). Non-CJK scripts count only when they make up at least half the letters ("KoЯn" is not Russian). Deletion is irreversible, so doubtful titles stay English.
 
 After crawls add titles, run `npm run catalog:enrich -- --languages`.
 
@@ -27,7 +30,7 @@ After crawls add titles, run `npm run catalog:enrich -- --languages`.
 | Script | Source |
 |---|---|
 | `scripts/crawl_catalog.js` | Live crawl. Flags: `--target=N --charts=N --playlists=N --decades=N --artists=N --lexicon=N --playlists-only --status` |
-| `scripts/enrich_catalog.js` | Enrichment: `--deezer[=N] --artists[=N] --itunes[=N] --languages` (all steps by default) |
+| `scripts/enrich_catalog.js` | Enrichment: `--albums[=N] --deezer[=N] --artists[=N] --itunes[=N] --languages` (all steps by default) |
 | `scripts/ingest_annas_spotify.js` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
 | `scripts/ingest_musicmovearr.js` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
 | `scripts/fetch_datasets.js` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
