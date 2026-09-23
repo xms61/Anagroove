@@ -105,7 +105,7 @@
 | :--- | :--- |
 | **Frontend** | React 19, TypeScript, Vite 6, TailwindCSS, Lucide React, Canvas Confetti |
 | **Backend** | Node.js, Express, WebSocket (`ws`), Native HTTP Fetch |
-| **Database** | Lightweight file-backed JSON database (`server/db.js`) |
+| **Database** | SQLite via Node 24 `node:sqlite`: music catalog, anime catalog, user store |
 | **Audio Engine** | Deezer API & iTunes preview resolver with dynamic fallback self-healing |
 
 ---
@@ -285,13 +285,18 @@ SpotySpice/
 │   └── tests/                  # Test env preload (temp data dir) & TESTING.md
 ├── server/                     # Node.js 24 backend (API_SECURITY.md, MULTIPLAYER_WS.md)
 │   ├── crawler/                # Harvester, authenticity filter, rate limiter (CRAWLER.md)
-│   ├── data/                   # Runtime data (gitignored): catalog.sqlite, anime_catalog.sqlite, store.json
-│   ├── db/                     # sqliteCatalog, animeCatalog, catalogValidator (CATALOG_DB.md)
+│   ├── data/                   # Runtime data (gitignored): catalog.sqlite, anime_catalog.sqlite, users.sqlite
+│   ├── db/                     # sqliteCatalog, animeCatalog, userStore, cleanup & gate (CATALOG_DB.md)
 │   ├── middleware/             # Rate limiter
-│   ├── services/               # Selection, providers, preview resolver, query planner (TRACK_SELECTION.md)
-│   ├── db.js                   # JSON user store
+│   ├── http/                   # Security middleware, live puzzle store
+│   ├── policy/                 # Authenticity & selection policy
+│   ├── routes/                 # REST routes (music, user state)
+│   ├── selection/              # Song pool, catalog sampler, picker (TRACK_SELECTION.md)
+│   ├── services/               # Providers, preview resolver, query planner, crossword judge
+│   ├── ws/                     # Multiplayer rooms
+│   ├── db.js                   # User store (SQLite, lazy)
 │   ├── paths.js                # DATA_DIR (override with SPOTYSPICE_DATA_DIR)
-│   ├── server.js               # REST endpoints & WebSocket rooms
+│   ├── server.js               # App composition (middleware, routes, WS)
 │   └── validators.js           # Endpoint & WebSocket payload validators
 ├── shared/                     # Identity keys, answer/clue extraction, grid engine (CROSSWORD_ENGINE.md)
 └── src/                        # React 19 frontend (FRONTEND_UI.md)
@@ -409,11 +414,10 @@ LOG_LEVEL=debug npm run dev:server
 SpotySpice features a universal, prompt-agnostic music harvesting and sampling engine designed to discover diverse tracks without static seed lists while enforcing strict replay bounds:
 
 1. **Dynamic Theme Variations (`queryBuilder.js`)**: Automatically expands any user prompt into compound, de-spaced (`citypop`, `synthwave`), and decade-specific search variations while preserving cultural prefixes (e.g. `Japanese`, `French`, `Korean`).
-2. **Deep Parallel Ingestion (`musicService.js`)**: Queries both Deezer and iTunes with high candidate caps (up to 250 on Deezer, 4 parallel searches of 100 on iTunes), generating deep candidate pools of 400+ tracks per theme.
+2. **Catalog-First Weighted Sampling (`server/selection/`)**: Draws a random window of up to 400 theme-matched tracks from the local catalog in milliseconds, weighted by popularity (uniform for "obscure", squared for "mainstream"). Deezer and iTunes are only asked when the catalog is thin, and what they return is added to the catalog.
 3. **Multi-Pass Tiered Frequency Sampling**:
    - **Tier 0 (Unplayed)**: Fresh tracks are always prioritized first.
-   - **Tier 1 & 2 (Played 1-2x)**: Only tapped once the fresh catalog is completely exhausted.
-   - **Strict Cap ($\le 3$ plays)**: Tracks with 3 or more previous plays are barred from repeat entry across games.
+   - **Tier 1, 2, 3+ (Played before)**: Filled in that order, only when fresh tracks can't fill the puzzle.
 4. **Verified Performance**: In a 50-crossword live simulation with rolling session tracking, the engine achieved **99.5% uniqueness** (420 unique songs across 422 clues) with a maximum repetition of only **2x** per song across the entire 50-game run.
 
 ---
@@ -427,7 +431,7 @@ SpotySpice includes a production-ready, multi-stage Alpine Docker configuration.
 ```bash
 docker compose up -d
 ```
-The game will be live at `http://localhost:3000`. User progress and the SQLite catalogs live in the Docker volume (`spotyspice_data`, mounted at `/app/server/data`). The image never contains `catalog.sqlite` or `store.json` (see `.dockerignore`). Copy a catalog into the volume, or crawl inside the container, to populate it.
+The game will be live at `http://localhost:3000`. User progress and the SQLite catalogs live in the Docker volume (`spotyspice_data`, mounted at `/app/server/data`). The image never contains `catalog.sqlite`, `users.sqlite` or `store.json` (see `.dockerignore`). Copy a catalog into the volume, or crawl inside the container, to populate it.
 
 ### Manual Build & Run
 

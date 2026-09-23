@@ -3,7 +3,7 @@
 Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` (`server/paths.js`, override with `SPOTYSPICE_DATA_DIR`):
 - `catalog.sqlite` — main music catalog (`sqliteCatalog.js`)
 - `anime_catalog.sqlite` — isolated anime OP/ED catalog (`animeCatalog.js`)
-- `store.json` — user progress/history/blacklist (`server/db.js`, JSON store)
+- `users.sqlite` — user progress/history/blacklist (`server/db/userStore.js`, see `server/API_SECURITY.md`); imports the old `store.json` once
 
 `sqliteCatalog` and `animeCatalog` are **lazy singletons** (`lazySingleton.js`): importing a module opens nothing, and the first property access opens (and migrates) the file. Scripts and tests that must not touch real data need `SPOTYSPICE_DATA_DIR`, or `new SqliteCatalog(':memory:')`.
 
@@ -11,7 +11,7 @@ Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` 
 WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
 
 ## Migrations (`catalogMigrations.js`)
-- Versions are tracked in `PRAGMA user_version` (currently **v4**). Each migration runs in its own transaction.
+- Versions are tracked in `PRAGMA user_version` (currently **v5**). Each migration runs in its own transaction.
 - They're applied automatically on first catalog use, or explicitly with `npm run db:migrate`.
 - Before migrating a populated file DB, a `VACUUM INTO` copy is written next to it: `catalog.backup-v<from>-<timestamp>.sqlite`, gitignored. Set `SPOTYSPICE_SKIP_DB_BACKUP=1` or pass `--no-backup` to skip it.
 - New schema changes go in a **new** migration entry. Never edit an applied one.
@@ -25,7 +25,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long i
   - `language`: from `languageClassifier.js` (script, artist vote, ELD title detection); `country_code` is the ISRC **registrant** prefix, not a language.
   - `enriched_at` / `itunes_checked_at` / `album_checked_at`: set once `catalog:enrich` has attempted the Deezer track, iTunes, or Deezer album lookup.
   - `popularity`: a single **0–100 score**. Raw inputs are kept in `deezer_rank` and `spotify_popularity`.
-  - `rand_key`: a random number in [0, 1) for index-backed random sampling (`idx_tracks_pick`).
+  - `rand_key`: a random number in [0, 1) for song selection windows (`sampleCatalogTracks`, index `idx_tracks_rand`).
 - `track_samples`: one row per (track, provider) with the preview URL. **Deezer preview URLs are signed and expire** (`hdnea=exp=`, minutes), so treat them as a cache. `previewResolver.isPreviewUrlFresh` decides whether a stored URL is still usable.
 - `track_providers`: `(provider, provider_track_id)` UNIQUE cross-reference, plus `raw_metadata_json`.
 - `crawl_queue`: crawl tasks.
@@ -40,7 +40,7 @@ A track is rejected (returns `null`; counted in `getRejectionStats()`) unless it
 
 Invalid ISRCs, years and dates are dropped to `NULL` rather than stored. Titles, albums and artist names go through `cleanDisplayText` (HTML entities decoded, invisible characters removed, whitespace collapsed).
 
-Catalog read queries (`getRandomPlayableTracks`, `searchCatalogByTheme`, `queryCatalogForCrossword`) only return `original`/`remaster` rows.
+Catalog read queries (`sampleCatalogTracks`, `getRandomPlayableTracks`, `searchCatalogByTheme`, `queryCatalogForCrossword`) only return `original`/`remaster` rows.
 
 ## Dedupe
 1. Tier 1: exact normalized ISRC.

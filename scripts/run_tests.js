@@ -82,6 +82,7 @@ import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../server/db/catal
 import { resolveTrackLanguage, classifyArtistLanguage, scriptLanguage } from '../server/db/languageClassifier.js';
 import { runCatalogCleanup } from '../server/db/catalogCleanup.js';
 import { evaluateCatalogGate } from '../server/db/catalogGate.js';
+import { UserStore } from '../server/db/userStore.js';
 import { recomputeCatalogLanguages } from '../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../server/crawler/enricher.js';
@@ -2720,6 +2721,39 @@ async function runPhase4CleanupTests() {
   assert(eighties.length === 20 && eighties.every(r => r.release_year >= 1980 && r.release_year <= 1989), 'Year windows filter in SQL');
   assert(sampleCat.sampleCatalogTracks({ artist: 'Sample Artist 3', poolSize: 50 }).length === 3 && sampleCat.sampleCatalogTracks({ ftsQuery: '"Song 1"', poolSize: 50 }).length >= 1, 'Artist and text filters narrow the window');
   sampleCat.close();
+
+  // 1c. SQLite user store with a one-time import of the old JSON store
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-users-'));
+  const legacyPath = path.join(storeDir, 'store.json');
+  fs.writeFileSync(`${legacyPath}.bak`, JSON.stringify({ users: {
+    alice: {
+      userId: 'alice', createdAt: 1000, lastActive: 2000,
+      activeProgress: { puzzleId: 'p2', userLetters: [['A']] },
+      solvedHistory: [{ puzzleId: 'p1', solvedAt: 1500 }, { puzzleId: 'p1', solvedAt: 1600 }],
+      blacklist: [
+        { id: 'b1', name: 'Daft Punk', type: 'artist', dateAdded: 1100 },
+        { id: 'b2', name: 'daft  punk', type: 'artist', dateAdded: 1200 },
+        { id: 'b3', name: 'Same Title', type: 'song', provider: 'deezer', providerTrackId: '101', dateAdded: 1300 },
+        { id: 'bad', name: 'Nope', type: 'album' },
+      ],
+    },
+  } }));
+  fs.writeFileSync(legacyPath, '{ broken json');
+  const users = new UserStore(path.join(storeDir, 'users.sqlite'), { legacyStorePath: legacyPath });
+  assert(users.findUser('alice')?.createdAt === 1000 && users.getProgress('alice')?.puzzleId === 'p2', 'Legacy store is imported from the .bak copy when store.json is corrupt');
+  assert(users.getSolvedHistory('alice').length === 1 && users.getBlacklist('alice').map(b => b.id).join() === 'b1,b3', 'Import drops duplicate history, duplicate blacklist names and invalid types');
+  assert(users.importLegacyStore(legacyPath).imported === false, 'The import runs only once');
+  users.recordSolvedPuzzle('alice', { puzzleId: 'p2', title: 'Two' });
+  assert(users.getProgress('alice') === null && users.getSolvedHistory('alice').map(h => h.puzzleId).join() === 'p1,p2', 'Solving a puzzle clears its progress and appends to history in order');
+  users.addBlacklistItem('alice', { name: 'Same Title', type: 'song' });
+  users.addBlacklistItem('alice', { name: 'DAFT PUNK', type: 'artist' });
+  assert(users.getBlacklist('alice').length === 3 && users.removeBlacklistItem('alice', 'b1').length === 2, 'Generic and provider-scoped entries coexist; duplicates are ignored; removal by id');
+  assert(users.findUser('nobody') === null && users.getBlacklist('nobody').length === 0 && users.findUser('nobody') === null, 'Reads never create users');
+  users.close();
+  const reopened = new UserStore(path.join(storeDir, 'users.sqlite'), { legacyStorePath: legacyPath });
+  assert(reopened.getSolvedHistory('alice').length === 2 && reopened.getBlacklist('alice').length === 2, 'User state persists across restarts without re-importing');
+  reopened.close();
+  fs.rmSync(storeDir, { recursive: true, force: true });
 
   // 2. Text and version normalization
   assert(cleanDisplayText('I&#039;m Not The Only One') === "I'm Not The Only One" && cleanDisplayText('Rock &amp;amp; Roll') === 'Rock & Roll', 'HTML entities are decoded, including double encoding');

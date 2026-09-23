@@ -2,7 +2,7 @@
 
 ## Guardrails (non-negotiable)
 - **Never push to `main`.** Work on `feat/<name>`, `fix/<name>`, or `chore/<name>`.
-- **Never commit** `.env`, API keys, `*.sqlite*` (catalog or anime DB), `server/data/store.json*`, audio (`*.mp3|m4a|aac|wav|flac|ogg|opus|webm`), sample folders, or dataset dumps under `data/`.
+- **Never commit** `.env`, API keys, `*.sqlite*` (catalog, anime or user DB), `server/data/store.json*`, audio (`*.mp3|m4a|aac|wav|flac|ogg|opus|webm`), sample folders, or dataset dumps under `data/`.
 - Run `git status` before `git add`, and stage explicit paths.
 
 ## Version bump (every PR)
