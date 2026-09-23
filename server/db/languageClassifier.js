@@ -25,7 +25,26 @@ const OTHER_SCRIPTS = [
 
 // Title words that describe the release rather than the song's language
 const DECORATION = /\s*[([（【][^)\]）】]*[)\]）】]/g;
-const TITLE_WORD = /[\p{L}\p{N}]+/gu;
+// Words of 2+ letters: dotted acronyms ("P.I.M.P.", "B.Y.O.B.") carry no language evidence
+const TITLE_WORD = /[\p{L}\p{N}]{2,}/gu;
+const LETTER = /\p{L}/gu;
+
+// A non-English verdict must beat the English n-gram score by a margin that grows as the text
+// shrinks. Short English titles often score a hair above English in another language ("Moth To
+// A Flame" sq 0.702 vs en 0.698) and two words can be far off ("Cutie Pie" lv +0.67), while
+// real foreign titles lead clearly ("Te Quería Ver" es +0.81). Deleting is irreversible, so
+// doubtful titles stay English.
+export function requiredMargin(words) {
+  if (words >= 4) return 0.15;
+  return words === 3 ? 0.2 : 0.3;
+}
+
+// Two words are only enough for languages ELD separates from English on catalog samples
+const SHORT_TEXT_LANGUAGES = new Set(['es', 'pt', 'fr', 'de', 'it']);
+
+// An artist is voted non-English only on this much title text, with this lead over English
+const ARTIST_MIN_WORDS = 6;
+const ARTIST_MARGIN = 0.15;
 
 /** Title text used for language detection: bracketed credits/versions removed. */
 export function languageText(title = '') {
@@ -38,29 +57,48 @@ function isrcRegistrant(isrc) {
 
 /**
  * Script-level language of a string, or null for Latin/neutral text.
+ * Any hangul/kana/Han character decides; other scripts must be at least half of the letters,
+ * so a stylized letter ("KoЯn", "DISCIPLΞS") doesn't make a name Russian or Greek.
  * @returns {'ko'|'ja'|'han'|string|null}
  */
 export function scriptLanguage(text = '') {
   if (HANGUL.test(text)) return 'ko';
   if (KANA.test(text)) return 'ja';
   if (HAN.test(text)) return 'han';
+  const letters = text.match(LETTER)?.length || 0;
   for (const [code, pattern] of OTHER_SCRIPTS) {
-    if (pattern.test(text)) return code;
+    if (!pattern.test(text)) continue;
+    const inScript = text.match(new RegExp(pattern.source, 'g'))?.length || 0;
+    if (inScript * 2 >= letters) return code;
   }
   return null;
 }
 
 /**
  * Language of a (Latin-script) title from the n-gram detector.
- * @returns {{ language: string|null, reliable: boolean, words: number }}
+ * `margin` is how far the verdict's score leads English (0 when the verdict is English).
+ * @returns {{ language: string|null, reliable: boolean, words: number, margin: number }}
  */
 export function detectTitleLanguage(title = '') {
   const text = languageText(title);
   const words = text.match(TITLE_WORD)?.length || 0;
-  if (words === 0) return { language: null, reliable: false, words };
+  if (words === 0) return { language: null, reliable: false, words, margin: 0 };
   const result = eld.detect(text);
   const language = result.language || null;
-  return { language, reliable: Boolean(language) && result.isReliable(), words };
+  let margin = 0;
+  if (language && language !== 'en') {
+    const scores = result.getScores();
+    margin = (scores[language] || 0) - (scores.en || 0);
+  }
+  return { language, reliable: Boolean(language) && result.isReliable(), words, margin };
+}
+
+/** Whether a title detection is strong enough to call the title non-English. */
+export function isClearlyForeign(detected) {
+  if (!detected?.reliable || !detected.language || detected.language === 'en') return false;
+  if (detected.words < 2) return false;
+  if (detected.words === 2 && !SHORT_TEXT_LANGUAGES.has(detected.language)) return false;
+  return detected.margin >= requiredMargin(detected.words);
 }
 
 /**
@@ -100,9 +138,15 @@ export function classifyArtistLanguage({ titles = [], isrcs = [], name = '' } = 
   }
 
   const latin = cleaned.filter(text => !scriptLanguage(text));
-  if (latin.length < 3) return { language: null, basis: 'insufficient' };
+  const words = latin.join(' ').match(TITLE_WORD)?.length || 0;
+  if (latin.length < 3 || words < ARTIST_MIN_WORDS) return { language: null, basis: 'insufficient' };
   const result = eld.detect(latin.join('. '));
-  return result.language ? { language: result.language, basis: 'text' } : { language: null, basis: 'undetected' };
+  if (!result.language) return { language: null, basis: 'undetected' };
+  if (result.language === 'en') return { language: 'en', basis: 'text' };
+  // A few short English titles can tip the detector ("Brown Sugar. The Door. Playa Playa" -> tl)
+  const scores = result.getScores();
+  const margin = (scores[result.language] || 0) - (scores.en || 0);
+  return margin >= ARTIST_MARGIN ? { language: result.language, basis: 'text' } : { language: 'en', basis: 'text-close' };
 }
 
 /**
@@ -133,11 +177,12 @@ export function resolveTrackLanguage({ title = '', artist = '', isrc = null, art
   // 3. Title text vs. artist vote
   // Single words are too short for n-gram detection ("PENTHOUSE" reads as Romanian), so a
   // non-English verdict needs 2+ words without an artist vote, and 4+ words to overrule one.
+  // Either way it must clearly beat English (isClearlyForeign).
   const detected = detectTitleLanguage(title);
   if (detected.reliable && detected.language && detected.language !== 'en') {
     if (artistLanguage === detected.language) return detected.language;
-    if (!artistLanguage && detected.words >= 2) return detected.language;
-    if (artistLanguage && detected.words >= 4) return detected.language;
+    if (!artistLanguage && isClearlyForeign(detected)) return detected.language;
+    if (artistLanguage && detected.words >= 4 && isClearlyForeign(detected)) return detected.language;
   }
   return artistLanguage || 'en';
 }

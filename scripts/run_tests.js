@@ -9,6 +9,9 @@
 //   scripts/tests/test_websocket.js         — multiplayer room lifecycle, race/coop sync
 //   scripts/run_tests.js (this file)        — orchestrator that runs all test modules
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import WebSocket from 'ws';
 import { shuffleArray } from '../shared/shuffle.js';
 import { generateLiveCrossword } from '../shared/liveCrossword.js';
@@ -64,6 +67,7 @@ import { SqliteCatalog, normalizeDedupeTitle, normalizeDedupeArtist } from '../s
 import {
   classifyVersion,
   baseTitleKey,
+  cleanDisplayText,
   detectTrackLanguage,
   deezerRankToScore,
   normalizePopularity,
@@ -71,7 +75,9 @@ import {
   normalizeReleaseYear,
 } from '../server/db/trackNormalization.js';
 import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../server/db/catalogMigrations.js';
-import { resolveTrackLanguage, classifyArtistLanguage } from '../server/db/languageClassifier.js';
+import { resolveTrackLanguage, classifyArtistLanguage, scriptLanguage } from '../server/db/languageClassifier.js';
+import { runCatalogCleanup } from '../server/db/catalogCleanup.js';
+import { evaluateCatalogGate } from '../server/db/catalogGate.js';
 import { recomputeCatalogLanguages } from '../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../server/crawler/enricher.js';
@@ -1821,26 +1827,20 @@ async function runCatalogValidatorTests() {
   assert(stats.overview.sampleCoveragePct === 75, 'Computes 75% audio sample coverage (3/4 tracks with samples)');
   assert(stats.popularity.normalizedAvgPop > 0, 'Computes normalized average popularity');
 
-  // 6. Test Dry Run Sanitization
-  const dryRunSanitize = validator.sanitize({ dryRun: true });
-  assert(dryRunSanitize.dryRun === true, 'Sanitization honors dryRun flag');
-  assert(dryRunSanitize.proposedActions.softDuplicatesToMerge === 1, 'Dry run proposes merging 1 soft duplicate');
+  // 6. Cleanup dry run changes nothing
+  const dryCleanup = runCatalogCleanup(memCatalog.db);
+  assert(dryCleanup.applied === false && validator.generateStatistics().overview.totalTracks === 4, 'Cleanup dry run rolls back');
 
-  // 7. Test Live Sanitization (Merge Duplicates + Purge Contamination)
-  const liveSanitize = validator.sanitize({
-    dryRun: false,
-    mergeSoftDuplicates: true,
-    removeOrphans: true,
-    purgeContamination: true,
-  });
-  assert(liveSanitize.actionsExecuted.duplicatesMerged === 1, 'Live sanitize merges 1 duplicate cluster');
-  assert(liveSanitize.actionsExecuted.contaminatedPurged === 1, 'Live sanitize purges 1 contaminated track');
+  // 7. Cleanup merges the duplicate and deletes the audiobook and the 8-second clip
+  const cleanup = runCatalogCleanup(memCatalog.db, { apply: true });
+  assert(cleanup.steps.find(s => s.name === 'duplicates').removed === 1, 'Cleanup merges the duplicate Starboy row');
+  assert(cleanup.steps.find(s => s.name === 'policy').deleted === 2, 'Cleanup deletes the audiobook and the too-short clip');
 
-  // 8. Verify post-sanitization state
+  // 8. Verify post-cleanup state
   const postStats = validator.generateStatistics();
-  assert(postStats.overview.totalTracks === 2, '2 canonical tracks remain after merging and purging');
+  assert(postStats.overview.totalTracks === 1, '1 canonical track remains after cleanup');
   const postDupes = validator.findDuplicates();
-  assert(postDupes.softDuplicateClustersCount === 0, 'Zero duplicate clusters remain after sanitization');
+  assert(postDupes.softDuplicateClustersCount === 0, 'Zero duplicate groups remain after cleanup');
 
   // 9. Test Report Generation
   const reportMd = validator.generateMarkdownReport({
@@ -1849,9 +1849,10 @@ async function runCatalogValidatorTests() {
     duplicates: postDupes,
     anomalies: validator.findDataAnomalies(),
     stats: postStats,
-    sanitization: liveSanitize,
+    cleanup,
+    gate: evaluateCatalogGate(memCatalog.db, { minYearCoverage: 0, minIsrcCoverage: 0 }),
   });
-  assert(typeof reportMd === 'string' && reportMd.includes('# SpotySpice Database Validation'), 'Generates valid markdown report string');
+  assert(typeof reportMd === 'string' && reportMd.includes('# SpotySpice Database Validation') && reportMd.includes('## 8. Validation Gate'), 'Generates valid markdown report string');
 }
 
 async function runAnimeCatalogAndIsolationTests() {
@@ -2664,6 +2665,143 @@ async function runPhase3CrawlerTests() {
   enrichCat.close();
 }
 
+async function runPhase4CleanupTests() {
+  console.log('\n--- 9b. Testing Catalog Cleanup, Validation Gate & Album Enrichment ---');
+
+  // 1. Classifier guards against deleting English songs
+  const lang = (title, artist, artistLanguage = null) => resolveTrackLanguage({ title, artist, artistLanguage });
+  assert(lang("Sweet Child O' Mine", "Guns N' Roses", 'en') === 'en' && lang('Moth To A Flame', 'The Weeknd', 'en') === 'en', 'Short English titles that edge out English in ELD stay English');
+  assert(lang('Cutie Pie', 'One Way') === 'en' && lang('Teenage Dirtbag', 'Wheatus') === 'en', 'Two-word titles only turn foreign for major languages with a clear margin');
+  assert(lang('Mi Gente', 'J Balvin') === 'es' && lang('Te Quería Ver', 'Alemán') === 'es', 'Clear Spanish titles are still detected without an artist vote');
+  assert(lang("Pour que tu m'aimes encore", 'Céline Dion', 'en') === 'fr', 'A long, clearly French title overrules an English artist vote');
+  assert(scriptLanguage('KoЯn') === null && scriptLanguage('DISCIPLΞS') === null && scriptLanguage('Кино') === 'ru', 'A stylized letter does not make a name Russian or Greek');
+  assert(lang('Freak On a Leash', 'KoЯn') === 'en' && lang('P.I.M.P.', '50 Cent', 'en') === 'en', 'Stylized names and dotted acronyms stay English');
+  assert(classifyArtistLanguage({ titles: ['Brown Sugar', 'The Door', 'Playa Playa'] }).language === 'en', 'A few short English titles do not vote an artist foreign');
+  assert(classifyArtistLanguage({ titles: ['Por Esos Ojos', 'La Sala de Espera', 'Mi Corazón Contigo'] }).language === 'es', 'A Spanish catalog still votes es');
+
+  // 2. Text and version normalization
+  assert(cleanDisplayText('I&#039;m Not The Only One') === "I'm Not The Only One" && cleanDisplayText('Rock &amp;amp; Roll') === 'Rock & Roll', 'HTML entities are decoded, including double encoding');
+  const zwsp = String.fromCharCode(0x200b);
+  assert(cleanDisplayText(`  Equator - ${zwsp} Eastern  `) === 'Equator - Eastern' && cleanDisplayText(cleanDisplayText('A &amp; B')) === 'A & B', 'Invisible characters and whitespace are cleaned idempotently');
+  assert(['Mayonaka no Door (Single ver.)', 'Nuit de folie (Version originale 1988)', 'So Far Away (Full Version)'].every(t => classifyVersion(t) === 'original'), 'Tags naming the original release are original');
+  assert(classifyVersion('Sparkle - movie ver.') === 'alternate' && classifyVersion('Dreams (2004 Remaster)') === 'remaster', 'Movie versions stay alternate; remasters are accepted');
+
+  // 3. Cleanup on a legacy catalog (rows inserted directly: upsertTrack would refuse them)
+  const cat = new SqliteCatalog(':memory:');
+  const db = cat.db;
+  const artistId = (name) => {
+    const key = canonicalArtistKey(name) || name;
+    db.prepare('INSERT OR IGNORE INTO artists (canonical_name, display_name) VALUES (?, ?)').run(key, name);
+    return db.prepare('SELECT id FROM artists WHERE canonical_name = ?').get(key).id;
+  };
+  const legacy = ({ title, artist, album = 'Album', language = 'en', durationMs = 200000, isrc = null, popularity = 50, year = null, deezerId = null, sampleId = deezerId, provider = true }) => {
+    const id = Number(db.prepare(`
+      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, language, popularity, version_type, rand_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.5)
+    `).run(isrc, baseTitleKey(title), title, artistId(artist), album, durationMs, year, language, popularity, classifyVersion(title, album)).lastInsertRowid);
+    if (provider && deezerId) db.prepare("INSERT INTO track_providers (track_id, provider, provider_track_id) VALUES (?, 'deezer', ?)").run(id, String(deezerId));
+    if (sampleId) db.prepare("INSERT INTO track_samples (track_id, provider, provider_track_id, sample_url) VALUES (?, 'deezer', ?, ?)").run(id, String(sampleId), `https://cdn.test/${sampleId}.mp3`);
+    return id;
+  };
+
+  const levitating = legacy({ title: 'Levitating', artist: 'Dua Lipa', isrc: 'GBAHT2000942', year: 2020, popularity: 80, deezerId: 1 });
+  legacy({ title: 'Levitating (Live at the BRITs)', artist: 'Dua Lipa', popularity: 90, deezerId: 2 });
+  legacy({ title: 'Levitating', artist: 'Dua Lipa', album: 'Future Nostalgia (Deluxe)', year: 2019, popularity: 60, deezerId: 3 });
+  const gaga = legacy({ title: 'Die With A Smile', artist: 'Lady Gaga', popularity: 95, deezerId: 10 });
+  legacy({ title: 'Die With A Smile', artist: 'Bruno Mars', popularity: 95, sampleId: 10, provider: false });
+  for (const [i, title] of ['Por Esos Ojos', 'La Sala de Espera', 'Mi Corazón Contigo'].entries()) {
+    legacy({ title, artist: 'Grupo Norteño', language: 'en', deezerId: 20 + i });
+  }
+  legacy({ title: 'I&#039;m Not The Only One', artist: 'Sam Smith', deezerId: 30, popularity: 70 });
+  legacy({ title: "I'm Not The Only One", artist: 'Sam Smith', deezerId: 31, popularity: 40 });
+  legacy({ title: 'The Riddle', artist: 'Gigi D&#039;Agostino', deezerId: 40 });
+  legacy({ title: 'Bla Bla Bla', artist: "Gigi D'Agostino", deezerId: 41 });
+  legacy({ title: 'Rain Sounds For Sleep', artist: 'Sleep Sounds', deezerId: 50 });
+  legacy({ title: 'Intro', artist: 'Some Band', durationMs: 8000, deezerId: 51 });
+  legacy({ title: 'Lost Song', artist: 'Some Band', deezerId: null, sampleId: null });
+  const idol = legacy({ title: 'アイドル', artist: 'YOASOBI', language: 'ja', isrc: 'jpu902300400', deezerId: 60, popularity: 900000 });
+  legacy({ title: '봄날', artist: 'BTS', language: 'ko', deezerId: 61 });
+
+  const dirtyGate = evaluateCatalogGate(db, { minYearCoverage: 0, minIsrcCoverage: 0 });
+  const failing = new Set(dirtyGate.checks.filter(c => !c.ok).map(c => c.id));
+  assert(!dirtyGate.ok && ['duplicates', 'version', 'text', 'duration', 'unlinked', 'inauthentic'].every(id => failing.has(id)), 'Gate flags duplicates, versions, entities, durations, unlinked and inauthentic rows');
+
+  const trackCount = () => db.prepare('SELECT COUNT(*) AS c FROM tracks').get().c;
+  const before = trackCount();
+  const dry = runCatalogCleanup(db);
+  assert(dry.applied === false && trackCount() === before && dry.after.tracks < before, 'Dry run reports the changes and rolls them back');
+
+  const applied = runCatalogCleanup(db, { apply: true });
+  const step = (name) => applied.steps.find(s => s.name === name);
+  assert(step('recordings').removed === 1 && !db.prepare("SELECT 1 FROM tracks t JOIN artists a ON a.id = t.artist_id WHERE a.display_name = 'Bruno Mars'").get(), 'A collaboration stored under a second artist is folded into the provider owner');
+  assert(db.prepare('SELECT COUNT(*) AS c FROM tracks WHERE id = ?').get(gaga).c === 1, 'The provider owner keeps the song');
+  const policy = step('policy');
+  assert(policy.reasons.version === 1 && policy.reasons.language === 3 && policy.reasons.inauthentic === 1 && policy.reasons.duration === 1 && policy.reasons.unlinked === 1, 'Policy deletes live, Spanish, utility, too-short and unlinked rows');
+  const lev = db.prepare('SELECT release_year, isrc FROM tracks WHERE id = ?').get(levitating);
+  const levProviders = db.prepare('SELECT COUNT(*) AS c FROM track_providers WHERE track_id = ?').get(levitating).c;
+  assert(lev.release_year === 2019 && lev.isrc === 'GBAHT2000942' && levProviders === 2, 'Duplicate releases merge into one row with the earliest year and all provider links');
+  assert(db.prepare("SELECT COUNT(*) AS c FROM tracks WHERE display_title = 'I''m Not The Only One'").get().c === 1, 'Entity-decoded titles merge with their clean duplicate');
+  const gigi = db.prepare("SELECT COUNT(DISTINCT artist_id) AS artists, COUNT(*) AS tracks FROM tracks WHERE display_title IN ('The Riddle', 'Bla Bla Bla')").get();
+  assert(gigi.artists === 1 && gigi.tracks === 2 && step('text').artistsMerged === 1, 'Artists whose names only differed by HTML entities are merged');
+  const idolRow = db.prepare('SELECT language, isrc, country_code, popularity FROM tracks WHERE id = ?').get(idol);
+  assert(idolRow.language === 'ja' && idolRow.isrc === 'JPU902300400' && idolRow.country_code === 'JP' && idolRow.popularity === deezerRankToScore(900000), 'Japanese rows survive with normalized ISRC, registrant and 0-100 popularity');
+  assert(db.prepare("SELECT language FROM tracks WHERE display_title = '봄날'").get()?.language === 'ko', 'Korean rows survive');
+  assert(db.prepare('SELECT COUNT(*) AS c FROM artists WHERE id NOT IN (SELECT artist_id FROM tracks)').get().c === 0, 'Artists left without tracks are deleted');
+
+  const again = runCatalogCleanup(db, { apply: true });
+  const changed = again.steps
+    .filter(s => s.name !== 'fts' && s.name !== 'languages')
+    .flatMap(s => Object.entries(s).filter(([k, v]) => typeof v === 'number' && !['ms', 'rounds'].includes(k) && v !== 0));
+  assert(changed.length === 0 && again.after.tracks === again.before.tracks, 'A second cleanup run changes nothing (idempotent)');
+
+  const gate = evaluateCatalogGate(db, { minYearCoverage: 0, minIsrcCoverage: 0 });
+  assert(gate.ok, 'Cleaned catalog passes every gate check');
+  const strictGate = evaluateCatalogGate(db);
+  assert(!strictGate.ok && strictGate.checks.find(c => c.id === 'year_coverage').ok === false, 'Default thresholds still require 95% release-year coverage');
+  const ftsHit = db.prepare(`SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH '"Levitating"'`).all().map(r => r.rowid);
+  assert(ftsHit.length === 1 && ftsHit[0] === levitating, 'FTS index is rebuilt to match the cleaned rows');
+  const fresh = cat.upsertTrack({ title: 'Houdini', artist: 'Dua Lipa', durationMs: 185000, provider: 'deezer', providerTrackId: '70', deezerRank: 500000 });
+  assert(db.prepare(`SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH '"Houdini"'`).get()?.rowid === fresh.trackId, 'FTS triggers are restored after cleanup');
+
+  // 4. Album enrichment dates every catalog track on the album
+  const albumCat = new SqliteCatalog(':memory:');
+  const seed = (title, deezerId, albumId) => albumCat.upsertTrack({ title, artist: 'Album Artist', durationMs: 200000, album: 'X', provider: 'deezer', providerTrackId: String(deezerId), deezerRank: 1000, rawMetadata: albumId ? { albumId } : null }).trackId;
+  const a1 = seed('First Song', 31, 700);
+  const a2 = seed('Second Song', 32, 700);
+  const a3 = seed('Third Song', 33, null);
+  const gone = seed('Gone Song', 34, 701);
+  const albumFetch = routedFetch([
+    [/api\.deezer\.com\/album\/700$/, { id: 700, release_date: '2011-05-02', tracks: { data: [{ id: 31 }, { id: 32 }, { id: 33 }] } }],
+    [/api\.deezer\.com\/album\/701$/, { error: { type: 'DataException', code: 800 } }],
+  ]);
+  const albumEnricher = new CatalogEnricher(albumCat, { fetchImpl: albumFetch });
+  const albumStats = await albumEnricher.enrichAlbums({ limit: 10 });
+  const year = (id) => albumCat.db.prepare('SELECT release_year, release_date, album_checked_at FROM tracks WHERE id = ?').get(id);
+  assert(albumStats.checked === 2 && albumStats.yearFilled === 3 && [a1, a2, a3].every(id => year(id).release_year === 2011 && year(id).release_date === '2011-05-02'), 'One album request dates every catalog track on the album');
+  assert(year(gone).release_year === null && year(gone).album_checked_at !== null && albumStats.missing === 1, 'Unknown albums are stamped and not retried');
+  assert((await albumEnricher.enrichAlbums({ limit: 10 })).checked === 0, 'A second album run has nothing left to do');
+
+  // 5. CLI: --ci exit codes and --fix with a backup
+  const cliDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spotyspice-cli-'));
+  const cliPath = path.join(cliDir, 'catalog.sqlite');
+  const cliCat = new SqliteCatalog(cliPath);
+  cliCat.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '1', isrc: 'GBAHT2000942', releaseYear: 2020, deezerRank: 900000 });
+  cliCat.db.prepare("INSERT INTO tracks (canonical_title, display_title, artist_id, album_name, duration_ms, language, popularity, version_type) VALUES ('levitating', 'Levitating (Live)', 1, 'A', 200000, 'en', 10, 'live')").run();
+  cliCat.close();
+  const cli = (...cliArgs) => spawnSync(process.execPath, ['scripts/validate_and_sanitize_db.js', `--db=${cliPath}`, '--no-report', ...cliArgs], { encoding: 'utf8' });
+  const ciDirty = cli('--ci', '--min-year-coverage=0', '--min-isrc-coverage=0');
+  assert(ciDirty.status === 1 && /Validation gate: FAIL/.test(ciDirty.stdout), '--ci exits 1 on a catalog that fails the gate');
+  const fixed = cli('--fix', '--no-vacuum');
+  const backups = fs.readdirSync(cliDir).filter(f => f.startsWith('catalog.backup-cleanup-'));
+  assert(fixed.status === 0 && backups.length === 1, '--fix writes a VACUUM INTO backup before changing anything');
+  const ciClean = cli('--ci', '--min-year-coverage=0', '--min-isrc-coverage=0');
+  assert(ciClean.status === 0 && /Validation gate: PASS/.test(ciClean.stdout), '--ci exits 0 once the catalog is clean');
+  fs.rmSync(cliDir, { recursive: true, force: true });
+
+  cat.close();
+  albumCat.close();
+}
+
 async function main() {
   console.log('🚀 Starting SpotySpice CI-Friendly Automated Test Suite...');
   const startTime = Date.now();
@@ -2677,6 +2815,7 @@ async function main() {
     await runMusicMoveArrAndLazyResolverTests();
     await runCrosswordJudgeAndCulturalGuardsTests();
     await runCatalogValidatorTests();
+    await runPhase4CleanupTests();
     await runAnimeCatalogAndIsolationTests();
     await runClueSystemAndZeroLeakTests();
     await runAnimeArtAndKeyphraseClueDisciplineTests();

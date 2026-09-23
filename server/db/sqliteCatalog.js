@@ -10,6 +10,7 @@ import { isAuthenticMetadata } from '../policy/authenticityRules.js';
 import {
   baseTitleKey,
   classifyVersion,
+  cleanDisplayText,
   detectTrackLanguage,
   extractIsrcCountryCode,
   isAcceptedVersion,
@@ -171,7 +172,8 @@ export class SqliteCatalog {
   getOrCreateArtist({ name, spotifyId = null, deezerId = null, itunesArtistId = null, genres = [], fansCount = 0 }) {
     if (!name || typeof name !== 'string') return null;
 
-    const canonical = normalizeDedupeArtist(name);
+    const displayName = cleanDisplayText(name);
+    const canonical = normalizeDedupeArtist(displayName);
     if (!canonical) return null;
 
     let artist = this.stmtGetArtistByCanonical.get(canonical);
@@ -190,7 +192,7 @@ export class SqliteCatalog {
       try {
         const res = this.stmtInsertArtist.run(
           canonical,
-          name.trim(),
+          displayName,
           spotifyId,
           deezerId,
           itunesArtistId,
@@ -200,7 +202,7 @@ export class SqliteCatalog {
         artist = {
           id: Number(res.lastInsertRowid),
           canonical_name: canonical,
-          display_name: name.trim(),
+          display_name: displayName,
           spotify_id: spotifyId,
           deezer_id: deezerId,
           itunes_artist_id: itunesArtistId,
@@ -282,8 +284,8 @@ export class SqliteCatalog {
       return this._reject('missingFields');
     }
 
-    const displayTitle = String(title).trim();
-    const albumName = album ? String(album).trim() : null;
+    const displayTitle = cleanDisplayText(title);
+    const albumName = cleanDisplayText(album) || null;
     const canonicalTitle = normalizeDedupeTitle(displayTitle);
     if (!canonicalTitle) return this._reject('title');
 
