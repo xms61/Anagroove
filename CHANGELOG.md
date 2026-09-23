@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.4] - 2026-09-23
+
+### Changed
+- **Server base and database modules are TypeScript:** `db`, `offline`, `shutdown`, and in `server/db/` `animeCatalog`, `catalogCleanup`, `catalogGate`, `catalogReport` and `userStore`.
+  - The modules loaded by the running catalog enrichment (`sqliteCatalog`, `catalogMigrations`, `trackNormalization`, …) follow once it finishes.
+- **New exported types:**
+  - `userStore`: `BlacklistEntry`, `BlacklistInput`, `Progress`, `SolvedItem`
+  - `catalogCleanup`: `CleanupResult`, `StepResult`, `CleanupExample`, `CatalogSummary`, `CleanupStep`
+  - `catalogGate`: `GateResult`, `GateCheck`, `GateThresholds`
+  - `catalogReport`: `CatalogStatistics`
+  - `animeCatalog`: `AnimeSong`, `AnimeTrackInput`, `AnimeTrackQuery`
+- **Private methods lose the underscore prefix and are marked `private`:** `UserStore.migrate`/`transaction`/`touchUser`/`insertBlacklistItem`, and `AnimeCatalog.initSchema`.
+- **Tests have their own config:** `tsconfig.tests.json` checks the server tests with implicit `any` and null checks relaxed, while source files stay fully strict. `npm run typecheck` runs all three configs.
+- **Tests:** `userStore`, `catalogCleanup` and `catalogReport` are TypeScript.
+
+---
+
 ## [1.28.3] - 2026-09-23
 
 ### Changed
@@ -72,35 +89,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.27.0] - 2026-09-23
-
-### Changed
-- **Header (`AppHeader`):**
-  - the name, the puzzle picker, then Hint and **Check** (the only primary button)
-  - New, Settings and Menu as icons, with a dot on Menu while in a multiplayer room
-  - phones get two rows: the name, Check and Menu, then the picker, Hint, New and Settings
-- **Clue list:**
-  - one badge style per theme instead of a colour per clue
-  - theme headings: ヨコのカギ / タテのカギ, WAAGERECHT / SENKRECHT, Side A / Side B
-  - Across/Down tabs on phones
-- **Player:**
-  - one docked row, with the theme's deck: a car-radio display with level bars, a step sequencer that fills with playback, or a turntable whose tonearm moves in as the preview plays
-  - the seek bar is now a keyboard-accessible slider
-  - "Preview unavailable" is an icon with a label instead of a pill that overflowed on phones
-  - a blocked autoplay no longer shows as an error
-- **Page:**
-  - the loading and error states use plain wording ("Picking songs…", "Couldn't build a puzzle")
-  - the race leaderboard is a slim bar
-  - the page reserves the player's height, so it no longer covers the last clue on phones
-
-### Added
-- `ui.tsx`: `Button`, `IconButton` (a label is required), `Panel` and `cx`.
-- `only-city` / `only-berlin` / `only-vinyl` wrappers for theme-specific markup.
-- The smoke test checks that the last clue can scroll into view above the player on a 375 px phone.
-
-### Removed
-- The -5 s / +5 s buttons (the slider seeks), the spinning disc logo, and the unused `isPlaying` grid prop and animation helpers.
-
----
-
-Older releases (1.26.0 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.27.0 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

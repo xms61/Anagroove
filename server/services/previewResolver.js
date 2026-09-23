@@ -1,7 +1,7 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { deezerRateLimiter, itunesRateLimiter, politeFetch } from '../crawler/rateLimiter.js';
 import { logger } from '../logger.js';
-import { isOfflineMode } from '../offline.js';
+import { isOfflineMode } from '../offline.ts';
 import { baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 

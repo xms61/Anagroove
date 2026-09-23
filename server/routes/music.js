@@ -2,7 +2,7 @@
  * Music routes: stable preview redirects, random song pools and live puzzle generation.
  */
 import express from 'express';
-import { db } from '../db.js';
+import { db } from '../db.ts';
 import { getRandomSongPool } from '../selection/songPool.js';
 import { generateLiveCrossword } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.js';

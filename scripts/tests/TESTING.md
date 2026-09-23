@@ -2,7 +2,7 @@
 
 | Command | What | Where |
 | :-- | :-- | :-- |
-| `npm test` | Server + shared tests on `node:test`, one process per file, in parallel (~5 s). Dot reporter: failures print in full, passes as dots | `scripts/tests/*.test.js` |
+| `npm test` | Server + shared tests on `node:test`, one process per file, in parallel (~5 s). Dot reporter: failures print in full, passes as dots | `scripts/tests/*.test.{js,ts}` |
 | `npm run test:coverage` | `npm test` under c8, then gates `server/db`, `server/policy`, `shared` at lines/functions ≥ 85 %, branches ≥ 75 % | `.c8rc.json`, report in `coverage/` |
 | `npm run test:web` | Frontend hooks/components on Vitest + React Testing Library (jsdom) | `src/**/*.test.ts(x)` |
 | `npm run test:e2e` | Playwright smoke test against the production build (`npm run build` first) | `scripts/tests/e2e/*.spec.ts` |
@@ -12,8 +12,9 @@
 
 ## Server tests (`node:test`)
 - **Isolation:** `setup_env.js` is preloaded with `--import`. It gives each test process its own temp `SPOTYSPICE_DATA_DIR`, so `users.sqlite`, `catalog.sqlite` and `anime_catalog.sqlite` are throwaway. **Never** run a test file without the preload, or it writes to the real `server/data/`. Run one file with:
-  `node --import ./scripts/tests/setup_env.js --test --test-force-exit scripts/tests/<file>.test.js`
+  `node --import ./scripts/tests/setup_env.js --test --test-force-exit scripts/tests/<file>.test.ts` (or `.test.js` for files not moved yet)
 - The `dot` reporter shows a file that fails to load only as `'test failed'`. Rerun that file alone (command above) to see the error.
+- New test files are TypeScript (`.test.ts`), run by Node directly. `tsconfig.tests.json` checks them with implicit `any` and null checks relaxed: type the tables (`const CASES: [input: string, expected: boolean][]`), not every fixture row.
 - Use `import assert from 'node:assert/strict'` and `test()` from `node:test`. Prefer table-driven tests for rule corpora (see `languageCorpus.test.js`).
 - **No network:**
   - Stub music providers with `setMusicProviderForTesting(mock)`, which also bypasses the catalog.

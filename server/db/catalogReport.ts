@@ -1,21 +1,47 @@
 /**
  * The markdown report of `npm run db:validate`: catalog statistics, the cleanup dry run and the
  * validation gate. The checks themselves live in catalogGate.js (hard limits) and
- * catalogCleanup.js (what a cleanup would change); this module only measures and renders.
+ * catalogCleanup.ts (what a cleanup would change); this module only measures and renders.
  */
+import type { DatabaseSync } from 'node:sqlite';
+import type { CleanupExample, CleanupResult, StepResult } from './catalogCleanup.ts';
+import type { GateResult } from './catalogGate.ts';
+
+type Share<T> = T & { count: number; share: number };
+
+export interface CatalogStatistics {
+  overview: {
+    tracks: number;
+    artists: number;
+    samples: number;
+    providerLinks: number;
+    tracksWithSample: number;
+    releaseYearKnown: number;
+    isrcKnown: number;
+    artistsEnriched: number;
+  };
+  providers: { provider: string; links: number; tracks: number }[];
+  languages: Share<{ language: string | null }>[];
+  decades: Share<{ decade: string }>[];
+  popularity: Share<{ bucket: number }>[];
+  genres: { artistsWithGenres: number; share: number; top: { genre: string; artists: number }[] };
+  topArtists: { artist: string; tracks: number; fans: number | null }[];
+}
 
 /** Inventory, language/decade/popularity distributions and genre coverage. */
-export function catalogStatistics(db) {
-  const count = (sql) => Number(db.prepare(sql).get().c) || 0;
+export function catalogStatistics(db: DatabaseSync): CatalogStatistics {
+  const count = (sql: string) => Number(db.prepare(sql).get()?.c) || 0;
   const tracks = count('SELECT COUNT(*) AS c FROM tracks');
   const artists = count('SELECT COUNT(*) AS c FROM artists');
-  const share = (n, total = tracks) => (total ? Number(((n / total) * 100).toFixed(1)) : 0);
-  const distribution = (sql) => db.prepare(sql).all().map(row => ({ ...row, share: share(row.count) }));
+  const share = (n: number, total = tracks) => (total ? Number(((n / total) * 100).toFixed(1)) : 0);
+  const distribution = <T>(sql: string): Share<T>[] =>
+    (db.prepare(sql).all() as (T & { count: number })[]).map(row => ({ ...row, share: share(row.count) }));
 
-  const genreCounts = new Map();
+  const genreCounts = new Map<string, number>();
   let artistsWithGenres = 0;
-  for (const { genres_json: json } of db.prepare("SELECT genres_json FROM artists WHERE genres_json IS NOT NULL AND json_valid(genres_json)").all()) {
-    const genres = JSON.parse(json);
+  const genreRows = db.prepare("SELECT genres_json FROM artists WHERE genres_json IS NOT NULL AND json_valid(genres_json)").all() as { genres_json: string }[];
+  for (const { genres_json: json } of genreRows) {
+    const genres: unknown = JSON.parse(json);
     if (!Array.isArray(genres) || genres.length === 0) continue;
     artistsWithGenres++;
     for (const genre of genres) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
@@ -34,13 +60,13 @@ export function catalogStatistics(db) {
     },
     providers: db.prepare(`
       SELECT provider, COUNT(*) AS links, COUNT(DISTINCT track_id) AS tracks FROM track_providers GROUP BY provider ORDER BY links DESC
-    `).all(),
-    languages: distribution('SELECT language, COUNT(*) AS count FROM tracks GROUP BY language ORDER BY count DESC'),
-    decades: distribution(`
+    `).all() as CatalogStatistics['providers'],
+    languages: distribution<{ language: string | null }>('SELECT language, COUNT(*) AS count FROM tracks GROUP BY language ORDER BY count DESC'),
+    decades: distribution<{ decade: string }>(`
       SELECT CASE WHEN release_year IS NULL THEN 'unknown' ELSE (release_year / 10 * 10) || 's' END AS decade, COUNT(*) AS count
       FROM tracks GROUP BY decade ORDER BY decade
     `),
-    popularity: distribution(`
+    popularity: distribution<{ bucket: number }>(`
       SELECT MIN(popularity / 10 * 10, 90) AS bucket, COUNT(*) AS count FROM tracks GROUP BY bucket ORDER BY bucket
     `),
     genres: {
@@ -51,15 +77,15 @@ export function catalogStatistics(db) {
     topArtists: db.prepare(`
       SELECT a.display_name AS artist, COUNT(*) AS tracks, a.fans_count AS fans
       FROM tracks t JOIN artists a ON a.id = t.artist_id GROUP BY a.id ORDER BY tracks DESC LIMIT 25
-    `).all(),
+    `).all() as CatalogStatistics['topArtists'],
   };
 }
 
 /** One-line summary of a cleanup step's counters. */
-function describeStep(step) {
+function describeStep(step: StepResult): string {
   const parts = Object.entries(step)
     .filter(([key, value]) => typeof value === 'number' && key !== 'ms')
-    .map(([key, value]) => `${key}: ${value.toLocaleString()}`);
+    .map(([key, value]) => `${key}: ${(value as number).toLocaleString()}`);
   if (step.reasons) {
     parts.push(...Object.entries(step.reasons).filter(([, value]) => value > 0).map(([key, value]) => `${key}: ${value.toLocaleString()}`));
   }
@@ -67,19 +93,19 @@ function describeStep(step) {
   return parts.join(', ') || '—';
 }
 
-function describeExample(example) {
+function describeExample(example: CleanupExample): string {
   if (example.merged !== undefined) return `artist \`${example.merged}\` merged into \`${example.kept}\``;
   if (example.kept !== undefined) {
     const who = example.artist ? `**${example.artist}** ` : '';
-    return `${who}kept \`${example.kept}\`, removed ${example.removed.map(r => `\`${r}\``).join(', ')}`;
+    return `${who}kept \`${example.kept}\`, removed ${(example.removed ?? []).map(r => `\`${r}\``).join(', ')}`;
   }
   if (example.copied !== undefined) return `**${example.artist}**: ${example.copied} of ${example.tracks} titles also recorded by better-known artists`;
   return `**${example.artist}** – \`${example.title}\`${example.detail ? ` (${example.detail})` : ''} · pop ${example.popularity}`;
 }
 
-const table = (header, rows) => [header, header.replace(/[^|]+/g, ' --- '), ...rows].join('\n');
+const table = (header: string, rows: string[]) => [header, header.replace(/[^|]+/g, ' --- '), ...rows].join('\n');
 
-function renderCleanup(cleanup) {
+function renderCleanup(cleanup: CleanupResult | null): string {
   if (!cleanup) return '_Cleanup was not evaluated._';
   const examples = cleanup.steps.flatMap(step => {
     if (!step.examples) return [];
@@ -97,15 +123,20 @@ function renderCleanup(cleanup) {
   ].filter(Boolean).join('\n\n');
 }
 
-function renderGate(gate) {
+function renderGate(gate: GateResult | null): string {
   if (!gate) return '_Gate was not evaluated._';
-  const value = (v) => (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(4));
+  const value = (v: number) => (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(4));
   return `${gate.ok ? '**PASS**' : '**FAIL**'}\n\n${table('| Check | OK | Value | Limit |',
     gate.checks.map(check => `| ${check.label} | ${check.ok ? 'yes' : 'NO'} | ${value(check.value)} | ${check.limit} |`))}`;
 }
 
 /** The markdown report. */
-export function renderValidationReport({ dbPath, stats, cleanup = null, gate = null }) {
+export function renderValidationReport({ dbPath, stats, cleanup = null, gate = null }: {
+  dbPath: string;
+  stats: CatalogStatistics;
+  cleanup?: CleanupResult | null;
+  gate?: GateResult | null;
+}): string {
   const { overview } = stats;
   return `# Anagroove catalog validation
 

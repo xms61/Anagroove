@@ -4,9 +4,9 @@ import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../server/paths.js';
-import { catalogStatistics, renderValidationReport } from '../server/db/catalogReport.js';
-import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup } from '../server/db/catalogCleanup.js';
-import { DEFAULT_GATE_THRESHOLDS, evaluateCatalogGate } from '../server/db/catalogGate.js';
+import { catalogStatistics, renderValidationReport } from '../server/db/catalogReport.ts';
+import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup } from '../server/db/catalogCleanup.ts';
+import { DEFAULT_GATE_THRESHOLDS, evaluateCatalogGate } from '../server/db/catalogGate.ts';
 import { LATEST_CATALOG_VERSION, runCatalogMigrations } from '../server/db/catalogMigrations.js';
 import { listFlag, numberFlag, parseFlags, parseOrExit } from './lib/cli.js';
 

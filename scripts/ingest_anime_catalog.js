@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { AnimeCatalog } from '../server/db/animeCatalog.js';
+import { AnimeCatalog } from '../server/db/animeCatalog.ts';
 import { scanSourceOggFiles, generateSamplesForFile } from './generate_anime_samples.js';
 import { normalizeAnimeSlugKey } from './sync_anime_metadata.js';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.js';

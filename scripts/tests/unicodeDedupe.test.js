@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 import { baseTitleKey } from '../../server/db/trackNormalization.js';
-import { runCatalogCleanup } from '../../server/db/catalogCleanup.js';
+import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
 
 const FULLWIDTH_LOVE = String.fromCharCode(0xff2c, 0xff2f, 0xff36, 0xff25);
 const HALFWIDTH_IDOL = String.fromCharCode(0xff71, 0xff72, 0xff84, 0xff9e, 0xff99);

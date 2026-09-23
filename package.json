@@ -1,7 +1,7 @@
 {
   "name": "anagroove",
   "private": true,
-  "version": "1.28.3",
+  "version": "1.28.4",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -20,7 +20,7 @@
     "test:coverage": "c8 npm test && c8 check-coverage --lines 85 --functions 85 --branches 75 --include \"server/db/**\" --include \"server/policy/**\" --include \"shared/**\"",
     "test:web": "vitest run",
     "test:e2e": "playwright test",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p tsconfig.tests.json",
     "test:ci": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:web && npm run db:gate:fixture",
     "db:gate:fixture": "node scripts/tests/fixtures/ciGate.js",
     "crawl": "node scripts/crawl_catalog.js",

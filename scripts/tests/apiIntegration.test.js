@@ -4,7 +4,7 @@ import { blacklistMatchesTrack } from '../../shared/musicIdentity.js';
 import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.js';
 import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.js';
 import { server } from '../../server/server.js';
-import { db } from '../../server/db.js';
+import { db } from '../../server/db.ts';
 import { wsTestClient } from './helpers.js';
 
 const MOCK_TRACKS = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { animeCatalog } from '../server/db/animeCatalog.js';
+import { animeCatalog } from '../server/db/animeCatalog.ts';
 import { resolveAnimeCoverImages } from '../server/services/animeImageService.js';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 

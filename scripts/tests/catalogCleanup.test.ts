@@ -7,8 +7,8 @@ import { spawnSync } from 'node:child_process';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 import { classifyVersion, baseTitleKey } from '../../server/db/trackNormalization.js';
-import { runCatalogCleanup } from '../../server/db/catalogCleanup.js';
-import { evaluateCatalogGate } from '../../server/db/catalogGate.js';
+import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
+import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
 
 const NO_COVERAGE = { minYearCoverage: 0, minIsrcCoverage: 0 };
 
@@ -28,7 +28,7 @@ function legacyCatalog() {
     const id = Number(db.prepare(`
       INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, language, popularity, version_type, rand_key)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.5)
-    `).run(isrc, baseTitleKey(title), title, artistId(artist), album, durationMs, year, language, popularity, classifyVersion(title, album)).lastInsertRowid);
+    `).run(isrc, baseTitleKey(title), title, artistId(artist), album, durationMs, year, language, popularity, String(classifyVersion(title, album))).lastInsertRowid);
     if (provider && deezerId) db.prepare("INSERT INTO track_providers (track_id, provider, provider_track_id) VALUES (?, 'deezer', ?)").run(id, String(deezerId));
     if (sampleId) db.prepare("INSERT INTO track_samples (track_id, provider, provider_track_id, sample_url) VALUES (?, 'deezer', ?, ?)").run(id, String(sampleId), `https://cdn.test/${sampleId}.mp3`);
     return id;

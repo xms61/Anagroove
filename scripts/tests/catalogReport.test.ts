@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { runCatalogCleanup } from '../../server/db/catalogCleanup.js';
-import { evaluateCatalogGate } from '../../server/db/catalogGate.js';
-import { catalogStatistics, renderValidationReport } from '../../server/db/catalogReport.js';
+import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
+import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
+import { catalogStatistics, renderValidationReport } from '../../server/db/catalogReport.ts';
 
 function smallCatalog() {
   const catalog = new SqliteCatalog(':memory:');
