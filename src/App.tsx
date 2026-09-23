@@ -18,6 +18,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { HistoryModal } from './components/HistoryModal';
 import { Modal } from './components/Modal';
 import { useSettings } from './hooks/useSettings';
+import { applyTheme } from './themes';
+import { ThemeBackdrop } from './components/ThemeBackdrop';
 import { readJson, readString, STORAGE_KEYS, writeJson, writeString } from './services/storage';
 import { themeById } from '../shared/themes';
 import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle, Settings, Trophy } from 'lucide-react';
@@ -65,6 +67,7 @@ export default function App() {
   const { enableWordAnimations, defaultVolume } = settings;
   const handleToggleWordAnimations = (enabled: boolean) => updateSettings({ enableWordAnimations: enabled });
   const handleChangeDefaultVolume = (volume: number) => updateSettings({ defaultVolume: volume });
+  useEffect(() => applyTheme(settings.theme), [settings.theme]);
 
   const multiplayer = useMultiplayer(playerId, {
     onPuzzle: (puzzle, sharedGrid) => loadPuzzle(puzzle, sharedGrid),
@@ -121,7 +124,6 @@ export default function App() {
     multiplayerRoom: multiplayer.room,
     playerId,
     playerName: readString(STORAGE_KEYS.playerName, 'Player'),
-    playerColor: '#1db954',
   });
 
   /** Shows a puzzle with an empty grid (or a co-op room's letters) and keeps it for reloads. */
@@ -199,17 +201,18 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-kissa-base text-slate-100 flex flex-col pb-36">
+    <div className="min-h-screen text-fg flex flex-col pb-36">
+      <ThemeBackdrop />
       {/* Top Clean Minimalist Header */}
-      <header className="border-b border-white/10 bg-kissa-surface/90 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5 shadow-sm">
+      <header className="border-b border-line/10 bg-surface/90 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5 shadow-sm">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           {/* Brand & Live Style Selector */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.35)] shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-on-accent shrink-0">
               <Disc3 className={`w-5 h-5 ${isAudioPlaying ? 'animate-spin-slow' : ''}`} />
             </div>
             <div className="sr-only sm:not-sr-only">
-              <h1 className="font-black text-base tracking-tight text-white flex items-center gap-2">
+              <h1 className="font-black text-base tracking-tight text-fg flex items-center gap-2">
                 <span>Anagroove</span>
               </h1>
             </div>
@@ -218,19 +221,19 @@ export default function App() {
             <button
               type="button"
               onClick={() => setOpenDialog('generator')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel border border-amber-500/30 hover:border-amber-500/60 text-xs font-semibold text-slate-200 transition cursor-pointer shadow-sm group"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised border border-accent/30 hover:border-accent/60 text-xs font-semibold text-fg transition cursor-pointer shadow-sm group"
               title="Click to generate a custom live crossword or change musical style"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span className="font-bold text-amber-200 truncate max-w-[120px] sm:max-w-[200px]">
+              <Sparkles className="w-3.5 h-3.5 text-accent" />
+              <span className="font-bold text-accent truncate max-w-[120px] sm:max-w-[200px]">
                 {currentPuzzle?.title || 'Live Crossword'}
               </span>
               {currentPuzzle && (
-                <span className="text-xs text-slate-400 font-mono hidden sm:inline">
+                <span className="text-xs text-muted font-mono hidden sm:inline">
                   ({currentPuzzle.clues.length} clues)
                 </span>
               )}
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-300 ml-0.5" />
+              <ChevronDown className="w-3.5 h-3.5 text-muted group-hover:text-accent ml-0.5" />
             </button>
           </div>
 
@@ -241,11 +244,11 @@ export default function App() {
               type="button"
               onClick={() => generateNewPuzzle({ genre: currentGenre, targetWords: 10 })}
               disabled={isLoadingPuzzle}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised text-accent hover:text-accent text-xs font-bold border border-accent/30 transition cursor-pointer shadow-sm disabled:opacity-50"
               title="Generate a fresh random crossword on the fly"
               aria-label="Shuffle: new random crossword"
             >
-              <Shuffle className={`w-3.5 h-3.5 text-amber-400 ${isLoadingPuzzle ? 'animate-spin' : ''}`} />
+              <Shuffle className={`w-3.5 h-3.5 text-accent ${isLoadingPuzzle ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Shuffle</span>
             </button>
 
@@ -254,11 +257,11 @@ export default function App() {
               type="button"
               onClick={() => setOpenDialog('hint')}
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised text-accent hover:text-accent text-xs font-bold border border-accent/30 transition cursor-pointer shadow-sm disabled:opacity-40"
               title="Get a hint ([Space] Letter, [Tab] Word, [Shift+Tab] Reveal All)"
               aria-label="Hint"
             >
-              <Lightbulb className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+              <Lightbulb className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
               <span className="hidden sm:inline">Hint</span>
             </button>
 
@@ -267,7 +270,7 @@ export default function App() {
               type="button"
               onClick={validateGrid}
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-bold shadow-[0_0_12px_rgba(16,185,129,0.3)] transition cursor-pointer active:scale-95 disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-ok to-ok hover:from-ok hover:to-ok text-fg text-xs font-bold transition cursor-pointer active:scale-95 disabled:opacity-40"
               title="Check answers"
               aria-label="Check answers"
             >
@@ -279,11 +282,11 @@ export default function App() {
             <button
               type="button"
               onClick={() => setOpenDialog('settings')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-panel hover:bg-raised text-accent hover:text-accent text-xs font-bold border border-accent/30 transition cursor-pointer shadow-sm"
               title="Open Lounge Settings"
               aria-label="Settings"
             >
-              <Settings className="w-3.5 h-3.5 text-amber-400" />
+              <Settings className="w-3.5 h-3.5 text-accent" />
               <span className="hidden sm:inline">Settings</span>
             </button>
 
@@ -293,18 +296,18 @@ export default function App() {
               onClick={() => setOpenDialog('lounge')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shadow-sm relative ${
                 multiplayer.room
-                  ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
-                  : 'bg-kissa-card hover:bg-kissa-panel text-slate-200 border-white/10 hover:border-amber-500/40'
+                  ? 'bg-hi text-on-accent border-hi'
+                  : 'bg-panel hover:bg-raised text-fg border-line/10 hover:border-accent/40'
               }`}
               title="Open Lounge Menu (Live Generator, Multiplayer, Blacklist, History)"
               aria-label="Menu"
             >
-              <Menu className="w-4 h-4 text-amber-400" />
+              <Menu className="w-4 h-4 text-accent" />
               <span className="hidden sm:inline">Menu</span>
 
               {/* Status indicator dot if multiplayer is active */}
               {multiplayer.room && (
-                <span className="w-2 h-2 rounded-full bg-cyan-300 animate-ping absolute -top-0.5 -right-0.5" />
+                <span className="w-2 h-2 rounded-full bg-hi animate-ping absolute -top-0.5 -right-0.5" />
               )}
             </button>
           </div>
@@ -313,23 +316,23 @@ export default function App() {
 
       {/* Versus Race Mode Live Leaderboard Bar (if in race mode) */}
       {multiplayer.room?.mode === 'race' && (
-        <div className="bg-rose-950/40 border-b border-rose-500/30 px-4 py-2 text-sm" role="status" aria-label="Race leaderboard">
+        <div className="bg-bad/10 border-b border-bad/30 px-4 py-2 text-sm" role="status" aria-label="Race leaderboard">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <span className="font-bold text-rose-300 flex items-center gap-1.5">
-              <Swords className="w-4 h-4 text-rose-400" aria-hidden="true" />
+            <span className="font-bold text-bad flex items-center gap-1.5">
+              <Swords className="w-4 h-4 text-bad" aria-hidden="true" />
               <span>VERSUS RACE LEADERBOARD</span>
             </span>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {multiplayer.room.players.map(p => (
                 <div key={p.id} className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-slate-200 truncate max-w-[8rem]">{p.name}:</span>
-                  <div className="w-16 sm:w-24 bg-black/40 rounded-full h-2 overflow-hidden border border-white/10" aria-hidden="true">
+                  <span className="font-medium text-fg truncate max-w-[8rem]">{p.name}:</span>
+                  <div className="w-16 sm:w-24 bg-bg/40 rounded-full h-2 overflow-hidden border border-line/10" aria-hidden="true">
                     <div
                       className="h-full transition-all duration-300"
-                      style={{ width: `${p.progress || 0}%`, backgroundColor: p.color || '#f59e0b' }}
+                      style={{ width: `${p.progress || 0}%`, backgroundColor: p.color || 'rgb(var(--c-accent))' }}
                     />
                   </div>
-                  <span className="font-mono font-bold text-white">{p.progress || 0}%</span>
+                  <span className="font-mono font-bold text-fg">{p.progress || 0}%</span>
                 </div>
               ))}
             </div>
@@ -341,29 +344,29 @@ export default function App() {
       {isLoadingPuzzle && !currentPuzzle ? (
         <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[450px]">
           <div className="relative mb-6">
-            <div className="w-20 h-20 rounded-full border-4 border-amber-500/20 flex items-center justify-center animate-spin">
-              <Disc3 className="w-12 h-12 text-amber-400" />
+            <div className="w-20 h-20 rounded-full border-4 border-accent/20 flex items-center justify-center animate-spin">
+              <Disc3 className="w-12 h-12 text-accent" />
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-4 h-4 rounded-full bg-slate-950 border-2 border-amber-400 animate-pulse" />
+              <div className="w-4 h-4 rounded-full bg-bg border-2 border-accent animate-pulse" />
             </div>
           </div>
-          <h2 className="text-xl font-black text-white mb-2 tracking-tight">Tuning Turntable...</h2>
-          <p className="text-xs text-slate-400 max-w-sm text-center leading-relaxed">
+          <h2 className="text-xl font-black text-fg mb-2 tracking-tight">Tuning Turntable...</h2>
+          <p className="text-xs text-muted max-w-sm text-center leading-relaxed">
             Gathering live Deezer track previews and weaving a dynamic music crossword grid on the fly.
           </p>
         </div>
       ) : puzzleError && !currentPuzzle ? (
         <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[450px]">
-          <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-4 text-rose-400">
+          <div className="w-12 h-12 rounded-2xl bg-bad/10 border border-bad/20 flex items-center justify-center mb-4 text-bad">
             <AlertCircle className="w-6 h-6" />
           </div>
-          <h2 className="text-lg font-bold text-white mb-1">Unable to Load Live Crossword</h2>
-          <p className="text-xs text-slate-400 mb-6 max-w-sm text-center">{puzzleError}</p>
+          <h2 className="text-lg font-bold text-fg mb-1">Unable to Load Live Crossword</h2>
+          <p className="text-xs text-muted mb-6 max-w-sm text-center">{puzzleError}</p>
           <button
             type="button"
             onClick={() => generateNewPuzzle({ genre: 'all', targetWords: 10 })}
-            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:opacity-95 text-slate-950 font-bold rounded-xl text-xs cursor-pointer shadow-lg shadow-amber-500/20"
+            className="px-5 py-2.5 bg-gradient-to-r from-accent to-accent hover:opacity-95 text-on-accent font-bold rounded-xl text-xs cursor-pointer shadow-lg shadow-accent/20"
           >
             Try Again
           </button>
@@ -384,20 +387,19 @@ export default function App() {
               onMoveCursor={moveCursor}
               onApplyHint={applyHint}
               teammateCell={multiplayer.teammateCell}
-              isPlaying={isAudioPlaying}
               celebratingCells={celebratingCells}
               enableWordAnimations={enableWordAnimations}
             />
           </div>
 
           {/* Clue Lists (Across & Down side-by-side) */}
-          <div className="w-full xl:flex-1 xl:max-w-2xl bg-kissa-surface/85 border border-white/10 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-200/80 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <div className="w-full xl:flex-1 xl:max-w-2xl bg-surface/85 border border-line/10 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-line/10">
+              <span className="text-xs font-bold uppercase tracking-wider text-accent/80 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-accent" />
                 <span>Live Clues</span>
               </span>
-              <span className="text-xs font-mono font-bold text-slate-400">
+              <span className="text-xs font-mono font-bold text-muted">
                 {activePuzzle.clues.length} Words
               </span>
             </div>
@@ -485,6 +487,8 @@ export default function App() {
         onToggleWordAnimations={handleToggleWordAnimations}
         defaultVolume={defaultVolume}
         onChangeDefaultVolume={handleChangeDefaultVolume}
+        theme={settings.theme}
+        onChangeTheme={theme => updateSettings({ theme })}
       />
 
       {/* Solved puzzles from /api/history */}
@@ -510,18 +514,18 @@ export default function App() {
       />
 
       {/* Multiplayer victory modal */}
-      <Modal isOpen={Boolean(multiplayer.winnerName)} onClose={multiplayer.dismissWinner} className="border-amber-500/40 max-w-sm p-8 text-center" closeLabel={null}>
+      <Modal isOpen={Boolean(multiplayer.winnerName)} onClose={multiplayer.dismissWinner} className="border-accent/40 max-w-sm p-8 text-center" closeLabel={null}>
         {({ titleId, descriptionId }) => (
           <>
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-accent/20 border border-accent/40 text-accent flex items-center justify-center">
               <Trophy className="w-7 h-7" aria-hidden="true" />
             </div>
-            <h2 id={titleId} className="text-2xl font-black text-amber-300 mb-2">Room Victory!</h2>
-            <p id={descriptionId} className="text-slate-200 text-lg mb-6">{multiplayer.winnerName} solved the puzzle!</p>
+            <h2 id={titleId} className="text-2xl font-black text-accent mb-2">Room Victory!</h2>
+            <p id={descriptionId} className="text-fg text-lg mb-6">{multiplayer.winnerName} solved the puzzle!</p>
             <button
               type="button"
               data-autofocus
-              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+              className="px-6 py-2.5 bg-accent hover:bg-accent text-on-accent font-bold rounded-xl transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               onClick={multiplayer.dismissWinner}
             >
               Awesome!

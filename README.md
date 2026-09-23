@@ -8,6 +8,7 @@ The music crossword (anagram + groove). A blind audio crossword: every clue is a
 - **Zero-spoiler clues**: an answer never appears in its own clue.
 - **Multiplayer** over WebSockets: co-op (shared grid) and versus (race).
 - **Anime OP/ED catalog** with its own audio clips and cover art.
+- **Three themes** (Tokyo Rain, Berlin Concrete, Vinyl Room), switched in Settings.
 - History, a blacklist (artists or songs you never want to see), and accessible dialogs with keyboard play.
 
 ## Quickstart

@@ -58,6 +58,33 @@ export default [
     }
   },
   {
+    // Theme tokens (src/themes.css) are the only palette: no raw Tailwind colours or hex in components
+    files: ['src/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        {
+          selector: 'Literal[value=/(^|[ :])(bg|text|border|ring|from|to|via|shadow|fill|stroke|outline|accent|divide|placeholder)-((slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]|(white|black)([^a-zA-Z-]|$))/]',
+          message: 'Use a theme token (bg-panel, text-muted, border-line, bg-accent, …) instead of a raw Tailwind colour.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/(^|[ :])(bg|text|border|ring|from|to|via|shadow|fill|stroke|outline|accent|divide|placeholder)-((slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]|(white|black)([^a-zA-Z-]|$))/]',
+          message: 'Use a theme token (bg-panel, text-muted, border-line, bg-accent, …) instead of a raw Tailwind colour.',
+        },
+        {
+          selector: 'Literal[value=/#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]/]',
+          message: 'Use a theme token or rgb(var(--c-…)) instead of a hex colour.',
+        },
+      ],
+    },
+  },
+  {
+    // Runs in the browser before the app (index.html)
+    files: ['public/**/*.js'],
+    languageOptions: {
+      globals: { document: 'readonly', localStorage: 'readonly' },
+    },
+  },
+  {
     // Crawlers and long-running scripts legitimately use while(true) event loops
     files: ['server/crawler/**/*.js', 'scripts/**/*.js'],
     rules: {

@@ -68,7 +68,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="border-amber-500/25 max-w-2xl p-6 flex flex-col">
+    <Modal isOpen={isOpen} onClose={onClose} className="border-accent/25 max-w-2xl p-6 flex flex-col">
       {({ titleId, descriptionId }) => (
       <>
       <audio
@@ -78,16 +78,16 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
       />
 
         {/* Top Banner */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+        <div className="flex items-center justify-between pb-4 border-b border-line/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/35 text-emerald-400 flex items-center justify-center shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-ok/20 border border-ok/35 text-ok flex items-center justify-center shadow-sm">
               <Trophy className="w-5 h-5" />
             </div>
             <div>
-              <h2 id={titleId} className="text-xl font-bold tracking-wide text-white">
+              <h2 id={titleId} className="text-xl font-bold tracking-wide text-fg">
                 Songs In This Puzzle
               </h2>
-              <p id={descriptionId} className="text-xs text-slate-400">
+              <p id={descriptionId} className="text-xs text-muted">
                 Puzzle Solved! Replay tracks, launch on Spotify, or manage your blacklist.
               </p>
             </div>
@@ -95,7 +95,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
         </div>
 
         {/* Scrollable Song List */}
-        <div className="flex-1 overflow-y-auto my-4 pr-1 divide-y divide-white/5">
+        <div className="flex-1 overflow-y-auto my-4 pr-1 divide-y divide-line/5">
           {uniqueSongs.map(({ song, answer }) => {
             const isCurrentPlaying = playingSongId === song.id;
             const hasValidImage = Boolean(song.albumArt && song.albumArt.startsWith('http') && !failedImages[song.id]);
@@ -103,11 +103,11 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
             return (
               <div
                 key={song.id}
-                className="py-3 px-2 flex items-center justify-between gap-4 hover:bg-white/5 rounded-xl transition group"
+                className="py-3 px-2 flex items-center justify-between gap-4 hover:bg-fg/5 rounded-xl transition group"
               >
                 {/* Left: Artwork & Metadata */}
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="relative w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-black/40 shadow-md group border border-white/10">
+                  <div className="relative w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-bg/40 shadow-md group border border-line/10">
                     {hasValidImage ? (
                       <img
                         src={song.albumArt}
@@ -119,46 +119,46 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                     ) : (
                       <div className={`w-full h-full flex flex-col items-center justify-center p-1 text-center select-none ${
                         song.isAnimeOped
-                          ? 'bg-gradient-to-br from-indigo-950 via-purple-900 to-rose-950 border border-purple-500/20'
-                          : 'bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50'
+                          ? 'bg-gradient-to-br from-hi/15 via-hi/15 to-bad/15 border border-hi/20'
+                          : 'bg-gradient-to-br from-raised to-bg border border-line'
                       }`}>
                         {song.themeSlug ? (
-                          <span className="text-xs font-black tracking-wider text-amber-300 drop-shadow">
+                          <span className="text-xs font-black tracking-wider text-accent drop-shadow">
                             {song.themeSlug}
                           </span>
                         ) : (
-                          <Music className="w-5 h-5 text-slate-400" />
+                          <Music className="w-5 h-5 text-muted" />
                         )}
                       </div>
                     )}
                     <button
                       type="button"
                       onClick={() => handlePlayAudio(song.id, playableAudioUrl(song))}
-                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-90 group-hover:opacity-100 transition cursor-pointer"
+                      className="absolute inset-0 bg-bg/50 flex items-center justify-center opacity-90 group-hover:opacity-100 transition cursor-pointer"
                       title={isCurrentPlaying ? "Pause preview" : "Play preview"}
                     >
                       {isCurrentPlaying ? (
-                        <Pause className="w-6 h-6 fill-amber-400 text-amber-400 drop-shadow" />
+                        <Pause className="w-6 h-6 fill-accent text-accent drop-shadow" />
                       ) : (
-                        <Play className="w-6 h-6 fill-amber-400 text-amber-400 ml-0.5 drop-shadow" />
+                        <Play className="w-6 h-6 fill-accent text-accent ml-0.5 drop-shadow" />
                       )}
                     </button>
                   </div>
 
                   <div className="flex flex-col flex-1 min-w-0 pr-2">
-                    <span className="font-bold text-sm text-slate-100 break-words line-clamp-2">
+                    <span className="font-bold text-sm text-fg break-words line-clamp-2">
                       {song.title}
                     </span>
-                    <span className="text-xs text-amber-200/90 break-words font-medium mt-0.5">
+                    <span className="text-xs text-accent/90 break-words font-medium mt-0.5">
                       {song.artist}
                     </span>
                     <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                       {song.themeSlug && (
-                        <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-bold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-bold tracking-wider uppercase bg-accent/20 text-accent border border-accent/30">
                           {song.themeSlug}
                         </span>
                       )}
-                      <span className="text-xs text-slate-400 truncate font-mono">
+                      <span className="text-xs text-muted truncate font-mono">
                         {song.animeTitle || song.album}
                       </span>
                     </div>
@@ -173,9 +173,9 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                       type="button"
                       onClick={() => onBlacklistArtist(song)}
                       title={`Blacklist artist: ${song.artist}`}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs"
+                      className="p-1.5 text-muted hover:text-bad hover:bg-bad/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs"
                     >
-                      <Ban className="w-3.5 h-3.5 text-rose-400" />
+                      <Ban className="w-3.5 h-3.5 text-bad" />
                       <span className="hidden md:inline">Block Artist</span>
                     </button>
                   )}
@@ -185,24 +185,24 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                       type="button"
                       onClick={() => onBlacklistSong(song)}
                       title={`Blacklist track: ${song.title}`}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs"
+                      className="p-1.5 text-muted hover:text-bad hover:bg-bad/10 rounded-lg transition cursor-pointer opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs"
                     >
-                      <Ban className="w-3.5 h-3.5 text-rose-400" />
+                      <Ban className="w-3.5 h-3.5 text-bad" />
                       <span className="hidden md:inline">Block Track</span>
                     </button>
                   )}
 
-                  <span className="font-mono font-bold text-sm md:text-base tracking-widest text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-lg">
+                  <span className="font-mono font-bold text-sm md:text-base tracking-widest text-accent bg-accent/10 border border-accent/20 px-2.5 py-0.5 rounded-lg">
                     {answer}
                   </span>
 
                   {(song.providerUrl || song.spotifyUrl) && (() => {
                     const providerLabel = song.provider === 'deezer' ? 'Deezer' : song.provider === 'itunes' ? 'Apple Music' : 'Spotify';
                     const badgeStyle = song.provider === 'itunes'
-                      ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white border-rose-500/30'
+                      ? 'bg-bad/20 text-bad hover:bg-bad hover:text-fg border-bad/30'
                       : song.provider === 'deezer'
-                        ? 'bg-purple-500/20 text-purple-300 hover:bg-purple-500 hover:text-white border-purple-500/30'
-                        : 'bg-spotifyGreen/20 text-spotifyGreen hover:bg-spotifyGreen hover:text-slate-950 border-spotifyGreen/30';
+                        ? 'bg-hi/20 text-hi hover:bg-hi hover:text-fg border-hi/30'
+                        : 'bg-accent/20 text-accent hover:bg-accent hover:text-on-accent border-accent/30';
                     return (
                       <a
                         href={song.providerUrl || song.spotifyUrl}
@@ -223,11 +223,11 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
+        <div className="pt-4 border-t border-line/10 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onRestartPuzzle}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-slate-300 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-fg/5 hover:bg-fg/10 text-xs font-medium text-fg transition cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
             <span>Reset Grid</span>
@@ -237,7 +237,7 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-semibold text-slate-200 transition cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-fg/10 hover:bg-fg/15 text-sm font-semibold text-fg transition cursor-pointer"
             >
               Review Board
             </button>
@@ -247,11 +247,11 @@ export const EndScreenModal: React.FC<EndScreenModalProps> = ({
                 type="button"
                 onClick={onNextPuzzle}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 text-sm font-black shadow-[0_0_15px_rgba(245,158,11,0.35)] transition cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-accent to-accent hover:from-accent hover:to-accent disabled:opacity-50 disabled:cursor-not-allowed text-on-accent text-sm font-black transition cursor-pointer"
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                    <Loader2 className="w-4 h-4 animate-spin text-on-accent" />
                     <span>Loading...</span>
                   </>
                 ) : (

@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const token = name => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 export default {
   content: [
     "./index.html",
@@ -6,32 +8,43 @@ export default {
   ],
   theme: {
     extend: {
+      // Theme tokens (src/themes.css). Components use only these colour names.
       colors: {
-        darkBg: "#0b0e14",
-        darkSurface: "#131722",
-        darkPanel: "#1a202e",
-        warmAmber: "#f59e0b",
-        creamCell: "#f8fafc",
-        spotifyGreen: "#1db954",
-        kissa: {
-          base: "#0c0d12",
-          surface: "#12141c",
-          card: "#171a25",
-          panel: "#1e2230",
-          brass: "#d97706",
-          amber: "#f59e0b",
-          gold: "#fbbf24",
-          parchment: "#fbf9f4",
-          ink: "#18181b",
-          crimson: "#b91c1c",
-          sage: "#15803d",
-        },
+        bg: token('bg'),
+        surface: token('surface'),
+        panel: token('panel'),
+        glass: 'rgb(var(--c-panel) / var(--panel-alpha))',
+        raised: token('raised'),
+        fg: token('fg'),
+        muted: token('muted'),
+        accent: token('accent'),
+        'on-accent': token('on-accent'),
+        hi: token('hi'),
+        'on-hi': token('on-hi'),
+        ok: token('ok'),
+        bad: token('bad'),
+        cell: token('cell'),
+        'cell-fg': token('cell-fg'),
+        'cell-num': token('cell-num'),
+        word: token('word'),
+        cursor: token('cursor'),
+        'cursor-fg': token('cursor-fg'),
+        'ok-cell': token('ok-cell'),
+        'bad-cell': token('bad-cell'),
+        line: 'var(--line)',
+        'cell-line': 'var(--cell-line)',
+        'word-line': 'var(--word-line)',
       },
-      animation: {
-        'spin-slow': 'spin 22s linear infinite',
-        'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'filament': 'pulse 2.5s ease-in-out infinite',
-      }
+      borderRadius: {
+        panel: 'var(--radius-panel)',
+        control: 'var(--radius-control)',
+        cell: 'var(--radius-cell)',
+      },
+      boxShadow: {
+        panel: 'var(--shadow-panel)',
+        accent: 'var(--shadow-accent)',
+        cursor: 'var(--shadow-cursor)',
+      },
     },
   },
   plugins: [],

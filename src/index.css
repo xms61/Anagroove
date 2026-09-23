@@ -10,55 +10,57 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: theme('colors.kissa.base');
-  background-image: 
-    radial-gradient(at 15% 15%, rgba(245, 158, 11, 0.05) 0px, transparent 50%),
-    radial-gradient(at 85% 85%, rgba(6, 182, 212, 0.04) 0px, transparent 50%);
-  color: #e2e8f0;
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-fg));
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom vinyl record spinning animation */
-@keyframes spin-slow {
-  from {
-    transform: rotate(0deg);
+::selection {
+  background: rgb(var(--c-accent) / 0.35);
+  color: rgb(var(--c-fg));
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--c-bg));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-raised));
+  border-radius: 6px;
+}
+
+@layer utilities {
+  /* The theme's heading face: family, weight, style, case and spacing */
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: var(--display-weight);
+    font-style: var(--display-style);
+    text-transform: var(--display-case);
+    letter-spacing: var(--display-spacing);
   }
+}
+
+@keyframes spin-slow {
   to {
     transform: rotate(360deg);
   }
 }
-
 .animate-spin-slow {
   animation: spin-slow 24s linear infinite;
 }
-
 .spin-paused {
   animation-play-state: paused;
 }
 
-/* Realistic Vinyl Grooves Texture */
 .vinyl-grooves {
-  background: 
-    radial-gradient(circle, 
-      #1f242d 12%, 
-      #12161f 13%, 
-      #252b36 20%, 
-      #141720 28%, 
-      #212835 38%, 
-      #161922 48%, 
-      #293140 58%, 
-      #13161f 68%, 
-      #1e2430 76%, 
-      #0e1017 84%
-    );
-  box-shadow: 
-    0 20px 50px rgba(0, 0, 0, 0.9), 
-    0 0 0 1px rgba(255, 255, 255, 0.07),
-    inset 0 0 30px rgba(0, 0, 0, 0.95);
+  background: repeating-radial-gradient(circle, rgb(var(--c-bg)) 0 1px, rgb(var(--c-raised)) 1px 3px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 30px rgba(0, 0, 0, 0.8);
 }
 
-/* Hi-Fi Equalizer Dancing Bars */
 @keyframes eq-bounce-1 {
   0%, 100% { height: 4px; }
   50% { height: 16px; }
@@ -75,80 +77,36 @@ body {
   0%, 100% { height: 16px; }
   50% { height: 4px; }
 }
-
 .animate-eq-1 { animation: eq-bounce-1 0.75s ease-in-out infinite; }
 .animate-eq-2 { animation: eq-bounce-2 0.6s ease-in-out infinite; }
 .animate-eq-3 { animation: eq-bounce-3 0.85s ease-in-out infinite; }
 .animate-eq-4 { animation: eq-bounce-4 0.7s ease-in-out infinite; }
 
-/* Refined, eye-pleasing scrollbar */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
-}
-
-::-webkit-scrollbar-track {
-  background: #0e1219;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #252d3d;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #384257;
-}
-
-/* Tile drop shadow for floating crossword tiles */
 .tile-shadow {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-/* Subtle glowing accent focus */
-.focus-glow-amber {
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);
-}
-
-/* Analog VU needle / meter indicator */
-@keyframes vu-flicker {
-  0% { transform: scaleY(0.4); }
-  25% { transform: scaleY(0.9); }
-  50% { transform: scaleY(0.6); }
-  75% { transform: scaleY(1.0); }
-  100% { transform: scaleY(0.5); }
-}
-
-.animate-vu-needle {
-  animation: vu-flicker 0.4s ease-in-out infinite alternate;
-}
-
-/* Selection highlight */
-::selection {
-  background: rgba(245, 158, 11, 0.3);
-  color: #ffffff;
-}
-
-/* Tactile bounce and celebration glow when typed word is correct */
+/* Bounce when a typed word is correct */
 @keyframes letter-correct-pop {
-  0% {
-    transform: scale(1);
-  }
-  30% {
-    transform: scale(1.18) translateY(-3px);
-    box-shadow: 0 0 18px rgba(16, 185, 129, 0.85), 0 0 25px rgba(245, 158, 11, 0.5);
-  }
-  60% {
-    transform: scale(0.96) translateY(1px);
-  }
-  100% {
-    transform: scale(1) translateY(0);
-  }
+  0% { transform: scale(1); }
+  30% { transform: scale(1.18) translateY(-3px); }
+  60% { transform: scale(0.96) translateY(1px); }
+  100% { transform: scale(1) translateY(0); }
 }
-
 .animate-letter-correct-pop {
   animation: letter-correct-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-slow,
+  .animate-eq-1,
+  .animate-eq-2,
+  .animate-eq-3,
+  .animate-eq-4,
+  .animate-letter-correct-pop,
+  .animate-spin,
+  .animate-ping,
+  .animate-pulse {
+    animation: none;
+  }
+}

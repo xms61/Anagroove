@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.26.0] - 2026-09-23
+
+### Added
+- **Three themes, picked in Settings:**
+  - **Tokyo Rain:** navy, neon pink and cyan, falling rain, a vertical katakana sign.
+  - **Berlin Concrete:** graphite, U-Bahn yellow, square corners, a faint site grid.
+  - **Vinyl Room:** walnut, brass and cream paper cells.
+- **How the theme is stored and applied:**
+  - Saved with the other settings (`useSettings`); unknown values fall back to Tokyo Rain.
+  - `public/theme-boot.js` applies it before the app loads, so there is no colour flash.
+  - Each theme brings its own heading face (Zen Kaku Gothic New, Barlow Condensed, Fraunces), self-hosted; browsers download only the active one.
+- A lint rule rejects raw Tailwind colours and hex literals in components.
+- **Tests:**
+  - a Vitest test for the theme setting and its fallback
+  - a Playwright check that the picked theme applies and survives a reload
+
+### Changed
+- **One token set for all colours.** `src/themes.css` holds each theme's colours, radii, shadows and fonts. Every component uses the semantic Tailwind names (`bg-panel`, `text-muted`, `border-line`, `bg-accent`, …) instead of about 650 raw colour classes.
+- **The grid** takes its cell colours from the theme:
+  - the active word is highlighted and the cursor cell stands out
+  - wrong letters get a strike mark as well as a colour
+  - cells size themselves to the board, so the grid fits a 375 px phone
+  - the spinning vinyl disc behind it is gone
+- **Settings** is simpler: theme, default volume, word animations and the keyboard shortcuts.
+- A new favicon.
+
+### Removed
+- The `kissa.*`, `spotifyGreen` and legacy colour tokens, the coloured glow shadows, and unused CSS helpers (`vu-needle`, `focus-glow-amber`, `pulse-subtle`, `filament`).
+
+---
+
 ## [1.25.0] - 2026-09-23
 
 ### Changed

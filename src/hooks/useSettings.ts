@@ -1,16 +1,19 @@
 import { useCallback, useState } from 'react';
 import { readJson, STORAGE_KEYS, writeJson } from '../services/storage';
+import { DEFAULT_THEME, isThemeId, ThemeId } from '../themes';
 
 export interface Settings {
   /** Celebrate solved words with a cell animation. */
   enableWordAnimations: boolean;
   /** Preview volume, 0-1. */
   defaultVolume: number;
+  theme: ThemeId;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   enableWordAnimations: true,
   defaultVolume: 0.15,
+  theme: DEFAULT_THEME,
 };
 
 /** Stored settings merged over the defaults; unknown or mistyped fields are ignored. */
@@ -21,6 +24,7 @@ export function readSettings(): Settings {
     defaultVolume: typeof stored.defaultVolume === 'number' && stored.defaultVolume >= 0 && stored.defaultVolume <= 1
       ? stored.defaultVolume
       : DEFAULT_SETTINGS.defaultVolume,
+    theme: isThemeId(stored.theme) ? stored.theme : DEFAULT_SETTINGS.theme,
   };
 }
 
