@@ -36,7 +36,7 @@ export default [
     }
   },
   {
-    files: ['server/**/*.js', 'scripts/**/*.js', 'shared/**/*.js'],
+    files: ['server/**/*.{js,ts}', 'scripts/**/*.{js,ts}', 'shared/**/*.{js,ts}'],
     languageOptions: {
       globals: {
         process: 'readonly',
@@ -86,7 +86,7 @@ export default [
   },
   {
     // Crawlers and long-running scripts legitimately use while(true) event loops
-    files: ['server/crawler/**/*.js', 'scripts/**/*.js'],
+    files: ['server/crawler/**/*.{js,ts}', 'scripts/**/*.{js,ts}'],
     rules: {
       'no-constant-condition': ['warn', { checkLoops: false }]
     }

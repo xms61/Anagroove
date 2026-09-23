@@ -1,6 +1,20 @@
 # Changelog archive
 
-Releases before 1.25.0. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.26.0. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.25.0] - 2026-09-23
+
+### Changed
+- **The app is now called Anagroove** (anagram + groove): page title, header, menu footer, server and WebSocket logs, script banners, the crawler's and image service's User-Agents, the npm package name, the Docker image, container, service and system user, and the release workflow.
+- **Kept on purpose:**
+  - browser storage keys (`spotyspice_*`), so players keep their progress, settings and hidden list
+  - env vars (`SPOTYSPICE_*`), so existing `.env` files and CI keep working
+  - the Docker volume `spotyspice_data`, so deployments keep their data
+  - `AGENTS.md` and the README say so
+- Test temp dirs are now `anagroove-*`. The smoke test checks the page title.
+- `CHANGELOG.md` keeps the five latest releases; 1.15.0–1.20.1 moved to `docs/CHANGELOG-archive.md`.
+
+---
 
 ## [1.24.1] - 2026-09-23
 
