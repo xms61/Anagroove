@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.24.0] - 2026-09-23
+
+### Added
+- **Japanese/Korean crawl vector** (`npm run crawl -- --cjk=N`):
+  - the Deezer Asian Music chart
+  - then discographies of the catalog's Japanese and Korean artists, fetched by Deezer id with the most fans first
+  - then their related artists (≥ 20,000 fans), keeping to artists whose top tracks vote ja/ko (the vote now also sees the tracks' ISRCs)
+
+  The catalog held 4,572 ja and 3,651 ko tracks.
+- **Decade playlists** (`--decades`): 49 playlist searches (60s–2020s × hits/rock/pop/soul/hip hop/dance/country). The artists they contain get the style's genre.
+
+### Changed
+- `harvestArtistDiscography` skips artists with fewer than 5,000 fans before any track request (the popularity cleanup would drop most of their tracks), accepts a known `deezerId` instead of a name search, and returns related artists with their ids.
+- `runFullHarvest` runs every vector through one bounded helper. Default limits: charts 100, playlists 100, decades 49, cjk 300, artists 500, lexicon 400.
+
+### Fixed
+- **`--artists=N` did not bound the crawl.** Related artists were appended to the queue with no cap, so an artist crawl ran until the 500,000-track target. The limit now counts every discography, related ones included.
+
+### Removed
+- The decade × genre text searches ("1960s rock"). Deezer search matches the words in titles and does not filter by year.
+
+---
+
 ## [1.23.0] - 2026-09-23
 
 ### Added

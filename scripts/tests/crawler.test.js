@@ -10,7 +10,7 @@ import { recomputeCatalogLanguages } from '../../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../../server/crawler/enricher.js';
 import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.js';
-import { MusicHarvester, PLAYLIST_SEEDS, toCatalogCandidate } from '../../server/crawler/harvester.js';
+import { DECADE_PLAYLIST_SEEDS, FOUNDATION_ARTISTS, MusicHarvester, PLAYLIST_SEEDS, toCatalogCandidate } from '../../server/crawler/harvester.js';
 import { routedFetch } from './helpers.js';
 
 test('identity keys keep kana dakuten and composed hangul, and fold Latin accents', () => {
@@ -255,5 +255,74 @@ test('artist enrichment stores English genre names by Deezer genre id, whatever 
   await enricher.enrichArtists({ limit: 10 });
   const { genres_json: json } = catalog.db.prepare("SELECT genres_json FROM artists WHERE display_name = 'Score Composer'").get();
   assert.deepEqual(JSON.parse(json), ['Films/Games', 'Asian Music']);
+  catalog.close();
+});
+
+test('decade playlist seeds pair every decade with a style and tag the style genre', () => {
+  assert.equal(DECADE_PLAYLIST_SEEDS.length, 49);
+  const seed = (query) => DECADE_PLAYLIST_SEEDS.find(s => s.query === query);
+  assert.equal(seed('80s hip hop').genre, 'Rap/Hip Hop');
+  assert.equal(seed('70s soul').genre, 'Soul');
+  assert.equal(seed('60s hits').genre, null);
+});
+
+/** A fake Deezer with artists by id: { id: { name, fans, related: [ids], titles } }. */
+function fakeDeezer(artists) {
+  const byName = (name) => Object.entries(artists).find(([, a]) => a.name === name);
+  const artistJson = (id) => ({ id: Number(id), name: artists[id].name, nb_fan: artists[id].fans });
+  return routedFetch([
+    [/search\/artist\?q=/, url => {
+      const [id] = byName(decodeURIComponent(url.split('q=')[1].split('&')[0])) || [];
+      return { data: id ? [artistJson(id)] : [] };
+    }],
+    [/artist\/\d+\/top/, url => {
+      const id = url.match(/artist\/(\d+)\/top/)[1];
+      return { data: artists[id].titles.map((title, i) => deezerTrack(Number(id) * 100 + i, title, artists[id].name)) };
+    }],
+    [/artist\/\d+\/albums/, { data: [] }],
+    [/artist\/\d+\/related/, url => ({ data: artists[url.match(/artist\/(\d+)\/related/)[1]].related.map(artistJson) })],
+    [/artist\/\d+$/, url => artistJson(url.match(/artist\/(\d+)$/)[1])],
+    [/chart\/16\/tracks/, { data: [] }],
+  ]);
+}
+
+test('--artists caps the discographies crawled; before, related artists kept the queue going', async () => {
+  const catalog = new SqliteCatalog(':memory:');
+  const fetchImpl = fakeDeezer({
+    1: { name: FOUNDATION_ARTISTS[0], fans: 900000, related: [2, 3], titles: ['Morning Light', 'Evening Rain', 'Open Road'] },
+    2: { name: 'Related One', fans: 500000, related: [], titles: ['Blue Hour', 'Silver Line', 'Paper Moon'] },
+    3: { name: 'Related Two', fans: 500000, related: [], titles: ['Golden Gate', 'Late Train', 'City Lights'] },
+  });
+  const stats = await new MusicHarvester(catalog, { fetchImpl }).runFullHarvest({ targetTracks: 1000, artistsLimit: 2 });
+  assert.equal(stats.artistsCrawled, 2);
+  assert.equal(fetchImpl.calls.filter(url => url.includes('/search/artist')).length, 2);
+  catalog.close();
+});
+
+test('an artist under 5,000 fans is skipped before any track request', async () => {
+  const catalog = new SqliteCatalog(':memory:');
+  const fetchImpl = fakeDeezer({ 9: { name: 'Bedroom Act', fans: 1200, related: [], titles: ['Tiny Song'] } });
+  const harvester = new MusicHarvester(catalog, { fetchImpl });
+  const result = await harvester.harvestArtistDiscography('Bedroom Act');
+  assert.equal(result.skipped, true);
+  assert.ok(!fetchImpl.calls.some(url => /\/top/.test(url)));
+  catalog.close();
+});
+
+test('the ja/ko vector starts from Japanese and Korean catalog artists by Deezer id and keeps to ja/ko', async () => {
+  const artists = {
+    21: { name: 'YOASOBI', fans: 800000, related: [22, 23], titles: ['夜に駆ける', 'アイドル', '群青'] },
+    22: { name: 'Ado', fans: 600000, related: [], titles: ['うっせぇわ', '新時代', '唱'] },
+    23: { name: 'Western Pop Act', fans: 900000, related: [], titles: ['Midnight Drive', 'Summer Love', 'Golden Hour', 'Heartbeat Again', 'Neon Skyline'] },
+  };
+  const catalog = new SqliteCatalog(':memory:');
+  catalog.upsertTrack({ title: '夜に駆ける', artist: 'YOASOBI', isrc: 'JPU901900001', durationMs: 260000, provider: 'deezer', providerTrackId: '2100', artistMetadata: { deezerId: 21 } });
+  catalog.db.prepare("UPDATE artists SET primary_language = 'ja'").run();
+  const fetchImpl = fakeDeezer(artists);
+  const stats = await new MusicHarvester(catalog, { fetchImpl }).runFullHarvest({ targetTracks: 1000, cjkLimit: 5 });
+  assert.equal(stats.cjkArtistsCrawled, 3);
+  assert.ok(!fetchImpl.calls.some(url => /search\/artist/.test(url)), 'catalog artists are fetched by id');
+  const names = catalog.db.prepare('SELECT DISTINCT a.display_name FROM tracks t JOIN artists a ON a.id = t.artist_id ORDER BY 1').all().map(r => r.display_name);
+  assert.deepEqual(names, ['Ado', 'YOASOBI'], 'the English-voted related act is skipped');
   catalog.close();
 });

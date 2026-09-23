@@ -9,16 +9,17 @@ Crawls Apple charts and Deezer into the catalog. Every vector is off unless name
   npm run crawl -- --status                  catalog counts only
   npm run crawl -- --all                     every vector with default limits
   npm run crawl -- --charts=100              Apple "most played" per storefront (10, 25, 50 or 100)
-  npm run crawl -- --playlists=40            curated playlist searches (3 playlists each)
-  npm run crawl -- --decades=105             decade x genre searches
-  npm run crawl -- --artists=500             foundation artist discographies + related artists
+  npm run crawl -- --playlists=70            theme playlist searches (3 playlists each, artists get the theme genre)
+  npm run crawl -- --decades=49              decade playlist searches ("80s rock")
+  npm run crawl -- --cjk=300                 Asian Music chart + Japanese/Korean artist discographies
+  npm run crawl -- --artists=500             foundation artist discographies, then related artists (total)
   npm run crawl -- --lexicon=300             single-word title searches
   npm run crawl -- --playlists-only          playlists with the default limit, nothing else
   --target=N                                 stop once the catalog holds N tracks (default 500000)
 
 Vectors can be combined; --all takes per-vector overrides. Flags must follow "--".`;
 
-export const DEFAULT_VECTOR_LIMITS = Object.freeze({ charts: 100, playlists: 100, decades: 105, artists: 500, lexicon: 1500 });
+export const DEFAULT_VECTOR_LIMITS = Object.freeze({ charts: 100, playlists: 100, decades: 49, cjk: 300, artists: 500, lexicon: 400 });
 const DEFAULT_TARGET = 500000;
 const VECTORS = Object.keys(DEFAULT_VECTOR_LIMITS);
 
@@ -81,6 +82,7 @@ async function main(plan) {
     chartsLimit: plan.charts,
     playlistsLimit: plan.playlists,
     decadesLimit: plan.decades,
+    cjkLimit: plan.cjk,
     artistsLimit: plan.artists,
     lexiconLimit: plan.lexicon,
     onProgress: (prog) => {
@@ -97,8 +99,9 @@ async function main(plan) {
   console.log(`\n\nCrawl finished in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
   console.log(`  Apple chart tracks matched: ${harvestStats.chartTracksMatched}`);
   console.log(`  Playlists crawled:          ${harvestStats.playlistsCrawled}`);
-  console.log(`  Decade queries crawled:     ${harvestStats.decadeQueriesCrawled}`);
-  console.log(`  Artists crawled:            ${harvestStats.artistsCrawled} (skipped, out-of-scope language: ${harvestStats.artistsSkipped})`);
+  console.log(`  Decade playlists crawled:   ${harvestStats.decadePlaylistsCrawled}`);
+  console.log(`  ja/ko artists crawled:      ${harvestStats.cjkArtistsCrawled}`);
+  console.log(`  Artists crawled:            ${harvestStats.artistsCrawled} (skipped for language or fans: ${harvestStats.artistsSkipped})`);
   console.log(`  Lexicon words crawled:      ${harvestStats.lexiconWordsCrawled}`);
   console.log(`  Inserted: ${harvestStats.totalInserted}, merged: ${harvestStats.totalMerged}`);
   console.log(`  Rejected by admission policy: ${JSON.stringify(sqliteCatalog.getRejectionStats())}`);

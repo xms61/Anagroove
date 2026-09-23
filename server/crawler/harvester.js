@@ -1,12 +1,13 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { classifyArtistLanguage } from '../db/languageClassifier.js';
-import { baseTitleKey, isAllowedLanguage, stripVersionTags } from '../db/trackNormalization.js';
+import { ALLOWED_LANGUAGES, baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
+import { MIN_ARTIST_FANS } from '../db/catalogPopularity.js';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { isAuthenticCandidate } from './authenticityFilter.js';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
 import { STREAMED_ARTIST_NAMES } from './artistBaseline.js';
 import { logger } from '../logger.js';
-import { THEMES } from '../../shared/themes.js';
+import { THEMES, genresForPrompt } from '../../shared/themes.js';
 
 // High-frequency music words (English, plus romanized Japanese/Korean) for broad search sweeps
 export const MUSIC_LEXICON_SEEDS = [
@@ -135,15 +136,16 @@ export const FOUNDATION_ARTISTS = Array.from(new Set([
 /** Playlist searches from the theme table. The theme's first genre tags the artists they contain. */
 export const PLAYLIST_SEEDS = THEMES.flatMap(theme => theme.seeds.map(query => ({ query, genre: theme.genres[0] || null })));
 
-// Cross-product decade & genre query generator
-export const DECADE_GENRE_SEEDS = [];
-const DECADES = ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s'];
-const GENRES = ['rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie', 'metal', 'j-pop', 'reggae', 'country', 'funk', 'punk'];
-for (const d of DECADES) {
-  for (const g of GENRES) {
-    DECADE_GENRE_SEEDS.push(`${d} ${g}`);
-  }
-}
+/** Decade playlist searches ("80s rock"); the genre word tags the artists they contain. */
+const DECADES = ['60s', '70s', '80s', '90s', '2000s', '2010s', '2020s'];
+const DECADE_STYLES = ['hits', 'rock', 'pop', 'soul', 'hip hop', 'dance', 'country'];
+export const DECADE_PLAYLIST_SEEDS = DECADES.flatMap(decade => DECADE_STYLES.map(style => ({
+  query: `${decade} ${style}`,
+  genre: genresForPrompt('', style)[0] ?? null,
+})));
+
+/** Deezer's "Asian Music" genre chart, the entry point of the ja/ko vector. */
+const ASIAN_MUSIC_CHART_ID = 16;
 
 // Apple Music "most played" charts per storefront: clean, popularity-ranked, original-script titles
 export const APPLE_CHART_STOREFRONTS = ['us', 'gb', 'jp', 'kr'];
@@ -278,81 +280,101 @@ export class MusicHarvester {
   }
 
   /**
-   * Harvests an artist's discography (top tracks + official albums + album tracks)
-   * and optionally spiders high-fan related artists. Artists whose top tracks are
-   * not English/Japanese/Korean are skipped before any album requests.
+   * Harvests an artist's top tracks and up to `maxAlbums` studio albums, and returns related
+   * artists with at least `relatedMinFans` fans for the caller to crawl next. Pass `deezerId`
+   * when known (no name search). Skipped without requests for albums: artists under
+   * MIN_ARTIST_FANS (the cleanup would drop most of their tracks) and artists whose top tracks
+   * vote a language outside `languages`.
    */
-  async harvestArtistDiscography(artistName, { maxAlbums = 8, includeRelated = true } = {}) {
-    if (this.abortRequested) return { harvested: 0, merged: 0, relatedArtists: [] };
+  async harvestArtistDiscography(artistName, {
+    deezerId = null,
+    maxAlbums = 8,
+    includeRelated = true,
+    relatedMinFans = 100000,
+    languages = ALLOWED_LANGUAGES,
+  } = {}) {
+    const empty = { harvested: 0, merged: 0, relatedArtists: [] };
+    if (this.abortRequested) return empty;
 
-    let totalHarvested = 0;
-    let totalMerged = 0;
+    let harvested = 0;
+    let merged = 0;
     const relatedArtists = [];
+    const skip = (reason) => {
+      this.skippedArtists++;
+      logger.info('harvester', `Skipping ${artistName}: ${reason}`);
+      return { ...empty, skipped: true };
+    };
 
     try {
-      // 1. Find artist on Deezer and pick highest fan-count authentic artist
-      const searchJson = await this._getJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`);
-      const rawList = searchJson?.data || [];
-      if (rawList.length === 0) return { harvested: 0, merged: 0, relatedArtists: [] };
-
-      // Sort by fan count descending to eliminate amateur namesakes
-      const sortedByFans = [...rawList].sort((a, b) => (b.nb_fan || 0) - (a.nb_fan || 0));
-      const exactMatches = sortedByFans.filter(a => a.name.toLowerCase().trim() === artistName.toLowerCase().trim());
-      const artistData = exactMatches[0] || sortedByFans[0];
-      if (!artistData || !artistData.id) return { harvested: 0, merged: 0, relatedArtists: [] };
+      const artistData = deezerId
+        ? await this._getJson(`https://api.deezer.com/artist/${deezerId}`)
+        : await this._findArtist(artistName);
+      if (!artistData?.id) return empty;
+      if ((artistData.nb_fan || 0) < MIN_ARTIST_FANS) return skip(`${artistData.nb_fan || 0} fans`);
 
       const artistId = artistData.id;
-      const officialArtistName = artistData.name || artistName;
-      const artistContext = { artistName: officialArtistName, artistId, fansCount: artistData.nb_fan || 0 };
+      const artistContext = { artistName: artistData.name || artistName, artistId, fansCount: artistData.nb_fan };
 
-      // 2. Fetch artist's Top 50 Tracks
-      const topJson = await this._getJson(`https://api.deezer.com/artist/${artistId}/top?limit=50`);
-      const topTracks = topJson?.data || [];
-
-      // Skip out-of-scope artists early (saves the album and related-artist requests)
-      const { language } = classifyArtistLanguage({ titles: topTracks.map(t => t.title), name: officialArtistName });
-      if (language && !isAllowedLanguage(language)) {
-        this.skippedArtists++;
-        logger.info('harvester', `Skipping ${officialArtistName}: catalog language "${language}" is outside en/ja/ko`);
-        return { harvested: 0, merged: 0, relatedArtists: [], skipped: true };
-      }
+      const topTracks = (await this._getJson(`https://api.deezer.com/artist/${artistId}/top?limit=50`))?.data || [];
+      const { language } = classifyArtistLanguage({
+        titles: topTracks.map(t => t.title),
+        isrcs: topTracks.map(t => t.isrc).filter(Boolean),
+        name: artistContext.artistName,
+      });
+      if (language && !languages.includes(language)) return skip(`catalog language "${language}"`);
 
       const topRes = this._ingest(topTracks, { ...artistContext, album: undefined });
-      totalHarvested += topRes.inserted;
-      totalMerged += topRes.merged;
+      harvested += topRes.inserted;
+      merged += topRes.merged;
 
-      // 3. Fetch artist's studio albums
-      const albumsJson = await this._getJson(`https://api.deezer.com/artist/${artistId}/albums?limit=25`);
-      const albums = albumsJson?.data || [];
+      const albums = (await this._getJson(`https://api.deezer.com/artist/${artistId}/albums?limit=25`))?.data || [];
       let albumCount = 0;
-
       for (const album of albums) {
         if (this.abortRequested || albumCount >= maxAlbums) break;
         // Skip compilation, tribute and live albums
         if (!album.id || /tribute|karaoke|live|cover/i.test(album.title || '')) continue;
         albumCount++;
-
-        const tracksJson = await this._getJson(`https://api.deezer.com/album/${album.id}/tracks?limit=50`);
-        const albumTracks = tracksJson?.data || [];
+        const albumTracks = (await this._getJson(`https://api.deezer.com/album/${album.id}/tracks?limit=50`))?.data || [];
         const res = this._ingest(albumTracks, { ...artistContext, album: album.title || '', releaseDate: album.release_date || null });
-        totalHarvested += res.inserted;
-        totalMerged += res.merged;
+        harvested += res.inserted;
+        merged += res.merged;
       }
 
-      // 4. Spider related artists with >= 100k fans
       if (includeRelated) {
-        const relatedJson = await this._getJson(`https://api.deezer.com/artist/${artistId}/related?limit=8`);
-        for (const rel of relatedJson?.data || []) {
-          if (rel.name && (rel.nb_fan || 0) >= 100000) {
-            relatedArtists.push(rel.name);
-          }
+        const related = (await this._getJson(`https://api.deezer.com/artist/${artistId}/related?limit=8`))?.data || [];
+        for (const rel of related) {
+          if (rel.name && (rel.nb_fan || 0) >= relatedMinFans) relatedArtists.push({ name: rel.name, deezerId: rel.id });
         }
       }
     } catch (err) {
       logger.warn('harvester', `Failed discography crawl for ${artistName}: ${err.message}`);
     }
 
-    return { harvested: totalHarvested, merged: totalMerged, relatedArtists };
+    return { harvested, merged, relatedArtists };
+  }
+
+  /** The Deezer artist for a name: an exact name match with the most fans, else the most fans. */
+  async _findArtist(artistName) {
+    const found = (await this._getJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`))?.data || [];
+    const byFans = [...found].sort((a, b) => (b.nb_fan || 0) - (a.nb_fan || 0));
+    const wanted = artistName.toLowerCase().trim();
+    return byFans.find(a => a.name.toLowerCase().trim() === wanted) || byFans[0] || null;
+  }
+
+  /** Harvests a Deezer genre chart (`/chart/{genreId}/tracks`). */
+  async harvestDeezerChart(genreId, limit = 100) {
+    const tracks = (await this._getJson(`https://api.deezer.com/chart/${genreId}/tracks?limit=${limit}`))?.data || [];
+    const res = this._ingest(tracks);
+    return { harvested: res.inserted, merged: res.merged };
+  }
+
+  /** Japanese and Korean catalog artists with a Deezer id, most fans first: seeds of the ja/ko vector. */
+  _cjkCatalogArtists() {
+    return this.catalog.db.prepare(`
+      SELECT display_name AS name, deezer_id AS deezerId FROM artists
+      WHERE primary_language IN ('ja', 'ko') AND deezer_id IS NOT NULL
+      ORDER BY fans_count DESC, id
+    `).all();
   }
 
   /**
@@ -412,20 +434,24 @@ export class MusicHarvester {
   }
 
   /**
-   * Runs the enabled vectors in order until the catalog reaches targetTracks (a limit of 0 skips a vector):
-   * 0. Apple Music charts (US, UK, Japan, Korea)
-   * 1. Curated Playlists Spider
-   * 2. Decade & Genre Matrix Sweep
-   * 3. Foundation Artists & Related Artists Discography Spider
-   * 4. High-Frequency Lexicon Keywords
+   * Runs the enabled vectors in order until the catalog holds `targetTracks`. A limit of 0 turns
+   * a vector off; every vector is bounded by its limit.
+   *   charts     Apple Music "most played" entries per storefront (us/gb/jp/kr), matched to Deezer
+   *   playlists  theme playlist searches (artists get the theme genre)
+   *   decades    decade playlist searches ("80s rock"; artists get the genre)
+   *   cjk        the Deezer Asian Music chart, then discographies of Japanese/Korean catalog
+   *              artists and their related ja/ko artists (limit = discographies)
+   *   artists    discographies of foundation artists, then their related artists (limit = discographies)
+   *   lexicon    single-word title searches
    */
   async runFullHarvest({
     targetTracks = 100000,
-    chartsLimit = 100,
-    playlistsLimit = 40,
-    decadesLimit = 105,
-    artistsLimit = 150,
-    lexiconLimit = 350,
+    chartsLimit = 0,
+    playlistsLimit = 0,
+    decadesLimit = 0,
+    cjkLimit = 0,
+    artistsLimit = 0,
+    lexiconLimit = 0,
     onProgress = () => {},
   } = {}) {
     logger.info('harvester', `Starting catalog harvest, target ${targetTracks.toLocaleString()} tracks...`);
@@ -433,89 +459,71 @@ export class MusicHarvester {
     const stats = {
       chartTracksMatched: 0,
       playlistsCrawled: 0,
-      decadeQueriesCrawled: 0,
+      decadePlaylistsCrawled: 0,
+      cjkArtistsCrawled: 0,
       artistsCrawled: 0,
       artistsSkipped: 0,
       lexiconWordsCrawled: 0,
       totalInserted: 0,
       totalMerged: 0,
     };
-
     // COUNT(*) only: getStats() aggregates provider links and is too heavy to call per query
-    const currentStats = () => ({ ...this.catalog.countSummary(), rejections: this.catalog.getRejectionStats() });
-    const isTargetReached = () => this.catalog.countSummary().tracks >= targetTracks;
-    const report = (currentAction) => onProgress({ ...stats, artistsSkipped: this.skippedArtists, currentAction, currentStats: currentStats() });
-
-    // Vector 0: Apple Music charts
-    if (chartsLimit > 0 && !isTargetReached() && !this.abortRequested) {
-      const res = await this.harvestAppleCharts({ limit: chartsLimit });
-      stats.chartTracksMatched = res.harvested + res.merged;
+    const shouldStop = () => this.abortRequested || this.catalog.countSummary().tracks >= targetTracks;
+    const report = (currentAction) => onProgress({
+      ...stats,
+      artistsSkipped: this.skippedArtists,
+      currentAction,
+      currentStats: { ...this.catalog.countSummary(), rejections: this.catalog.getRejectionStats() },
+    });
+    const add = (res) => {
       stats.totalInserted += res.harvested;
       stats.totalMerged += res.merged;
+    };
+
+    /** One harvest per item until the list, or the target, is done. */
+    const sweep = async (items, statKey, harvest, label) => {
+      for (const item of items) {
+        if (shouldStop()) break;
+        add(await harvest(item));
+        stats[statKey]++;
+        report(label(item));
+      }
+    };
+
+    /** Discographies breadth-first from the seed artists, at most `limit` in total (related included). */
+    const spider = async (seedArtists, limit, statKey, options) => {
+      const queue = [...seedArtists];
+      const seen = new Set(queue.map(a => a.name.toLowerCase()));
+      for (let crawled = 0; crawled < limit && queue.length > 0 && !shouldStop(); crawled++) {
+        const artist = queue.shift();
+        const res = await this.harvestArtistDiscography(artist.name, { deezerId: artist.deezerId, ...options });
+        add(res);
+        stats[statKey]++;
+        for (const related of res.relatedArtists) {
+          if (seen.has(related.name.toLowerCase())) continue;
+          seen.add(related.name.toLowerCase());
+          queue.push(related);
+        }
+        report(`Artist: ${artist.name}${res.skipped ? ' (skipped)' : ''}`);
+      }
+    };
+
+    if (chartsLimit > 0 && !shouldStop()) {
+      const res = await this.harvestAppleCharts({ limit: chartsLimit });
+      stats.chartTracksMatched = res.harvested + res.merged;
+      add(res);
       report(`Apple charts: ${res.harvested} new, ${res.merged} merged, ${res.unmatched} unmatched`);
     }
-
-    // Vector 1: Curated Genre & Historical Playlists Spidering
-    if (playlistsLimit > 0 && !isTargetReached() && !this.abortRequested) {
-      for (const seed of PLAYLIST_SEEDS.slice(0, playlistsLimit)) {
-        if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestPlaylists(seed.query, { genre: seed.genre, onProgress: (p) => report(`Playlist: ${p.query}`) });
-        stats.playlistsCrawled++;
-        stats.totalInserted += res.harvested;
-        stats.totalMerged += res.merged;
-        report(`Completed playlist: "${seed.query}"`);
-      }
+    const harvestPlaylistSeed = (seed) => this.harvestPlaylists(seed.query, { genre: seed.genre });
+    await sweep(PLAYLIST_SEEDS.slice(0, playlistsLimit), 'playlistsCrawled', harvestPlaylistSeed, seed => `Playlist: ${seed.query}`);
+    await sweep(DECADE_PLAYLIST_SEEDS.slice(0, decadesLimit), 'decadePlaylistsCrawled', harvestPlaylistSeed, seed => `Decade playlist: ${seed.query}`);
+    if (cjkLimit > 0 && !shouldStop()) {
+      add(await this.harvestDeezerChart(ASIAN_MUSIC_CHART_ID));
+      report('Deezer Asian Music chart');
+      await spider(this._cjkCatalogArtists(), cjkLimit, 'cjkArtistsCrawled', { languages: ['ja', 'ko'], relatedMinFans: MIN_ARTIST_FANS * 4 });
     }
-
-    // Vector 2: Decade & Genre Cross-Product Matrix
-    if (decadesLimit > 0 && !isTargetReached() && !this.abortRequested) {
-      const queriesToCrawl = DECADE_GENRE_SEEDS.slice(0, decadesLimit);
-      for (const query of queriesToCrawl) {
-        if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestDeezerQuery(query, 2);
-        stats.decadeQueriesCrawled++;
-        stats.totalInserted += res.harvested;
-        stats.totalMerged += res.merged;
-        report(`Decade/Genre: "${query}"`);
-      }
-    }
-
-    // Vector 3: Artist Discographies & Related Artists Spidering
-    if (!isTargetReached() && !this.abortRequested) {
-      const artistQueue = [...FOUNDATION_ARTISTS.slice(0, artistsLimit)];
-      const visitedArtists = new Set(artistQueue.map(a => a.toLowerCase()));
-
-      while (artistQueue.length > 0 && !this.abortRequested && !isTargetReached()) {
-        const artist = artistQueue.shift();
-        const res = await this.harvestArtistDiscography(artist, { maxAlbums: 8, includeRelated: true });
-        stats.artistsCrawled++;
-        stats.totalInserted += res.harvested;
-        stats.totalMerged += res.merged;
-
-        // Queue newly discovered authentic related artists
-        for (const rel of res.relatedArtists || []) {
-          if (!visitedArtists.has(rel.toLowerCase())) {
-            visitedArtists.add(rel.toLowerCase());
-            artistQueue.push(rel);
-          }
-        }
-
-        report(`Artist: ${artist}${res.skipped ? ' (skipped: out-of-scope language)' : ''}`);
-      }
-    }
-
-    // Vector 4: High-Frequency Lexicon Keywords Sweep
-    if (!isTargetReached() && !this.abortRequested) {
-      const wordsToCrawl = MUSIC_LEXICON_SEEDS.slice(0, lexiconLimit);
-      for (const word of wordsToCrawl) {
-        if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestDeezerQuery(word, 3);
-        stats.lexiconWordsCrawled++;
-        stats.totalInserted += res.harvested;
-        stats.totalMerged += res.merged;
-        report(`Vocabulary: "${word}"`);
-      }
-    }
+    await spider(FOUNDATION_ARTISTS.map(name => ({ name })), artistsLimit, 'artistsCrawled', {});
+    await sweep(MUSIC_LEXICON_SEEDS.slice(0, lexiconLimit), 'lexiconWordsCrawled', word => this.harvestDeezerQuery(word, 3), word => `Word: ${word}`);
 
     stats.artistsSkipped = this.skippedArtists;
     return stats;

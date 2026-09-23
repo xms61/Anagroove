@@ -2,8 +2,14 @@
 
 ## Modules
 - `harvester.js` (`MusicHarvester`): all Deezer payloads go through one mapper, `toCatalogCandidate`. The fetch function is injectable (`{ fetchImpl }`) for tests.
-  - Vectors, in order: **Apple Music charts** (`harvestAppleCharts`: us/gb/jp/kr), theme playlists (`PLAYLIST_SEEDS`, from the `seeds` in `shared/themes.js`; every artist on a theme playlist gets the theme's first genre), decade × genre, foundation-artist discographies (plus related artists), lexicon words. A limit of 0 skips a vector, and `runFullHarvest` stops at the target track count.
-  - `harvestArtistDiscography` skips an artist whose top tracks vote a language outside en/ja/ko before any album or related-artist requests.
+  - Vectors, in order, each bounded by its limit (0 = off); `runFullHarvest` also stops at the target track count:
+    1. `charts`: **Apple Music "most played"** (`harvestAppleCharts`: us/gb/jp/kr), matched to Deezer tracks.
+    2. `playlists`: theme playlists (`PLAYLIST_SEEDS`, the `seeds` in `shared/themes.js`). Every artist on a theme playlist gets the theme's first genre.
+    3. `decades`: decade playlists (`DECADE_PLAYLIST_SEEDS`: 60s–2020s × hits/rock/pop/soul/hip hop/dance/country), tagged with the style's genre. They replaced the "1987 funk" text searches, which matched years in titles.
+    4. `cjk`: the Deezer Asian Music chart, then discographies of the catalog's Japanese/Korean artists (by Deezer id, most fans first) and their related artists (≥ 20,000 fans), keeping to artists that vote ja/ko.
+    5. `artists`: discographies of the foundation artists, then their related artists (≥ 100,000 fans). The limit counts every discography, related ones included (before, related artists kept the queue going until the target).
+    6. `lexicon`: single-word title searches.
+  - `harvestArtistDiscography` skips an artist with fewer than 5,000 fans (`MIN_ARTIST_FANS`: the cleanup would drop most of their tracks), and one whose top tracks vote a language outside the allowed ones, before any album or related-artist request.
   - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.
 - `enricher.js` (`CatalogEnricher`) fills in metadata. Each step picks its own worklist with SQL and stamps what it has tried (`tracks.enriched_at`, `tracks.itunes_checked_at`, `artists.enriched_at`), so runs are resumable and never loop.
   - `enrichAlbums`: `/album/{id}` (album id from the stored Deezer payload) → release date for every catalog track on the album, including tracks matched through the album's track list. About 9 tracks per request. Run it before `enrichDeezerTracks`.
@@ -29,7 +35,7 @@ After crawls and enrichment, run `npm run catalog:recompute` (languages, then po
 ## Ingest scripts
 | Script | Source |
 |---|---|
-| `scripts/crawl_catalog.js` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
+| `scripts/crawl_catalog.js` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --cjk=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
 | `scripts/enrich_catalog.js` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N`, or `--all` for every step with default limits (overrides allowed). Then `scripts/recompute_catalog.js` (`npm run catalog:recompute`) |
 | `scripts/ingest_annas_spotify.js` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
 | `scripts/ingest_musicmovearr.js` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
