@@ -5,14 +5,16 @@ import { generateLiveCrossword } from '../../shared/liveCrossword.js';
 
 test('Unbiased Fisher-Yates Shuffle', async () => {
   const empty = shuffleArray([]);
-  assert(Array.isArray(empty) && empty.length === 0, 'Handles empty array');
+  assert.ok(Array.isArray(empty), 'Handles empty array');
+  assert.equal(empty.length, 0, 'Handles empty array');
 
   const single = shuffleArray([42]);
-  assert(single.length === 1 && single[0] === 42, 'Handles single element array');
+  assert.equal(single.length, 1, 'Handles single element array');
+  assert.equal(single[0], 42, 'Handles single element array');
 
   const original = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const shuffled = shuffleArray(original);
-  assert(shuffled.length === original.length, 'Preserves total array length');
+  assert.equal(shuffled.length, original.length, 'Preserves total array length');
   assert(original.every(x => shuffled.includes(x)), 'Preserves all original elements');
 
   // Verify non-deterministic behavior across multiple runs
@@ -40,8 +42,10 @@ test('Live Crossword Placement Engine', async () => {
   const testPuzzle = generateLiveCrossword(sampleTracks, 'Test Puzzle', 6);
   assert(testPuzzle && testPuzzle.clues.length >= 5, 'Generates valid intersecting crossword layout');
   assert(testPuzzle && testPuzzle.rows > 0 && testPuzzle.cols > 0, 'Computes bounding box rows and cols');
-  assert(testPuzzle && testPuzzle.grid.length === testPuzzle.rows, 'Grid rows match computed bounds');
-  assert(testPuzzle && testPuzzle.grid[0].length === testPuzzle.cols, 'Grid cols match computed bounds');
+  assert.ok(testPuzzle, 'Grid rows match computed bounds');
+  assert.equal(testPuzzle.grid.length, testPuzzle.rows, 'Grid rows match computed bounds');
+  assert.ok(testPuzzle, 'Grid cols match computed bounds');
+  assert.equal(testPuzzle.grid[0].length, testPuzzle.cols, 'Grid cols match computed bounds');
   assert(testPuzzle && testPuzzle.clues.every(c => c.row >= 0 && c.col >= 0), 'All clue coordinates are non-negative');
   assert(testPuzzle && testPuzzle.clues.every(c => (c.crossings || 1) >= 1 && (c.crossings || 1) <= 3), 'All words cross between 1 and 3 times');
   const distinctCrossings = new Set(testPuzzle.clues.map(c => c.crossings || 1));

@@ -3,145 +3,82 @@ import { test } from 'node:test';
 import { isAnimeTarget, getAnimeThemeType } from '../../server/policy/selectionPolicy.js';
 import { AnimeCatalog } from '../../server/db/animeCatalog.js';
 
-test('Dedicated Anime OP/ED Catalog, Variations & Sourcing Isolation', async () => {
-  // 1. Anime Target Detection & Theme Type Isolation
-  assert(isAnimeTarget('anime', '') === true, 'isAnimeTarget detects "anime" genre');
-  assert(isAnimeTarget('anime openings', '') === true, 'isAnimeTarget detects "anime openings"');
-  assert(isAnimeTarget('all', 'anime ed') === true, 'isAnimeTarget detects "anime ed" in prompt');
-  assert(isAnimeTarget('japanese', '') === false, 'isAnimeTarget rejects bare "japanese" genre (stays in general music catalog)');
-  assert(isAnimeTarget('Japanese City Pop', '') === false, 'isAnimeTarget rejects "Japanese City Pop" (stays in general music catalog)');
-  assert(isAnimeTarget('rock', 'j-rock hits') === false, 'isAnimeTarget rejects "j-rock hits"');
-
-  assert(getAnimeThemeType('anime openings', '') === 'OP', 'getAnimeThemeType detects OP');
-  assert(getAnimeThemeType('anime endings', '') === 'ED', 'getAnimeThemeType detects ED');
-  assert(getAnimeThemeType('anime', '') === null, 'getAnimeThemeType returns null for general anime (both OP & ED)');
-
-  // 2. In-Memory Anime Catalog Creation & Schema
-  const animeDb = new AnimeCatalog(':memory:');
-  const trackId1 = animeDb.upsertAnimeTrack({
-    animeTitle: 'Neon Genesis Evangelion',
-    songTitle: 'A Cruel Angel\'s Thesis',
-    artistName: 'Yoko Takahashi',
-    themeType: 'OP',
-    themeNumber: 1,
-    themeSlug: 'OP1',
-    year: 1995,
-    season: 'Fall',
-    malId: 30,
-    anilistId: 30,
-    originalFilePath: '1995/Fall/Evangelion-OP1.ogg',
-    durationMs: 90000,
-    popularity: 98,
+const TARGETS = [
+  ['anime', '', true],
+  ['anime openings', '', true],
+  ['all', 'anime ed', true],
+  ['japanese', '', false],
+  ['Japanese City Pop', '', false],
+  ['rock', 'j-rock hits', false],
+];
+for (const [genre, prompt, expected] of TARGETS) {
+  test(`isAnimeTarget("${genre}", "${prompt}") is ${expected}`, () => {
+    assert.equal(isAnimeTarget(genre, prompt), expected);
   });
-  assert(trackId1 === 1, 'Successfully upserted anime track 1');
+}
 
-  const trackId2 = animeDb.upsertAnimeTrack({
-    animeTitle: 'Cowboy Bebop',
-    songTitle: 'Tank!',
-    artistName: 'SEATBELTS',
-    themeType: 'OP',
-    themeNumber: 1,
-    themeSlug: 'OP1',
-    year: 1998,
-    season: 'Spring',
-    malId: 1,
-    anilistId: 1,
-    originalFilePath: '1998/Spring/CowboyBebop-OP1.ogg',
-    durationMs: 90000,
-    popularity: 99,
-  });
-  assert(trackId2 === 2, 'Successfully upserted anime track 2');
+test('getAnimeThemeType picks OP or ED, or null for both', () => {
+  assert.equal(getAnimeThemeType('anime openings', ''), 'OP');
+  assert.equal(getAnimeThemeType('anime endings', ''), 'ED');
+  assert.equal(getAnimeThemeType('anime', ''), null);
+});
 
-  const trackId3 = animeDb.upsertAnimeTrack({
-    animeTitle: 'Cowboy Bebop',
-    songTitle: 'The Real Folk Blues',
-    artistName: 'The Seatbelts ft. Mai Yamane',
-    themeType: 'ED',
-    themeNumber: 1,
-    themeSlug: 'ED1',
-    year: 1998,
-    season: 'Spring',
-    malId: 1,
-    anilistId: 1,
-    originalFilePath: '1998/Spring/CowboyBebop-ED1.ogg',
-    durationMs: 90000,
-    popularity: 95,
-  });
-  assert(trackId3 === 3, 'Successfully upserted anime track 3');
+const THEMES = [
+  { animeTitle: 'Neon Genesis Evangelion', songTitle: "A Cruel Angel's Thesis", artistName: 'Yoko Takahashi', themeType: 'OP', themeSlug: 'OP1', year: 1995, season: 'Fall', malId: 30, anilistId: 30, file: '1995/Fall/Evangelion-OP1', popularity: 98 },
+  { animeTitle: 'Cowboy Bebop', songTitle: 'Tank!', artistName: 'SEATBELTS', themeType: 'OP', themeSlug: 'OP1', year: 1998, season: 'Spring', malId: 1, anilistId: 1, file: '1998/Spring/CowboyBebop-OP1', popularity: 99 },
+  { animeTitle: 'Cowboy Bebop', songTitle: 'The Real Folk Blues', artistName: 'The Seatbelts ft. Mai Yamane', themeType: 'ED', themeSlug: 'ED1', year: 1998, season: 'Spring', malId: 1, anilistId: 1, file: '1998/Spring/CowboyBebop-ED1', popularity: 95 },
+];
 
-  // 3. Insert 20-second sample variations
-  animeDb.insertSample({
-    animeTrackId: trackId1,
-    sampleIndex: 1,
-    samplePath: 'data/anime_samples/1995/Fall/Evangelion-OP1_s1.ogg',
-    sampleUrl: '/audio/anime/1995/Fall/Evangelion-OP1_s1.ogg',
-    offsetSeconds: 5,
+/** Three themes; `sampleOffsets[i]` lists the 20 s clips added to theme i. */
+function catalogWith(sampleOffsets) {
+  const db = new AnimeCatalog(':memory:');
+  const ids = THEMES.map(({ file, ...theme }) => db.upsertAnimeTrack({ ...theme, themeNumber: 1, originalFilePath: `${file}.ogg`, durationMs: 90000 }));
+  ids.forEach((id, i) => (sampleOffsets[i] || []).forEach((offsetSeconds, n) => db.insertSample({
+    animeTrackId: id,
+    sampleIndex: n + 1,
+    samplePath: `data/anime_samples/${THEMES[i].file}_s${n + 1}.ogg`,
+    sampleUrl: `/audio/anime/${THEMES[i].file}_s${n + 1}.ogg`,
+    offsetSeconds,
     durationSeconds: 20,
-  });
-  animeDb.insertSample({
-    animeTrackId: trackId1,
-    sampleIndex: 2,
-    samplePath: 'data/anime_samples/1995/Fall/Evangelion-OP1_s2.ogg',
-    sampleUrl: '/audio/anime/1995/Fall/Evangelion-OP1_s2.ogg',
-    offsetSeconds: 35,
-    durationSeconds: 20,
-  });
-  animeDb.insertSample({
-    animeTrackId: trackId1,
-    sampleIndex: 3,
-    samplePath: 'data/anime_samples/1995/Fall/Evangelion-OP1_s3.ogg',
-    sampleUrl: '/audio/anime/1995/Fall/Evangelion-OP1_s3.ogg',
-    offsetSeconds: 65,
-    durationSeconds: 20,
-  });
+  })));
+  return { db, ids };
+}
 
-  const samples = animeDb.getSamplesForTrack(trackId1);
-  assert(samples.length === 3, 'Track 1 has exactly 3 sample variations');
-  assert(samples[0].offset_seconds === 5 && samples[0].duration_seconds === 20, 'Sample 1 has offset 5s and duration 20s');
-  assert(samples[1].offset_seconds === 35 && samples[1].duration_seconds === 20, 'Sample 2 has offset 35s and duration 20s');
-  assert(samples[2].offset_seconds === 65 && samples[2].duration_seconds === 20, 'Sample 3 has offset 65s and duration 20s');
+test('a theme keeps every clip in offset order', () => {
+  const { db, ids } = catalogWith([[5, 35, 65]]);
+  assert.deepEqual(ids, [1, 2, 3]);
+  const samples = db.getSamplesForTrack(ids[0]);
+  assert.deepEqual(samples.map(s => [s.offset_seconds, s.duration_seconds]), [[5, 20], [35, 20], [65, 20]]);
+  db.close();
+});
 
-  // 4. Sampleless track isolation (requireSamples)
-  const tracksWithSamples = animeDb.getRandomAnimeTracks({ count: 10, requireSamples: true });
-  assert(tracksWithSamples.length === 1, 'Only track with verified audio samples is returned when requireSamples=true');
-  assert(tracksWithSamples[0].id === 'anime:1', 'Returned track matches trackId 1');
-  assert(tracksWithSamples[0].audioUrl.startsWith('/audio/anime/'), 'audioUrl uses local /audio/anime mount path');
-  assert(tracksWithSamples[0].sampleVariations.length === 3, 'Returns all 3 sample variations for playback rotation');
+test('requireSamples returns only themes with clips, served from /audio/anime', () => {
+  const { db } = catalogWith([[5, 35, 65]]);
+  const [track, ...rest] = db.getRandomAnimeTracks({ count: 10, requireSamples: true });
+  assert.equal(rest.length, 0);
+  assert.equal(track.id, 'anime:1');
+  assert.ok(track.audioUrl.startsWith('/audio/anime/'));
+  assert.equal(track.sampleVariations.length, 3);
+  db.close();
+});
 
-  // Add samples for track 2 and track 3
-  animeDb.insertSample({
-    animeTrackId: trackId2,
-    sampleIndex: 1,
-    samplePath: 'data/anime_samples/1998/Spring/CowboyBebop-OP1_s1.ogg',
-    sampleUrl: '/audio/anime/1998/Spring/CowboyBebop-OP1_s1.ogg',
-    offsetSeconds: 5,
-    durationSeconds: 20,
-  });
-  animeDb.insertSample({
-    animeTrackId: trackId3,
-    sampleIndex: 1,
-    samplePath: 'data/anime_samples/1998/Spring/CowboyBebop-ED1_s1.ogg',
-    sampleUrl: '/audio/anime/1998/Spring/CowboyBebop-ED1_s1.ogg',
-    offsetSeconds: 5,
-    durationSeconds: 20,
-  });
+test('themes filter by type (OP/ED) and by anime title', () => {
+  const { db } = catalogWith([[5], [5], [5]]);
+  const types = (options) => db.getRandomAnimeTracks({ count: 10, ...options }).map(t => t.themeType).sort();
+  assert.deepEqual(types({ type: 'OP' }), ['OP', 'OP']);
+  assert.deepEqual(types({ type: 'ED' }), ['ED']);
+  const bebop = db.getRandomAnimeTracks({ count: 10, search: 'Bebop' });
+  assert.equal(bebop.length, 2);
+  assert.ok(bebop.every(t => t.animeTitle === 'Cowboy Bebop'));
+  db.close();
+});
 
-  // 5. Query Filtering: Type ('OP' vs 'ED')
-  const opTracks = animeDb.getRandomAnimeTracks({ count: 10, type: 'OP' });
-  assert(opTracks.length === 2 && opTracks.every(t => t.themeType === 'OP'), 'type="OP" strictly returns only openings');
-
-  const edTracks = animeDb.getRandomAnimeTracks({ count: 10, type: 'ED' });
-  assert(edTracks.length === 1 && edTracks[0].themeType === 'ED', 'type="ED" strictly returns only endings');
-
-  // 6. Query Filtering: Search keyword
-  const searched = animeDb.getRandomAnimeTracks({ count: 10, search: 'Bebop' });
-  assert(searched.length === 2 && searched.every(t => t.animeTitle === 'Cowboy Bebop'), 'Search keyword matches anime title');
-
-  // 7. Stats
-  const stats = animeDb.getStats();
-  assert(stats.totalTracks === 3, 'Stats report total 3 tracks');
-  assert(stats.totalOps === 2, 'Stats report total 2 OPs');
-  assert(stats.totalEds === 1, 'Stats report total 1 ED');
-  assert(stats.tracksWithSamples === 3, 'Stats report 3 tracks with samples');
-  assert(stats.minYear === 1995 && stats.maxYear === 1998, 'Stats report correct year range');
+test('stats count themes, OP/ED, clips and the year range', () => {
+  const { db } = catalogWith([[5], [5], [5]]);
+  const { totalTracks, totalOps, totalEds, tracksWithSamples, minYear, maxYear } = db.getStats();
+  assert.deepEqual(
+    { totalTracks, totalOps, totalEds, tracksWithSamples, minYear, maxYear },
+    { totalTracks: 3, totalOps: 2, totalEds: 1, tracksWithSamples: 3, minYear: 1995, maxYear: 1998 }
+  );
+  db.close();
 });
