@@ -1,6 +1,8 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { deezerRateLimiter, itunesRateLimiter, politeFetch } from '../crawler/rateLimiter.js';
 import { logger } from '../logger.js';
+import { baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
+import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 
 // Bounded in-memory preview cache to avoid duplicate network fetches during active gameplay
 const inMemoryPreviewCache = new Map();
@@ -267,14 +269,19 @@ export async function resolveTrackPreview(track) {
     }
   }
 
-  // 3. Fallback: Deezer search by artist and title
+  // 3. Fallback: Deezer search by artist and title. Plain query (the advanced artist:"…" filter
+  // returns unrelated results), then only accept a result by the same artist with the same base title.
   if (track.title && track.artist) {
     try {
-      const cleanTitle = String(track.title).replace(/["()]/g, ' ').trim();
-      const cleanArtist = String(track.artist).replace(/["()]/g, ' ').trim();
-      const searchUrl = `https://api.deezer.com/search?q=track:"${encodeURIComponent(cleanTitle)}" artist:"${encodeURIComponent(cleanArtist)}"&limit=3`;
-      const data = await fetchJson(searchUrl, deezerRateLimiter);
-      const candidate = (data?.data || []).find(item => item.preview && item.preview.startsWith('http'));
+      const query = `${track.artist} ${stripVersionTags(track.title)}`.replace(/"/g, ' ').trim();
+      const data = await fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=10`, deezerRateLimiter);
+      const wantedArtist = canonicalArtistKey(track.artist);
+      const wantedTitle = baseTitleKey(track.title);
+      const candidate = (data?.data || []).find(item =>
+        item.preview && item.preview.startsWith('http') &&
+        canonicalArtistKey(item.artist?.name || '') === wantedArtist &&
+        baseTitleKey(item.title || '') === wantedTitle
+      );
       if (candidate) {
         const result = {
           url: candidate.preview,

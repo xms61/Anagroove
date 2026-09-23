@@ -9,6 +9,7 @@ import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.js';
 import { resolveAnimeCoverImages } from './animeImageService.js';
 import { batchResolvePreviews, previewRefForTrack, toPreviewPath } from './previewResolver.js';
+import { isAuthenticMetadata } from '../policy/authenticityRules.js';
 import { logger } from '../logger.js';
 
 let musicProvider = deezerMusicProvider;
@@ -312,34 +313,11 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
  * and sped-up/slowed-down audio modifications.
  */
 export function isAuthenticTrack(track) {
-  const artist = String(track?.artist || track?.display_name || '').trim();
-  const title = String(track?.title || track?.display_title || '').trim();
-  const album = String(track?.album || track?.album_name || track?.collectionName || '').trim();
-  const lowerArtist = artist.toLowerCase();
-  const lowerTitle = title.toLowerCase();
-  const lowerAlbum = album.toLowerCase();
-
-  // 1. Generic compilation/workout/soundalike artists and unofficial YouTube/fan cover artists
-  const fakeArtistPatterns = /\b(workout\s+(music|dj|mix|party|electronica|hits|mafia)|power\s+music\s+workout|fitness\s+workout|running\s+songs|gym\s+music|8-bit\s+arcade|tribute\s+(band|crew|artists?)|cover\s+band|karaoke\s+band|soundalike|classic\s+rock|rock\s+classics|\d{4}\s+rock\s+classics|hits\s+band|various\s+artists|sounds?\s+dj|dj\s+remix\s+crew|music\s*box\s*(ensemble|lullaby|collection|band)|lullaby\s*(baby|ensemble|band)|anime\s*(keys|piano|relax|chill|cafe|project|ensemble|orchestra|tribute|band|music|soundtrack)|peaceful\s*(anime|piano|music)|ultra\s*beats|relaxing\s*piano|pellek|little\s*v\.?|shironeko|jonathan\s*young|natewantstobattle|tsuko\s*g\.?|richaadeb|rainych|amalee|cao|fonzi\s*m)\b/i;
-  if (fakeArtistPatterns.test(lowerArtist)) {
-    return false;
-  }
-
-  // 2. Audio modifications, covers, karaoke, and utility releases in titles
-  const audioModPatterns = /\b(?:workout\s+mix|\d+\s*bpm|slowed(?:\s*\+?\s*reverb)?|sped\s+up|speed\s+up|nightcore|music\s*box|musicbox|lullaby|bgm\s+cover|fan\s*cover|metal\s*cover|rock\s*cover|guitar\s*cover|guitar\s+version|violin\s*cover|piano\s*cover|piano\s+version|acoustic\s+version|harp\s+version|synth\s*cover|lo-?fi\s*remix|phonk\s*remix|tribute\s+version|tribute\s+to|8-bit|computer\s+game\s+version|instrumental(?:\s+version)?|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by|karaoke(?:\s+version)?|backing\s+track|sans\s+paroles|no\s*vocals?|track\s*-\s*no\s*vocal|guide\s*vocal|minus\s*one|bass\s*boost(?:ed)?|drum\s*loop|waiting\s*loop|synth\s*loop)\b|[([](?:piano|acoustic|instrumental|orchestral|violin|cello|harp|flute|guitar|music\s*box|karaoke|backing\s*track)[)\]]/i;
-  if (audioModPatterns.test(lowerTitle)) {
-    return false;
-  }
-
-  // 3. Covers or tribute compilations in album title
-  if (lowerAlbum) {
-    const fakeAlbumPatterns = /\b(?:cover\s+music\s+selection|cover\s+versions?|tribute\s+album|karaoke|music\s*box|lullaby|8-?bit|workout\s+music|fitness\s+beats)\b/i;
-    if (fakeAlbumPatterns.test(lowerAlbum)) {
-      return false;
-    }
-  }
-
-  return true;
+  return isAuthenticMetadata({
+    title: track?.title || track?.display_title || '',
+    artist: track?.artist || track?.display_name || '',
+    album: track?.album || track?.album_name || track?.collectionName || '',
+  });
 }
 
 /**

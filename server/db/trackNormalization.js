@@ -4,6 +4,7 @@
  * so every writer applies identical rules.
  */
 import { canonicalMusicKey } from '../../shared/musicIdentity.js';
+import { resolveTrackLanguage } from './languageClassifier.js';
 
 /** Catalog language policy (decision 2026-09-23): only English, Japanese and Korean. */
 export const ALLOWED_LANGUAGES = Object.freeze(['en', 'ja', 'ko']);
@@ -126,33 +127,13 @@ export function baseTitleKey(title = '') {
 // Language
 // ---------------------------------------------------------------------------
 
-const HANGUL = /[가-힯ᄀ-ᇿ㄰-㆏]/;
-const KANA = /[぀-ヿㇰ-ㇿｦ-ﾟ]/;
-const HAN = /[㐀-䶿一-鿿]/;
-
 /**
- * Detects 'en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh', 'ru' or 'ar'
- * from script analysis and prominent linguistic markers. Han-only text is Japanese
- * or Korean when the ISRC was registered in JP or KR.
+ * Detects a track's language (ISO 639-1). Script decides for CJK and other non-Latin text;
+ * Latin titles use the ELD n-gram detector, deferring to the artist's catalog language when known.
+ * See languageClassifier.js for the full rules.
  */
-export function detectTrackLanguage(title = '', artist = '', { isrc = null } = {}) {
-  const text = `${title || ''} ${artist || ''}`.toLowerCase();
-  if (HANGUL.test(text)) return 'ko';
-  if (KANA.test(text)) return 'ja';
-  if (HAN.test(text)) {
-    const registrant = extractIsrcCountryCode(isrc);
-    if (registrant === 'JP') return 'ja';
-    if (registrant === 'KR') return 'ko';
-    return 'zh';
-  }
-  if (/[Ѐ-ӿ]/.test(text)) return 'ru';
-  if (/[؀-ۿ]/.test(text)) return 'ar';
-  if (/\b(amor|coraz[oó]n|vida|noche|fiesta|bailando|despacito|feliz|navidad|se[nñ]orita|mujer|beso|adi[oó]s|para|por|los|las|una|uno|conmigo|quiero)\b/i.test(text)) return 'es';
-  if (/\b(amour|chanson|avec|dans|pour|une|les|ton|mon|nous|vous|c[eé]|est|vie|femme|soleil|nuit|monde|toujours)\b/i.test(text)) return 'fr';
-  if (/\b(und|nicht|ist|der|die|das|mit|auf|f[uü]r|von|nacht|liebe|herz|welt|zeit|leben|atemlos)\b/i.test(text)) return 'de';
-  if (/\b(amore|bella|notte|tutto|tutti|della|degli|mondo|vita|cuore|felicit[aà])\b/i.test(text)) return 'it';
-  if (/\b(mais|voc[eê]|n[aã]o|pra|tudo|amor|vida|cora[cç][aã]o|saudade)\b/i.test(text)) return 'pt';
-  return 'en';
+export function detectTrackLanguage(title = '', artist = '', { isrc = null, artistLanguage = null } = {}) {
+  return resolveTrackLanguage({ title, artist, isrc, artistLanguage });
 }
 
 export function isAllowedLanguage(language) {

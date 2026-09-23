@@ -96,7 +96,7 @@ export function useBlacklist() {
     const titleKey = canonicalMusicKey(songTitle);
     const artistKey = canonicalMusicKey(artistName);
     return blacklist.some(b => {
-      const blacklistKey = b.canonicalKey || canonicalMusicKey(b.name);
+      const blacklistKey = canonicalMusicKey(b.name) || b.canonicalKey || '';
       return b.type === 'artist'
         ? artistKey === blacklistKey || artistKey.includes(blacklistKey)
         : titleKey === blacklistKey || titleKey.includes(blacklistKey);

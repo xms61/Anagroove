@@ -14,6 +14,7 @@ Entry point: `getRandomSongPool(opts)` in `musicService.js`. It is called by `GE
 7. **Serving:** `GET /api/preview/:ref` calls `resolvePreviewRef`, which tries Deezer `/track/{id}`, then Deezer search, then iTunes, and redirects. Cached until 60 s before the signed URL's `exp`.
 
 ## Rules
+- `isAuthenticTrack` delegates to `server/policy/authenticityRules.js`, the same rules the crawler and catalog use.
 - Targeting a single artist means 0% artist-name clues and keyphrase tokens are banned as answers.
 - Language: the catalog query uses `language` (`en`, or `ko/en` for K-pop, or `ja/en` for Japanese themes). `isLanguagePermitted` is a second regex gate.
 - Tests swap the provider with `setMusicProviderForTesting`. When a mock is active, no network calls and no preview filtering happen.

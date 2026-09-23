@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 import { DATA_DIR } from '../paths.js';
 import { runCatalogMigrations } from './catalogMigrations.js';
 import { lazySingleton } from './lazySingleton.js';
+import { isAuthenticMetadata } from '../policy/authenticityRules.js';
 import {
   baseTitleKey,
   classifyVersion,
@@ -73,7 +74,7 @@ export class SqliteCatalog {
 
   _createTables() {
     this.migration = runCatalogMigrations(this.db, { dbPath: this.dbPath });
-    this.rejectionStats = { missingFields: 0, title: 0, language: 0, version: 0, duration: 0 };
+    this.rejectionStats = { missingFields: 0, title: 0, language: 0, version: 0, inauthentic: 0, duration: 0 };
   }
 
   _prepareStatements() {
@@ -287,11 +288,15 @@ export class SqliteCatalog {
     if (!canonicalTitle) return this._reject('title');
 
     const isrc = normalizeIsrc(rawIsrc);
-    const language = detectTrackLanguage(displayTitle, artist, { isrc });
+    // A known artist's catalog-wide language outweighs one short (often romanized) title
+    const knownArtist = this.stmtGetArtistByCanonical.get(normalizeDedupeArtist(artist));
+    const language = detectTrackLanguage(displayTitle, artist, { isrc, artistLanguage: knownArtist?.primary_language ?? null });
     if (!isAllowedLanguage(language)) return this._reject('language');
 
     const versionType = classifyVersion(displayTitle, albumName || '');
     if (!isAcceptedVersion(versionType)) return this._reject('version');
+
+    if (!isAuthenticMetadata({ title: displayTitle, artist, album: albumName || '' })) return this._reject('inauthentic');
 
     const duration = Math.round(Number(durationMs) || 0);
     if (!isValidDuration(duration)) return this._reject('duration');
@@ -790,6 +795,18 @@ export class SqliteCatalog {
     params.push(limit);
 
     return this.db.prepare(query).all(...params);
+  }
+
+  /**
+   * Cheap counts for progress reporting (getStats() aggregates provider links and is slow on large catalogs).
+   */
+  countSummary() {
+    this.stmtCountTracks ??= this.db.prepare('SELECT COUNT(*) AS c FROM tracks');
+    this.stmtCountArtists ??= this.db.prepare('SELECT COUNT(*) AS c FROM artists');
+    return {
+      tracks: Number(this.stmtCountTracks.get().c),
+      artists: Number(this.stmtCountArtists.get().c),
+    };
   }
 
   /**

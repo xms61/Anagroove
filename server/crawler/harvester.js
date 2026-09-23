@@ -1,10 +1,13 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
+import { classifyArtistLanguage } from '../db/languageClassifier.js';
+import { baseTitleKey, isAllowedLanguage, stripVersionTags } from '../db/trackNormalization.js';
+import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 import { isAuthenticCandidate } from './authenticityFilter.js';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
 import { STREAMED_ARTIST_NAMES } from './artistBaseline.js';
 import { logger } from '../logger.js';
 
-// Comprehensive dictionary of 350+ high-frequency music words across decades & languages
+// High-frequency music words (English, plus romanized Japanese/Korean) for broad search sweeps
 export const MUSIC_LEXICON_SEEDS = [
   'love', 'night', 'dream', 'heart', 'world', 'time', 'baby', 'dance', 'fire', 'blue',
   'eyes', 'girl', 'sky', 'light', 'dark', 'rain', 'road', 'home', 'summer', 'river',
@@ -33,7 +36,6 @@ export const MUSIC_LEXICON_SEEDS = [
   'give', 'take', 'keep', 'let', 'make', 'build', 'heal', 'drive', 'ride', 'jump',
   'shake', 'spin', 'turn', 'stop', 'start', 'begin', 'end', 'wait', 'close', 'open',
   'high', 'wild', 'free', 'heavy', 'fast', 'slow', 'sweet', 'sugar', 'honey', 'candy',
-  'amor', 'noche', 'cielo', 'sol', 'luna', 'vida', 'alma', 'corazon', 'sueno', 'fiesta',
   // Expanded Musical, Emotional & Atmospheric Lexicon
   'sing', 'shiver', 'breathe', 'crawl', 'drift', 'float', 'bleed', 'escape', 'fade', 'chase',
   'crash', 'glow', 'heal', 'melt', 'rush', 'sinking', 'surrender', 'tremble', 'wander', 'ignite',
@@ -49,12 +51,9 @@ export const MUSIC_LEXICON_SEEDS = [
   'bass', 'synth', 'treble', 'tempo', 'echo', 'reverb', 'chorus', 'verse', 'harmony', 'symphony',
   'sonata', 'serenade', 'ballad', 'anthem', 'riff', 'solo', 'acoustic', 'electric', 'amplifier', 'vinyl',
   'cassette', 'turntable', 'needle', 'groove', 'speaker', 'headphone', 'frequency', 'vibration', 'static',
-  'bailar', 'fuego', 'cancion', 'beso', 'loco', 'loca', 'mujer', 'hombre', 'playa', 'mar',
-  'solitario', 'estrella', 'esperanza', 'camino', 'reina', 'rey', 'silencio', 'lagrimas',
-  'reve', 'coeur', 'soleil', 'lumiere', 'monde', 'musique', 'danse', 'adieu', 'toujours', 'voyage',
-  'etoile', 'chemin', 'femme', 'voler', 'pleurer', 'chanter', 'esperance',
-  'liebe', 'sonne', 'traum', 'herz', 'welt', 'sturm', 'tanzen', 'atemlos', 'ewigkeit', 'sehnsucht',
-  'tokyo', 'hikari', 'yume', 'sakura', 'kokoro', 'mirai', 'tsuki', 'densetsu', 'seoul', 'sarang'
+  'tokyo', 'hikari', 'yume', 'sakura', 'kokoro', 'mirai', 'tsuki', 'densetsu', 'seoul', 'sarang',
+  'kimi', 'sora', 'natsu', 'koi', 'ai', 'hana', 'shiawase', 'boku', 'tomodachi', 'haru',
+  'saranghae', 'bogoshipda', 'haneul', 'nabi', 'annyeong', 'uri', 'neo', 'baram', 'kkum', 'bom'
 ];
 
 // Curated heritage and genre foundation artists to complement the streaming roster
@@ -112,11 +111,11 @@ export const HERITAGE_ARTISTS = [
   'aespa', 'Red Velvet', 'IU', 'BIGBANG', 'SHINee', 'ENHYPEN', 'TXT', 'ATEEZ',
   'YOASOBI', 'Kenshi Yonezu', 'RADWIMPS', 'King Gnu', 'Official HIGE DANDism', 'Ado', 'LiSA',
   'Eve', 'aimer', 'Vaundy', 'Fujii Kaze', 'Tatsuro Yamashita', 'Miki Matsubara', 'Mariya Takeuchi',
-  'Anri', 'Taeko Onuki',
+  'Anri', 'Taeko Onuki', 'IVE', 'ITZY', '(G)I-DLE', 'NMIXX', 'ILLIT', 'BABYMONSTER', 'NCT 127', 'TREASURE',
+  'Mrs. GREEN APPLE', 'Creepy Nuts', 'Aimyon', 'back number', 'Spitz', 'Mr.Children', 'Hikaru Utada', 'Perfume',
+  'BABYMETAL', 'ONE OK ROCK', 'Kenshi Yonezu', 'Yorushika', 'Zutomayo',
 
-  // Latin / Reggaeton / Bossa Nova / Reggae
-  'Bad Bunny', 'Daddy Yankee', 'Don Omar', 'J Balvin', 'Maluma', 'Ozuna', 'Rauw Alejandro',
-  'Karol G', 'Rosalía', 'Enrique Iglesias', 'Ricky Martin', 'Marc Anthony', 'Luis Fonsi',
+  // Reggae
   'Bob Marley', 'Peter Tosh', 'Jimmy Cliff', 'Steel Pulse', 'UB40', 'Sean Paul', 'Shaggy',
 
   // Jazz / Blues / Country
@@ -139,15 +138,16 @@ export const CURATED_PLAYLIST_SEEDS = [
   '90s hip hop', '2000s rap', 'modern hip hop', 'classic r&b', 'motown essentials',
   'neo soul', 'funk & soul classics', 'disco fever', 'electronic journey', 'classic house',
   'trance anthems', 'techno club', 'indie rock gems', 'shoegaze dream pop', 'post punk essentials',
-  'metal anthems', 'classic country', 'reggae roots', 'latin hits', 'reggaeton classics',
+  'metal anthems', 'classic country', 'reggae roots', 'top japan', 'top south korea',
   'kpop essentials', 'anime openings', 'city pop vibes', 'jazz masters', 'blues legends',
+  'j-pop hits', 'k-pop hits', 'japanese city pop', 'j-rock anthems', 'korean r&b', 'top usa', 'top uk',
   'soundtrack masterpieces', 'acoustic chill', 'road trip anthems', 'party classics', 'all time hits'
 ];
 
 // Cross-product decade & genre query generator
 export const DECADE_GENRE_SEEDS = [];
 const DECADES = ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s'];
-const GENRES = ['rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie', 'metal', 'latin', 'reggae', 'country', 'funk', 'punk'];
+const GENRES = ['rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie', 'metal', 'j-pop', 'reggae', 'country', 'funk', 'punk'];
 for (const d of DECADES) {
   for (const g of GENRES) {
     DECADE_GENRE_SEEDS.push(`${d} ${g}`);
@@ -158,8 +158,8 @@ for (const d of DECADES) {
 export const YEAR_GENRE_SEEDS = [];
 const EXTENDED_GENRES = [
   'rock', 'pop', 'hip hop', 'dance', 'r&b', 'soul', 'jazz', 'electronic', 'indie',
-  'metal', 'latin', 'reggae', 'country', 'funk', 'punk', 'house', 'techno',
-  'blues', 'folk', 'ambient', 'synthwave', 'k-pop', 'afrobeats', 'disco', 'alternative'
+  'metal', 'j-pop', 'reggae', 'country', 'funk', 'punk', 'house', 'techno',
+  'blues', 'folk', 'ambient', 'synthwave', 'k-pop', 'city pop', 'disco', 'alternative'
 ];
 for (let yr = 1960; yr <= 2026; yr++) {
   for (const g of EXTENDED_GENRES) {
@@ -175,14 +175,78 @@ export const BIGRAM_SEEDS = [
   'be', 'ma', 'si', 'om', 'ur', 'ca', 'el', 'ta', 'la', 'ns', 'di', 'fo', 'ho', 'pe', 'ec'
 ];
 
+// Apple Music "most played" charts per storefront: clean, popularity-ranked, original-script titles
+export const APPLE_CHART_STOREFRONTS = ['us', 'gb', 'jp', 'kr'];
+const APPLE_CHART_URL = (storefront, limit) => `https://rss.marketingtools.apple.com/api/v2/${storefront}/music/most-played/${limit}/songs.json`;
+
+function parseReleaseYear(date) {
+  if (!date) return null;
+  const year = parseInt(String(date).slice(0, 4), 10);
+  return Number.isInteger(year) ? year : null;
+}
+
+/**
+ * Maps a Deezer track object onto an upsertTrack payload.
+ * @param {Object} t Deezer track (search, playlist, album or top-tracks payload)
+ * @param {Object} [context] Overrides when the payload lacks album/artist details
+ */
+export function toCatalogCandidate(t, { artistName, album, releaseDate, artistId, fansCount } = {}) {
+  const date = t.release_date || releaseDate || null;
+  const deezerArtistId = t.artist?.id || artistId;
+  return {
+    title: t.title,
+    artist: t.artist?.name || artistName || 'Unknown Artist',
+    isrc: t.isrc || null,
+    album: album ?? t.album?.title ?? '',
+    durationMs: (t.duration || 0) * 1000,
+    releaseYear: parseReleaseYear(date),
+    releaseDate: date,
+    deezerRank: t.rank || null,
+    isExplicit: Boolean(t.explicit_lyrics),
+    provider: 'deezer',
+    providerTrackId: String(t.id),
+    sampleUrl: t.preview,
+    sampleCodec: 'mp3',
+    sampleDurationSec: 30,
+    externalUrl: t.link || null,
+    rawMetadata: {
+      deezerRank: t.rank,
+      artistId: deezerArtistId,
+      albumId: t.album?.id,
+    },
+    artistMetadata: {
+      deezerId: deezerArtistId,
+      ...(fansCount ? { fansCount } : {}),
+    },
+  };
+}
+
 export class MusicHarvester {
-  constructor(catalog = sqliteCatalog) {
+  constructor(catalog = sqliteCatalog, { fetchImpl = politeFetch } = {}) {
     this.catalog = catalog;
+    this.fetch = fetchImpl;
     this.abortRequested = false;
+    this.skippedArtists = 0;
   }
 
   stop() {
     this.abortRequested = true;
+  }
+
+  async _getJson(url, rateLimiter = deezerRateLimiter) {
+    const response = await this.fetch(url, {}, { rateLimiter });
+    if (!response.ok) return null;
+    return response.json();
+  }
+
+  _ingest(tracks, context = {}) {
+    const candidates = [];
+    for (const t of tracks) {
+      if (!isAuthenticCandidate(t)) continue;
+      candidates.push(toCatalogCandidate(t, context));
+    }
+    if (candidates.length === 0) return { inserted: 0, merged: 0 };
+    return this.catalog.upsertBatch(candidates);
   }
 
   /**
@@ -200,56 +264,13 @@ export class MusicHarvester {
       const url = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100&index=${index}`;
 
       try {
-        const response = await politeFetch(url, {}, { rateLimiter: deezerRateLimiter });
-        if (!response.ok) continue;
-
-        const data = await response.json();
+        const data = await this._getJson(url);
         const tracks = data?.data || [];
         if (tracks.length === 0) break;
 
-        const validCandidates = [];
-        for (const t of tracks) {
-          if (!isAuthenticCandidate(t)) continue;
-
-          // Extract year from release_date or fallback
-          let releaseYear = null;
-          if (t.release_date) {
-            const yr = parseInt(t.release_date.slice(0, 4), 10);
-            if (!isNaN(yr) && yr >= 1950 && yr <= 2030) releaseYear = yr;
-          }
-
-          validCandidates.push({
-            title: t.title,
-            artist: t.artist?.name || 'Unknown Artist',
-            isrc: t.isrc || null,
-            album: t.album?.title || '',
-            durationMs: (t.duration || 0) * 1000,
-            releaseYear,
-            releaseDate: t.release_date || null,
-            deezerRank: t.rank || null,
-            isExplicit: Boolean(t.explicit_lyrics),
-            provider: 'deezer',
-            providerTrackId: String(t.id),
-            sampleUrl: t.preview,
-            sampleCodec: 'mp3',
-            sampleDurationSec: 30,
-            externalUrl: t.link || null,
-            rawMetadata: {
-              deezerRank: t.rank,
-              artistId: t.artist?.id,
-              albumId: t.album?.id,
-            },
-            artistMetadata: {
-              deezerId: t.artist?.id,
-            },
-          });
-        }
-
-        if (validCandidates.length > 0) {
-          const res = this.catalog.upsertBatch(validCandidates);
-          harvested += res.inserted;
-          merged += res.merged;
-        }
+        const res = this._ingest(tracks);
+        harvested += res.inserted;
+        merged += res.merged;
 
         if (tracks.length < 100) break; // Reached end of results
       } catch (err) {
@@ -272,61 +293,18 @@ export class MusicHarvester {
     for (const query of queries) {
       if (this.abortRequested) break;
       try {
-        const searchUrl = `https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylistsPerQuery}`;
-        const searchResp = await politeFetch(searchUrl, {}, { rateLimiter: deezerRateLimiter });
-        if (!searchResp.ok) continue;
-
-        const searchJson = await searchResp.json();
+        const searchJson = await this._getJson(`https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylistsPerQuery}`);
         const playlists = searchJson?.data || [];
 
         for (const pl of playlists) {
           if (this.abortRequested) break;
           if (!pl.id) continue;
 
-          const tracksUrl = `https://api.deezer.com/playlist/${pl.id}/tracks?limit=100`;
-          const tracksResp = await politeFetch(tracksUrl, {}, { rateLimiter: deezerRateLimiter });
-          if (!tracksResp.ok) continue;
-
-          const tracksJson = await tracksResp.json();
+          const tracksJson = await this._getJson(`https://api.deezer.com/playlist/${pl.id}/tracks?limit=100`);
           const tracks = tracksJson?.data || [];
-          const validCandidates = [];
-
-          for (const t of tracks) {
-            if (!isAuthenticCandidate(t)) continue;
-
-            let releaseYear = null;
-            if (t.release_date) {
-              const yr = parseInt(t.release_date.slice(0, 4), 10);
-              if (!isNaN(yr) && yr >= 1950 && yr <= 2030) releaseYear = yr;
-            }
-
-            validCandidates.push({
-              title: t.title,
-              artist: t.artist?.name || 'Unknown Artist',
-              isrc: t.isrc || null,
-              album: t.album?.title || '',
-              durationMs: (t.duration || 0) * 1000,
-              releaseYear,
-              releaseDate: t.release_date || null,
-              deezerRank: t.rank || null,
-              isExplicit: Boolean(t.explicit_lyrics),
-              provider: 'deezer',
-              providerTrackId: String(t.id),
-              sampleUrl: t.preview,
-              sampleCodec: 'mp3',
-              sampleDurationSec: 30,
-              externalUrl: t.link || null,
-              artistMetadata: {
-                deezerId: t.artist?.id,
-              },
-            });
-          }
-
-          if (validCandidates.length > 0) {
-            const res = this.catalog.upsertBatch(validCandidates);
-            harvested += res.inserted;
-            merged += res.merged;
-          }
+          const res = this._ingest(tracks);
+          harvested += res.inserted;
+          merged += res.merged;
 
           onPlProgress({ query, playlistTitle: pl.title, tracksFound: tracks.length, harvested, merged });
         }
@@ -340,7 +318,8 @@ export class MusicHarvester {
 
   /**
    * Harvests an artist's discography (top tracks + official albums + album tracks)
-   * and optionally spiders high-fan related artists.
+   * and optionally spiders high-fan related artists. Artists whose top tracks are
+   * not English/Japanese/Korean are skipped before any album requests.
    */
   async harvestArtistDiscography(artistName, { maxAlbums = 8, includeRelated = true } = {}) {
     if (this.abortRequested) return { harvested: 0, merged: 0, relatedArtists: [] };
@@ -351,11 +330,7 @@ export class MusicHarvester {
 
     try {
       // 1. Find artist on Deezer and pick highest fan-count authentic artist
-      const searchUrl = `https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`;
-      const searchResp = await politeFetch(searchUrl, {}, { rateLimiter: deezerRateLimiter });
-      if (!searchResp.ok) return { harvested: 0, merged: 0, relatedArtists: [] };
-
-      const searchJson = await searchResp.json();
+      const searchJson = await this._getJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`);
       const rawList = searchJson?.data || [];
       if (rawList.length === 0) return { harvested: 0, merged: 0, relatedArtists: [] };
 
@@ -367,118 +342,48 @@ export class MusicHarvester {
 
       const artistId = artistData.id;
       const officialArtistName = artistData.name || artistName;
+      const artistContext = { artistName: officialArtistName, artistId, fansCount: artistData.nb_fan || 0 };
 
       // 2. Fetch artist's Top 50 Tracks
-      const topUrl = `https://api.deezer.com/artist/${artistId}/top?limit=50`;
-      const topResp = await politeFetch(topUrl, {}, { rateLimiter: deezerRateLimiter });
-      if (topResp.ok) {
-        const topJson = await topResp.json();
-        const topTracks = topJson?.data || [];
-        const candidates = [];
+      const topJson = await this._getJson(`https://api.deezer.com/artist/${artistId}/top?limit=50`);
+      const topTracks = topJson?.data || [];
 
-        for (const t of topTracks) {
-          if (!isAuthenticCandidate(t)) continue;
-          candidates.push({
-            title: t.title,
-            artist: officialArtistName,
-            isrc: t.isrc || null,
-            album: t.album?.title || '',
-            durationMs: (t.duration || 0) * 1000,
-            releaseYear: null,
-            deezerRank: t.rank || null,
-            isExplicit: Boolean(t.explicit_lyrics),
-            provider: 'deezer',
-            providerTrackId: String(t.id),
-            sampleUrl: t.preview,
-            sampleCodec: 'mp3',
-            sampleDurationSec: 30,
-            externalUrl: t.link || null,
-            artistMetadata: {
-              deezerId: artistId,
-              fansCount: artistData.nb_fan || 0,
-            },
-          });
-        }
-
-        if (candidates.length > 0) {
-          const res = this.catalog.upsertBatch(candidates);
-          totalHarvested += res.inserted;
-          totalMerged += res.merged;
-        }
+      // Skip out-of-scope artists early (saves the album and related-artist requests)
+      const { language } = classifyArtistLanguage({ titles: topTracks.map(t => t.title), name: officialArtistName });
+      if (language && !isAllowedLanguage(language)) {
+        this.skippedArtists++;
+        logger.info('harvester', `Skipping ${officialArtistName}: catalog language "${language}" is outside en/ja/ko`);
+        return { harvested: 0, merged: 0, relatedArtists: [], skipped: true };
       }
 
+      const topRes = this._ingest(topTracks, { ...artistContext, album: undefined });
+      totalHarvested += topRes.inserted;
+      totalMerged += topRes.merged;
+
       // 3. Fetch artist's studio albums
-      const albumsUrl = `https://api.deezer.com/artist/${artistId}/albums?limit=25`;
-      const albumsResp = await politeFetch(albumsUrl, {}, { rateLimiter: deezerRateLimiter });
-      if (albumsResp.ok) {
-        const albumsJson = await albumsResp.json();
-        const albums = albumsJson?.data || [];
-        let albumCount = 0;
+      const albumsJson = await this._getJson(`https://api.deezer.com/artist/${artistId}/albums?limit=25`);
+      const albums = albumsJson?.data || [];
+      let albumCount = 0;
 
-        for (const album of albums) {
-          if (this.abortRequested || albumCount >= maxAlbums) break;
-          // Skip compilation or tribute albums
-          if (!album.id || /tribute|karaoke|live|cover/i.test(album.title || '')) continue;
-          albumCount++;
+      for (const album of albums) {
+        if (this.abortRequested || albumCount >= maxAlbums) break;
+        // Skip compilation, tribute and live albums
+        if (!album.id || /tribute|karaoke|live|cover/i.test(album.title || '')) continue;
+        albumCount++;
 
-          const tracksUrl = `https://api.deezer.com/album/${album.id}/tracks?limit=50`;
-          const tracksResp = await politeFetch(tracksUrl, {}, { rateLimiter: deezerRateLimiter });
-          if (!tracksResp.ok) continue;
-
-          const tracksJson = await tracksResp.json();
-          const albumTracks = tracksJson?.data || [];
-          const candidates = [];
-
-          let albumYear = null;
-          if (album.release_date) {
-            const yr = parseInt(album.release_date.slice(0, 4), 10);
-            if (!isNaN(yr) && yr >= 1950 && yr <= 2030) albumYear = yr;
-          }
-
-          for (const t of albumTracks) {
-            if (!isAuthenticCandidate(t)) continue;
-            candidates.push({
-              title: t.title,
-              artist: t.artist?.name || officialArtistName,
-              isrc: t.isrc || null,
-              album: album.title || '',
-              durationMs: (t.duration || 0) * 1000,
-              releaseYear: albumYear,
-              releaseDate: album.release_date || null,
-              deezerRank: t.rank || null,
-              isExplicit: Boolean(t.explicit_lyrics),
-              provider: 'deezer',
-              providerTrackId: String(t.id),
-              sampleUrl: t.preview,
-              sampleCodec: 'mp3',
-              sampleDurationSec: 30,
-              externalUrl: t.link || null,
-              artistMetadata: {
-                deezerId: artistId,
-                fansCount: artistData.nb_fan || 0,
-              },
-            });
-          }
-
-          if (candidates.length > 0) {
-            const res = this.catalog.upsertBatch(candidates);
-            totalHarvested += res.inserted;
-            totalMerged += res.merged;
-          }
-        }
+        const tracksJson = await this._getJson(`https://api.deezer.com/album/${album.id}/tracks?limit=50`);
+        const albumTracks = tracksJson?.data || [];
+        const res = this._ingest(albumTracks, { ...artistContext, album: album.title || '', releaseDate: album.release_date || null });
+        totalHarvested += res.inserted;
+        totalMerged += res.merged;
       }
 
       // 4. Spider related artists with >= 100k fans
       if (includeRelated) {
-        const relatedUrl = `https://api.deezer.com/artist/${artistId}/related?limit=8`;
-        const relatedResp = await politeFetch(relatedUrl, {}, { rateLimiter: deezerRateLimiter });
-        if (relatedResp.ok) {
-          const relatedJson = await relatedResp.json();
-          const related = relatedJson?.data || [];
-          for (const rel of related) {
-            if (rel.name && (rel.nb_fan || 0) >= 100000) {
-              relatedArtists.push(rel.name);
-            }
+        const relatedJson = await this._getJson(`https://api.deezer.com/artist/${artistId}/related?limit=8`);
+        for (const rel of relatedJson?.data || []) {
+          if (rel.name && (rel.nb_fan || 0) >= 100000) {
+            relatedArtists.push(rel.name);
           }
         }
       }
@@ -490,77 +395,74 @@ export class MusicHarvester {
   }
 
   /**
-   * Cross-references tracks in the SQLite database with Apple Music / iTunes to enrich with AAC samples.
-   * Only cross-references tracks that currently lack an iTunes sample.
+   * Ingests Apple Music "most played" charts. Each chart entry is matched to its Deezer
+   * track (same artist + same base title) so the catalog gets a Deezer id, rank and preview.
    */
-  async crossReferenceWithItunes({ batchLimit = 20 } = {}) {
-    const candidates = this.catalog.db.prepare(`
-      SELECT t.id, t.canonical_title, t.display_title, a.display_name as artist, t.duration_ms
-      FROM tracks t
-      JOIN artists a ON t.artist_id = a.id
-      WHERE t.id NOT IN (
-        SELECT track_id FROM track_samples WHERE provider = 'itunes'
-      )
-      LIMIT ?
-    `).all(batchLimit);
+  async harvestAppleCharts({ storefronts = APPLE_CHART_STOREFRONTS, limit = 100 } = {}) {
+    let harvested = 0;
+    let merged = 0;
+    let unmatched = 0;
 
-    let enriched = 0;
-
-    for (const track of candidates) {
+    for (const storefront of storefronts) {
       if (this.abortRequested) break;
-      const query = `${track.artist} ${track.display_title}`;
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=5`;
-
+      let entries;
       try {
-        const resp = await politeFetch(url, {}, { rateLimiter: itunesRateLimiter });
-        if (!resp.ok) continue;
-
-        const json = await resp.json();
-        const results = json?.results || [];
-
-        for (const it of results) {
-          if (!isAuthenticCandidate(it)) continue;
-
-          // Verify acoustic duration window: must be within 3 seconds
-          const itunesDurationMs = it.trackTimeMillis || 0;
-          if (Math.abs(itunesDurationMs - track.duration_ms) <= 3000) {
-            // High confidence 100% match! Attach iTunes AAC sample
-            this.catalog.upsertTrack({
-              title: it.trackName,
-              artist: it.artistName,
-              album: it.collectionName,
-              durationMs: itunesDurationMs,
-              provider: 'itunes',
-              providerTrackId: String(it.trackId),
-              sampleUrl: it.previewUrl,
-              sampleCodec: 'aac',
-              sampleDurationSec: 30,
-              externalUrl: it.trackViewUrl,
-              artistMetadata: {
-                itunesArtistId: it.artistId,
-              },
-            });
-            enriched++;
-            break; // Found the matching track
-          }
-        }
+        const feed = await this._getJson(APPLE_CHART_URL(storefront, limit), itunesRateLimiter);
+        entries = feed?.feed?.results || [];
       } catch (err) {
-        logger.warn('harvester', `iTunes cross-reference failed for "${query}": ${err.message}`);
+        logger.warn('harvester', `Apple chart ${storefront} failed: ${err.message}`);
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (this.abortRequested) break;
+        const match = await this._findDeezerTrack(entry.artistName, entry.name);
+        if (!match) {
+          unmatched++;
+          continue;
+        }
+        const res = this._ingest([match]);
+        harvested += res.inserted;
+        merged += res.merged;
       }
     }
 
-    return { enriched };
+    return { harvested, merged, unmatched };
+  }
+
+  /** Deezer track whose artist and base title both match exactly, or null. */
+  async _findDeezerTrack(artistName, title) {
+    if (!artistName || !title) return null;
+    const primaryArtist = splitPrimaryArtist(artistName);
+    // Plain query: Deezer's advanced artist:"…" filter currently returns unrelated or no results
+    const query = `${primaryArtist} ${stripVersionTags(title)}`.replace(/"/g, '');
+    try {
+      const data = await this._getJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=25`);
+      // Bands with "&" in the name ("Mumford & Sons") match on the full credit, duets on the primary artist
+      const wantedArtists = new Set([canonicalArtistKey(artistName), canonicalArtistKey(primaryArtist)]);
+      const wantedTitle = baseTitleKey(title);
+      return (data?.data || []).find(t =>
+        wantedArtists.has(canonicalArtistKey(t.artist?.name || '')) && baseTitleKey(t.title || '') === wantedTitle
+      ) || null;
+    } catch (err) {
+      logger.warn('harvester', `Deezer match failed for ${artistName} - ${title}: ${err.message}`);
+      return null;
+    }
   }
 
   /**
    * Executes an autonomous catalog harvest across all multi-provider vectors:
+   * 0. Apple Music charts (US, UK, Japan, Korea)
    * 1. Curated Playlists Spider
    * 2. Decade & Genre Matrix Sweep
    * 3. Foundation Artists & Related Artists Discography Spider
    * 4. High-Frequency Lexicon Keywords
+   * 5. Year x Genre matrix
+   * 6. Bigram sweep
    */
   async runFullHarvest({
     targetTracks = 100000,
+    chartsLimit = 100,
     playlistsLimit = 40,
     decadesLimit = 105,
     artistsLimit = 150,
@@ -570,28 +472,40 @@ export class MusicHarvester {
     logger.info('harvester', `Starting massive catalog harvest targeting ${targetTracks.toLocaleString()} tracks...`);
 
     const stats = {
+      chartTracksMatched: 0,
       playlistsCrawled: 0,
       decadeQueriesCrawled: 0,
       artistsCrawled: 0,
+      artistsSkipped: 0,
       lexiconWordsCrawled: 0,
       totalInserted: 0,
       totalMerged: 0,
     };
 
-    const isTargetReached = () => this.catalog.getStats().tracks >= targetTracks;
+    // COUNT(*) only: getStats() aggregates provider links and is too heavy to call per query
+    const currentStats = () => ({ ...this.catalog.countSummary(), rejections: this.catalog.getRejectionStats() });
+    const isTargetReached = () => this.catalog.countSummary().tracks >= targetTracks;
+    const report = (currentAction) => onProgress({ ...stats, artistsSkipped: this.skippedArtists, currentAction, currentStats: currentStats() });
+
+    // Vector 0: Apple Music charts
+    if (chartsLimit > 0 && !isTargetReached() && !this.abortRequested) {
+      const res = await this.harvestAppleCharts({ limit: chartsLimit });
+      stats.chartTracksMatched = res.harvested + res.merged;
+      stats.totalInserted += res.harvested;
+      stats.totalMerged += res.merged;
+      report(`Apple charts: ${res.harvested} new, ${res.merged} merged, ${res.unmatched} unmatched`);
+    }
 
     // Vector 1: Curated Genre & Historical Playlists Spidering
     if (playlistsLimit > 0 && !isTargetReached() && !this.abortRequested) {
       const playlistsToCrawl = CURATED_PLAYLIST_SEEDS.slice(0, playlistsLimit);
       for (const plQuery of playlistsToCrawl) {
         if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestCuratedPlaylists([plQuery], 3, (p) => {
-          onProgress({ ...stats, currentAction: `Playlist: ${p.query}`, currentStats: this.catalog.getStats() });
-        });
+        const res = await this.harvestCuratedPlaylists([plQuery], 3, (p) => report(`Playlist: ${p.query}`));
         stats.playlistsCrawled++;
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
-        onProgress({ ...stats, currentAction: `Completed playlist: "${plQuery}"`, currentStats: this.catalog.getStats() });
+        report(`Completed playlist: "${plQuery}"`);
       }
     }
 
@@ -604,7 +518,7 @@ export class MusicHarvester {
         stats.decadeQueriesCrawled++;
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
-        onProgress({ ...stats, currentAction: `Decade/Genre: "${query}"`, currentStats: this.catalog.getStats() });
+        report(`Decade/Genre: "${query}"`);
       }
     }
 
@@ -621,16 +535,14 @@ export class MusicHarvester {
         stats.totalMerged += res.merged;
 
         // Queue newly discovered authentic related artists
-        if (res.relatedArtists && res.relatedArtists.length > 0) {
-          for (const rel of res.relatedArtists) {
-            if (!visitedArtists.has(rel.toLowerCase())) {
-              visitedArtists.add(rel.toLowerCase());
-              artistQueue.push(rel);
-            }
+        for (const rel of res.relatedArtists || []) {
+          if (!visitedArtists.has(rel.toLowerCase())) {
+            visitedArtists.add(rel.toLowerCase());
+            artistQueue.push(rel);
           }
         }
 
-        onProgress({ ...stats, currentAction: `Artist: ${artist}`, currentStats: this.catalog.getStats() });
+        report(`Artist: ${artist}${res.skipped ? ' (skipped: out-of-scope language)' : ''}`);
       }
     }
 
@@ -643,7 +555,7 @@ export class MusicHarvester {
         stats.lexiconWordsCrawled++;
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
-        onProgress({ ...stats, currentAction: `Vocabulary: "${word}"`, currentStats: this.catalog.getStats() });
+        report(`Vocabulary: "${word}"`);
       }
     }
 
@@ -655,7 +567,7 @@ export class MusicHarvester {
         stats.yearGenreQueriesCrawled = (stats.yearGenreQueriesCrawled || 0) + 1;
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
-        onProgress({ ...stats, currentAction: `Year/Genre: "${query}"`, currentStats: this.catalog.getStats() });
+        report(`Year/Genre: "${query}"`);
       }
     }
 
@@ -667,12 +579,18 @@ export class MusicHarvester {
         stats.bigramsCrawled = (stats.bigramsCrawled || 0) + 1;
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
-        onProgress({ ...stats, currentAction: `Bigram: "${bigram}"`, currentStats: this.catalog.getStats() });
+        report(`Bigram: "${bigram}"`);
       }
     }
 
+    stats.artistsSkipped = this.skippedArtists;
     return stats;
   }
+}
+
+/** First credited artist of an Apple chart entry ("A & B", "A, B", "A feat. B" -> "A"). */
+function splitPrimaryArtist(name) {
+  return String(name).split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\bx\b|\bwith\b)\s*/i)[0].trim() || String(name).trim();
 }
 
 export const musicHarvester = new MusicHarvester();

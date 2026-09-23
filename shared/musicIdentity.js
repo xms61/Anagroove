@@ -25,7 +25,9 @@ export function canonicalMusicKey(value) {
     .replace(/&/g, ' and ')
     .replace(/\+/g, ' and ')
     .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
+    // Fold accents on Latin letters only: kana dakuten (ド vs ト) and hangul are meaningful
+    .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+    .normalize('NFC')
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
@@ -47,7 +49,7 @@ export function blacklistIdentityKey(item) {
     return JSON.stringify([item.type, 'provider', provider, providerId]);
   }
 
-  const canonicalKey = item.canonicalKey || canonicalMusicKey(item.name);
+  const canonicalKey = canonicalMusicKey(item.name) || item.canonicalKey;
   return JSON.stringify([item.type, 'generic', canonicalKey]);
 }
 
@@ -108,7 +110,7 @@ export function blacklistMatchesTrack(blacklist, track) {
     }
 
     const candidateKey = item.type === 'artist' ? artistKey : titleKey;
-    const blacklistKey = item.canonicalKey || canonicalMusicKey(item.name);
+    const blacklistKey = canonicalMusicKey(item.name) || item.canonicalKey;
     return Boolean(candidateKey && blacklistKey && (
       candidateKey === blacklistKey ||
       candidateKey.includes(blacklistKey) ||

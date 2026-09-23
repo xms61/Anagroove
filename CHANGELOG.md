@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.0] - 2026-09-23
+
+### Added
+- **Language classifier** (`server/db/languageClassifier.js`), built on the ELD n-gram detector (new dependency `eld`, Apache-2.0, no dependencies of its own):
+  - Script rules for CJK text.
+  - A per-artist vote over each artist's catalog titles and ISRC registrants (`artists.primary_language`).
+  - Title-level detection with word-count safeguards.
+  - Artist names are never text-classified.
+- **Schema v3** (`artists.primary_language`, `artists.enriched_at`, `tracks.enriched_at`, `tracks.itunes_checked_at`). The migration recomputes every artist and track language (13 s on the 498k-track catalog).
+- **Catalog enrichment** (`npm run catalog:enrich`, `server/crawler/enricher.js`), resumable, with per-step limits:
+  - Deezer `/track` → ISRC, release date, rank.
+  - `/artist` + `/album` → fans, genres.
+  - A strict iTunes cross-reference that attaches to existing rows and never creates tracks.
+  - A local language recompute.
+  - Rows are stamped when tried, so runs never loop. ISRCs owned by another row are reported as duplicates instead of being overwritten.
+- **Apple Music charts** (US, UK, Japan, Korea) as the first crawl vector, matched to exact Deezer tracks. New `crawl --charts=N` flag. `npm run catalog:genres` now runs the curated genre script.
+- **Shared authenticity rules** (`server/policy/authenticityRules.js`) used by the crawler filter, `upsertTrack` (new `inauthentic` rejection), and song selection. Adds audiobook/radio-play detection ("Kapitel 12 - …", Gruselkabinett, Hörspiel, ungekürzt).
+- 39 new tests: language classifier, identity keys, authenticity rules, harvester charts/skip (mocked network), enrichment steps, and the v3 key recompute.
+
+### Fixed
+- **English songs tagged as German/Spanish by title regexes:** "Die With A Smile", "Die For You", "Die Young", every King Von track (artist name matched "von"), and "Viva La Vida" were tagged `de`/`es`. Under the admission policy they would have been rejected or deleted. Real Spanish titles like "Te Quería Ver" slipped through as English.
+- **Kana dakuten were stripped from identity keys** (アイドル → アイトル, ご → こ), so different Japanese songs and artists could collide. Hangul was decomposed into jamo. Keys now fold accents on Latin letters only. Migration v3 recomputes stored artist and title keys, and blacklist matching recomputes keys from stored names.
+- **Deezer's advanced `artist:"…" track:"…"` search** returns unrelated or empty results, which silently broke the preview resolver's search fallback. Both it and chart matching now use plain queries with strict artist + base-title matching.
+
+### Changed
+- The harvester uses one `toCatalogCandidate` mapper instead of four copies, and takes an injectable fetch. Progress uses `countSummary()` (two `COUNT(*)`) instead of `getStats()` on every query.
+- Seeds focus on English/Japanese/Korean: Spanish/French/German lexicon words and Latin/reggaeton playlists are removed, and Japanese/Korean artists, playlists and romanized words are added. Out-of-scope artists are skipped after one request.
+- The iTunes cross-reference moved from the harvester into the enricher, with a strict match.
+- Docs: `CRAWLER.md`, `CATALOG_DB.md`, `TRACK_SELECTION.md`, `SCRIPTS_CLI.md`, `README.md`.
+
+---
+
 ## [1.14.0] - 2026-09-23
 
 ### Added
