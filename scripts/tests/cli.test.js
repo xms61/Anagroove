@@ -44,7 +44,7 @@ test('flags swallowed by npm (no "--") are reported with the fix', () => {
 
 test('crawl plan: only named vectors run, --all uses the defaults', () => {
   assert.deepEqual(buildCrawlPlan(['--artists=250']), {
-    status: false, targetTracks: 500000, charts: 0, playlists: 0, decades: 0, artists: 250, lexicon: 0,
+    status: false, targetTracks: 500000, charts: 0, playlists: 0, decades: 0, cjk: 0, artists: 250, lexicon: 0,
   });
   assert.deepEqual(buildCrawlPlan(['--all', '--target=1000']), { status: false, targetTracks: 1000, ...DEFAULT_VECTOR_LIMITS });
   assert.equal(buildCrawlPlan(['--playlists-only']).playlists, DEFAULT_VECTOR_LIMITS.playlists);
