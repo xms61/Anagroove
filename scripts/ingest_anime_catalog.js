@@ -5,6 +5,7 @@ import { AnimeCatalog } from '../server/db/animeCatalog.js';
 import { scanSourceOggFiles, generateSamplesForFile } from './generate_anime_samples.js';
 import { normalizeAnimeSlugKey } from './sync_anime_metadata.js';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -198,10 +199,11 @@ export async function ingestAnimeCatalog({
   return stats;
 }
 
-if (process.argv[1] && process.argv[1].endsWith('ingest_anime_catalog.js')) {
-  const genSamples = process.argv.includes('--generate-samples');
-  const limitArg = process.argv.find(a => a.startsWith('--limit='));
-  const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
+if (import.meta.main) {
+  const { genSamples, limit } = parseOrExit(() => {
+    const values = parseFlags({ 'generate-samples': { type: 'boolean' }, limit: { type: 'string' } });
+    return { genSamples: Boolean(values['generate-samples']), limit: intFlag(values, 'limit') ?? null };
+  }, 'npm run anime:ingest -- [--generate-samples] [--limit=N]');
 
   ingestAnimeCatalog({ generateSamples: genSamples, limit })
     .then(() => process.exit(0))

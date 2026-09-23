@@ -16,4 +16,3 @@ onShutdown('user-store', () => peek()?.flushSync());
 
 /** @type {UserStore} */
 export const db = instance;
-export const peekUserStore = peek;

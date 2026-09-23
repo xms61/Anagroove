@@ -1,23 +1,21 @@
 #!/usr/bin/env node
 
-/**
- * Backfill Anime Cover Images
- * Queries AniList GraphQL in batches and caches cover image URLs into anime_catalog.sqlite
- *
- * Usage:
- *   node scripts/backfill_anime_images.js [--limit=100] [--all]
- */
-
 import { animeCatalog } from '../server/db/animeCatalog.js';
 import { resolveAnimeCoverImages } from '../server/services/animeImageService.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+
+const USAGE = `
+Caches AniList cover image URLs into anime_catalog.sqlite.
+  npm run anime:images -- --limit=100      up to 100 series (default)
+  npm run anime:images -- --all            every series without a cover`;
 
 async function main() {
-  const args = process.argv.slice(2);
-  const limitArg = args.find(a => a.startsWith('--limit='));
-  const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : 100;
-  const isAll = args.includes('--all');
+  const { isAll, limit } = parseOrExit(() => {
+    const values = parseFlags({ limit: { type: 'string' }, all: { type: 'boolean' } });
+    return { isAll: Boolean(values.all), limit: intFlag(values, 'limit') ?? 100 };
+  }, USAGE);
 
-  console.log(`🖼️ Starting anime cover image backfill (limit: ${isAll ? 'ALL' : limit})...`);
+  console.log(`Starting anime cover image backfill (limit: ${isAll ? 'all' : limit})...`);
 
   // Find distinct anime needing cover art
   const sql = `

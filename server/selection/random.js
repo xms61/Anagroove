@@ -41,8 +41,3 @@ export function weightedOrder(items, weightOf, rng = Math.random) {
     .sort((x, y) => y.key - x.key)
     .map(entry => entry.item);
 }
-
-/** Uniform shuffle with the given generator. */
-export function shuffleWith(items, rng = Math.random) {
-  return weightedOrder(items, () => 1, rng);
-}

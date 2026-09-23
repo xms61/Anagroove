@@ -3,6 +3,7 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -175,9 +176,11 @@ export async function generateAllSamples({
   return { processed, totalSamplesGenerated };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('generate_anime_samples.js')) {
-  const limitArg = process.argv.find(a => a.startsWith('--limit='));
-  const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
+if (import.meta.main) {
+  const limit = parseOrExit(
+    () => intFlag(parseFlags({ limit: { type: 'string' } }), 'limit') ?? null,
+    'npm run anime:samples -- [--limit=N]   20 s FFmpeg clips for up to N themes (default: all)'
+  );
 
   generateAllSamples({ limit })
     .then(() => process.exit(0))

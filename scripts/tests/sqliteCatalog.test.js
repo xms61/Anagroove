@@ -14,16 +14,6 @@ import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../../server/db/ca
 import { DatabaseSync } from 'node:sqlite';
 import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.js';
 import { TokenBucketRateLimiter } from '../../server/crawler/rateLimiter.js';
-import {
-  MusicHarvester,
-  CURATED_PLAYLIST_SEEDS,
-  DECADE_GENRE_SEEDS,
-  YEAR_GENRE_SEEDS,
-  BIGRAM_SEEDS,
-  MUSIC_LEXICON_SEEDS,
-  FOUNDATION_ARTISTS,
-} from '../../server/crawler/harvester.js';
-import { STREAMED_ARTISTS, STREAMED_ARTIST_NAMES } from '../../server/crawler/artistBaseline.js';
 
 test('SQLite music catalog, authenticity filter, rate limiter, schema v2 & admission policy', async () => {
   // 1. Authenticity Filter Tests
@@ -51,23 +41,8 @@ test('SQLite music catalog, authenticity filter, rate limiter, schema v2 & admis
   assert(normalizeDedupeTitle('Stayin Alive (Radio Edit)') === 'stayinalive', 'Normalizes title stripping radio edit suffix');
   assert(normalizeDedupeArtist('The Beatles') === 'the beatles', 'Normalizes artist canonical identity');
 
-  // 4. Multi-Vector Catalog Harvester Seeds Tests
-  assert(CURATED_PLAYLIST_SEEDS.length >= 35, 'Curated playlist seeds catalog contains >= 35 high-yield queries');
-  assert(DECADE_GENRE_SEEDS.length === 105, 'Decade x Genre matrix contains exactly 105 combinations (7 decades x 15 genres)');
-  assert(YEAR_GENRE_SEEDS.length >= 1500, 'Year x Genre matrix contains >= 1500 combinations');
-  assert(BIGRAM_SEEDS.length >= 50, 'Bigram seeds roster contains >= 50 high-frequency bigrams');
-  assert(MUSIC_LEXICON_SEEDS.length >= 250, 'Music lexicon contains >= 250 high-frequency seeds');
-  assert(STREAMED_ARTISTS.length === 500, 'Streamed artists dataset loads all 500 most-streamed Spotify artists');
-  assert(STREAMED_ARTIST_NAMES[0] === 'Drake', 'First streamed artist is Drake ordered by total streams');
-  assert((STREAMED_ARTISTS[0]?.totalStreams || 0) > 100000, 'Artist metadata contains numeric stream counts');
-  assert(FOUNDATION_ARTISTS.length >= 500, 'Foundation artists roster incorporates 500 most-streamed baseline');
-  assert(FOUNDATION_ARTISTS.includes('Taylor Swift') && FOUNDATION_ARTISTS.includes('Queen'), 'Foundation roster contains modern streaming giants and heritage icons');
-
   // 5. In-Memory SQLite Catalog Tests
   const memCatalog = new SqliteCatalog(':memory:');
-  const harvester = new MusicHarvester(memCatalog);
-  assert(typeof harvester.harvestCuratedPlaylists === 'function', 'Harvester defines harvestCuratedPlaylists method');
-  assert(typeof harvester.runFullHarvest === 'function', 'Harvester defines runFullHarvest method');
   const initialStats = memCatalog.getStats();
   assert(initialStats.tracks === 0 && initialStats.artists === 0, 'Initializes empty in-memory catalog');
 
@@ -155,10 +130,9 @@ test('SQLite music catalog, authenticity filter, rate limiter, schema v2 & admis
   ]);
   assert(batchRes.inserted === 2 && batchRes.total === 2, 'Batch transaction cleanly inserts multiple tracks');
 
-  // Random Playable Track Query Test
-  const randomPlayable = memCatalog.getRandomPlayableTracks({ count: 5, yearRange: { start: 2000, end: 2015 } });
-  assert(randomPlayable.length >= 2, 'Queries random playable tracks within release year range');
-  assert(randomPlayable.every(t => t.sample_url && t.release_year >= 2000 && t.release_year <= 2015), 'All returned tracks have verified samples and match year bounds');
+  const inRange = memCatalog.sampleCatalogTracks({ yearRange: { start: 2000, end: 2015 }, start: 0 });
+  assert.ok(inRange.length >= 2);
+  assert.ok(inRange.every(t => t.release_year >= 2000 && t.release_year <= 2015));
 
   // Schema v2: admission policy, Unicode base titles, 0-100 popularity, trigram FTS
 
@@ -199,8 +173,8 @@ test('SQLite music catalog, authenticity filter, rate limiter, schema v2 & admis
 
   const ftsHits = memCatalog.db.prepare('SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?').all('"駆ける"');
   assert(ftsHits.length === 1 && ftsHits[0].rowid === jaTrack.trackId, 'Trigram FTS finds a Japanese substring');
-  const themed = memCatalog.searchCatalogByTheme({ ftsQuery: '"lucky"', allowSampleless: true, limit: 5 });
-  assert(themed.some(t => t.title.startsWith('Get Lucky')), 'searchCatalogByTheme uses the rebuilt FTS index');
+  const themed = memCatalog.sampleCatalogTracks({ ftsQuery: '"lucky"', start: 0 });
+  assert.ok(themed.some(t => t.title.startsWith('Get Lucky')), 'a theme query finds the title through FTS or LIKE');
   memCatalog.db.prepare('DELETE FROM tracks WHERE id = ?').run(jaTrack.trackId);
   assert(memCatalog.db.prepare('SELECT COUNT(*) AS c FROM tracks_fts WHERE tracks_fts MATCH ?').get('"駆ける"').c === 0, 'FTS trigger removes deleted tracks');
   const ftsCount = memCatalog.db.prepare('SELECT COUNT(*) AS c FROM tracks_fts').get().c;

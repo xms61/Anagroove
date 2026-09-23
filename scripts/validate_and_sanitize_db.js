@@ -1,21 +1,4 @@
 #!/usr/bin/env node
-/**
- * Catalog validation, cleanup and CI gate.
- *
- *   npm run db:validate                  # diagnostics + cleanup dry run + gate, writes reports/database_validation_report.md
- *   npm run db:sanitize                  # backup (VACUUM INTO), apply the cleanup, ANALYZE, checkpoint, VACUUM
- *   npm run db:validate -- --ci          # exit 1 unless every gate check passes
- *
- * Flags:
- *   --db=path                   catalog file (default: server/data/catalog.sqlite)
- *   --steps=text,policy,...     cleanup steps to run (default: all, see catalogCleanup.CLEANUP_STEPS)
- *   --no-backup                 --fix without the VACUUM INTO backup
- *   --no-vacuum                 --fix without the final VACUUM
- *   --min-year-coverage=0.95    gate threshold (0-1)
- *   --min-isrc-coverage=0.95    gate threshold (0-1)
- *   --no-report                 skip the markdown report
- *   --json                      print the full result as JSON
- */
 import fs from 'fs';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
@@ -25,21 +8,55 @@ import { CatalogValidator } from '../server/db/catalogValidator.js';
 import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup } from '../server/db/catalogCleanup.js';
 import { DEFAULT_GATE_THRESHOLDS, evaluateCatalogGate } from '../server/db/catalogGate.js';
 import { LATEST_CATALOG_VERSION, runCatalogMigrations } from '../server/db/catalogMigrations.js';
+import { listFlag, numberFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const args = process.argv.slice(2);
-const flag = (name) => args.includes(`--${name}`);
-const option = (name) => args.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const USAGE = `
+Catalog validation, cleanup and CI gate.
+
+  npm run db:validate                  diagnostics + cleanup dry run + gate, writes reports/database_validation_report.md
+  npm run db:sanitize                  backup (VACUUM INTO), apply the cleanup, ANALYZE, checkpoint, VACUUM
+  npm run db:validate -- --ci          exit 1 unless every gate check passes
+
+Flags (after "--"):
+  --db=path                   catalog file (default: server/data/catalog.sqlite)
+  --steps=a,b                 cleanup steps to run (default: all): ${CLEANUP_STEPS.join(', ')}
+  --no-backup                 --fix without the VACUUM INTO backup
+  --no-vacuum                 --fix without the final VACUUM
+  --min-year-coverage=0.95    gate threshold (0-1)
+  --min-isrc-coverage=0.95    gate threshold (0-1)
+  --no-report                 skip the markdown report
+  --json                      print the full result as JSON`;
+
+const OPTIONS = {
+  fix: { type: 'boolean' },
+  ci: { type: 'boolean' },
+  json: { type: 'boolean' },
+  'no-backup': { type: 'boolean' },
+  'no-vacuum': { type: 'boolean' },
+  'no-report': { type: 'boolean' },
+  db: { type: 'string' },
+  steps: { type: 'string' },
+  'min-year-coverage': { type: 'string' },
+  'min-isrc-coverage': { type: 'string' },
+};
+const flags = parseOrExit(() => {
+  const values = parseFlags(OPTIONS);
+  return {
+    ...values,
+    steps: listFlag(values, 'steps', CLEANUP_STEPS) ?? [...CLEANUP_STEPS],
+    minYearCoverage: numberFlag(values, 'min-year-coverage') ?? DEFAULT_GATE_THRESHOLDS.minYearCoverage,
+    minIsrcCoverage: numberFlag(values, 'min-isrc-coverage') ?? DEFAULT_GATE_THRESHOLDS.minIsrcCoverage,
+  };
+}, USAGE);
+const flag = (name) => Boolean(flags[name]);
 
 const shouldFix = flag('fix');
 const ciMode = flag('ci');
-const dbPath = path.resolve(option('db') || path.join(DATA_DIR, 'catalog.sqlite'));
-const steps = option('steps') ? option('steps').split(',').map(s => s.trim()).filter(Boolean) : [...CLEANUP_STEPS];
-const thresholds = {
-  minYearCoverage: Number(option('min-year-coverage') ?? DEFAULT_GATE_THRESHOLDS.minYearCoverage),
-  minIsrcCoverage: Number(option('min-isrc-coverage') ?? DEFAULT_GATE_THRESHOLDS.minIsrcCoverage),
-};
+const dbPath = path.resolve(flags.db || path.join(DATA_DIR, 'catalog.sqlite'));
+const steps = flags.steps;
+const thresholds = { minYearCoverage: flags.minYearCoverage, minIsrcCoverage: flags.minIsrcCoverage };
 
 function timestamp() {
   return new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);

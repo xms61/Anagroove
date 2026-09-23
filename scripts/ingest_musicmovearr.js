@@ -6,23 +6,48 @@ import zlib from 'zlib';
 import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.js';
 import { normalizePopularity } from '../server/db/trackNormalization.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
-const args = process.argv.slice(2);
+const USAGE = `
+Stream-ingests MusicMoveArr dumps (one source per run):
+  node scripts/ingest_musicmovearr.js --csv-file=./data/deezer_tracks.csv --provider=deezer
+  node scripts/ingest_musicmovearr.js --sql-file=./data/changes_2026_03.sql.gz --provider=deezer
+  node scripts/ingest_musicmovearr.js --base-dir=./data/base_tables/ --min-popularity=31
+  node scripts/ingest_musicmovearr.js --incremental-dir=./data/changes/ --dry-run
+Other flags: --limit=N  --batch-size=2000`;
 
-function getArg(name, defaultValue = null) {
-  const match = args.find(a => a.startsWith(`--${name}=`));
-  return match ? match.split('=').slice(1).join('=') : defaultValue;
-}
+const OPTIONS = {
+  'dry-run': { type: 'boolean' },
+  'min-popularity': { type: 'string' },
+  limit: { type: 'string' },
+  'batch-size': { type: 'string' },
+  'csv-file': { type: 'string' },
+  'sql-file': { type: 'string' },
+  'base-dir': { type: 'string' },
+  'incremental-dir': { type: 'string' },
+  provider: { type: 'string' },
+};
+const flags = import.meta.main
+  ? parseOrExit(() => {
+    const values = parseFlags(OPTIONS);
+    return {
+      ...values,
+      minPopularity: intFlag(values, 'min-popularity'),
+      limit: intFlag(values, 'limit'),
+      batchSize: intFlag(values, 'batch-size'),
+    };
+  }, USAGE)
+  : {};
 
-const isDryRun = args.includes('--dry-run');
-const minPopularity = parseInt(getArg('min-popularity', '31'), 10);
-const limit = getArg('limit') ? parseInt(getArg('limit'), 10) : Infinity;
-const csvFilePath = getArg('csv-file');
-const sqlFilePath = getArg('sql-file');
-const baseDirPath = getArg('base-dir');
-const incrementalDirPath = getArg('incremental-dir');
-const providerOverride = getArg('provider', 'deezer').toLowerCase();
-const batchSize = parseInt(getArg('batch-size', '2000'), 10);
+const isDryRun = Boolean(flags['dry-run']);
+const minPopularity = flags.minPopularity ?? 31;
+const limit = flags.limit ?? Infinity;
+const csvFilePath = flags['csv-file'];
+const sqlFilePath = flags['sql-file'];
+const baseDirPath = flags['base-dir'];
+const incrementalDirPath = flags['incremental-dir'];
+const providerOverride = (flags.provider ?? 'deezer').toLowerCase();
+const batchSize = flags.batchSize || 2000;
 
 /**
  * Parses a standard CSV/TSV line respecting quoted fields.
@@ -362,11 +387,8 @@ async function main() {
         await streamIngestSql(fullPath, providerOverride, stats);
       }
     } else {
-      console.log('\nUsage Examples:');
-      console.log('  node scripts/ingest_musicmovearr.js --csv-file=./data/deezer_tracks.csv --provider=deezer');
-      console.log('  node scripts/ingest_musicmovearr.js --sql-file=./data/changes_2026_03.sql.gz --provider=deezer');
-      console.log('  node scripts/ingest_musicmovearr.js --base-dir=./data/base_tables/ --min-popularity=31');
-      console.log('  node scripts/ingest_musicmovearr.js --incremental-dir=./data/changes/ --dry-run');
+      console.log(USAGE);
+      process.exitCode = 1;
       return;
     }
 
@@ -399,6 +421,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && process.argv[1].endsWith('ingest_musicmovearr.js')) {
+if (import.meta.main) {
   main();
 }

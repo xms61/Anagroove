@@ -5,7 +5,6 @@
 - `musicKeywords.js`: `extractAnswerKeyword`, `extractAllAnswerCandidates`, `splitArtistNames`, and `isSingleEntityArtist`.
 - `clueGenerator.js`: `formatCrosswordClue`, `sanitizeClue`, and `containsAnswerLeak`.
 - `liveCrossword.js`: `generateLiveCrossword(songs, title, targetWords)`, the grid placement engine.
-- `server/services/crosswordJudge.js`: heuristic quality judge (`npm run eval:crosswords`).
 
 ## Answer rules
 - Strip feat. credits and remaster/version tags before building answers.

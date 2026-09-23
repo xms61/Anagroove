@@ -4,17 +4,25 @@ import http from 'http';
 import fs from 'fs';
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const ANNAS_ARCHIVE_URL =
   'https://annas-archive.gl/blog/spotify/spotify-top-10k-songs-table.html';
 
-const args = process.argv.slice(2);
-const minPopularityArg = args.find(a => a.startsWith('--min-popularity='));
-const minPopularity = minPopularityArg ? parseInt(minPopularityArg.split('=')[1], 10) : 31; // strictly > 30
+const USAGE = `
+  npm run crawl:top10k                                          ingest Anna's Archive Spotify top 10k (popularity >= 31)
+  node scripts/ingest_annas_spotify.js --file=path.html --min-popularity=31`;
 
-const fileArg = args.find(a => a.startsWith('--file='));
+const flags = import.meta.main
+  ? parseOrExit(() => {
+    const values = parseFlags({ file: { type: 'string' }, 'min-popularity': { type: 'string' } });
+    return { ...values, minPopularity: intFlag(values, 'min-popularity') };
+  }, USAGE)
+  : {};
+const minPopularity = flags.minPopularity ?? 31; // strictly > 30
+
 const defaultLocalFile = 'data/spotify_top10k.html';
-const localFilePath = fileArg ? fileArg.split('=')[1] : (fs.existsSync(defaultLocalFile) ? defaultLocalFile : null);
+const localFilePath = flags.file ?? (fs.existsSync(defaultLocalFile) ? defaultLocalFile : null);
 
 function cleanHtmlEntities(str = '') {
   return str
@@ -262,7 +270,7 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
   };
 }
 
-if (process.argv[1]?.endsWith('ingest_annas_spotify.js')) {
+if (import.meta.main) {
   ingestAnnasSpotifyTop10k().catch((err) => {
     console.error('Fatal ingestion error:', err);
     process.exit(1);

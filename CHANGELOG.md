@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.20.0] - 2026-09-23
+
+### Fixed
+- **Script flags were silently ignored, so full runs started instead of targeted ones.**
+  - `npm run catalog:enrich --albums=5` (no `--`): npm took `--albums` as its own config and passed no arguments, so every enrichment step ran with default limits.
+  - `--albums 30000` (space instead of `=`) fell back to the default limit of 2000.
+  - A typo such as `--album=500` matched no step and also ran every step.
+  - `crawl_catalog.js` always ran the year × genre and bigram sweeps, whatever flags were given.
+
+  All 10 scripts now parse flags with Node's `util.parseArgs` in strict mode (`scripts/lib/cli.js`). Unknown flags, bad values and flags swallowed by npm print the usage and exit 1, and both `--flag=value` and `--flag value` work.
+- `catalog:enrich` and `crawl` run only the steps or vectors you name. `--all` runs every one with default limits, and per-step overrides still apply (`--all --artists=80000`). Without a step they print the usage.
+- `db:validate -- --steps=…` rejects unknown step names.
+
+### Removed
+- The year × genre (1,675 text searches) and bigram crawl vectors. Deezer search matches "1987" in titles rather than filtering by year, and the two-letter bigram searches return random tracks.
+- The eval-only crossword pipeline that production never ran: `queryFactory.buildCrosswordFromCatalog` / `prepareCandidateSongs` and the catalog methods only it used (`queryCatalogForCrossword`, `searchCatalogByTheme`, `getRandomPlayableTracks`).
+- `crosswordJudge.js`, `npm run eval:crosswords`, `npm run test:prompts` (and the release workflow's prompt-suite option), and `npm run test:all`. The judge's policy cases (anime, Japanese, authenticity) moved to `selectionPolicy.test.js`.
+- Unused exports: `shuffleWith`, `peekUserStore`, `getPreviewCacheStatsForTesting`, `resetItunesCachesForTesting`.
+- The unused `--report` flag in the `db:validate` / `db:sanitize` npm scripts.
+
+### Added
+- `scripts/tests/cli.test.js`: `=` and space values, typos, missing values, no step, `--all` with overrides, and flags swallowed by npm.
+
+---
+
 ## [1.19.1] - 2026-09-23
 
 ### Changed

@@ -33,8 +33,8 @@ Production: `npm run build && npm start` serves `dist/` and the API on `:3000`.
 Catalog files live in `server/data/` (gitignored; override with `SPOTYSPICE_DATA_DIR`). Schema migrations run automatically.
 
 ```bash
-npm run crawl                               # Apple charts + Deezer vectors (flags: server/crawler/CRAWLER.md)
-npm run catalog:enrich                      # release years, artist fans/genres, ISRC/rank, iTunes links, languages
+npm run crawl -- --all                      # Apple charts + Deezer vectors (flags: server/crawler/CRAWLER.md)
+npm run catalog:enrich -- --all             # release years, artist fans/genres, ISRC/rank, iTunes links, languages
 npm run db:validate                         # diagnostics + cleanup dry run + gate report
 npm run db:sanitize                         # apply the cleanup (writes a backup first)
 ```
