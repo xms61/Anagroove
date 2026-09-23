@@ -10,7 +10,7 @@ import { recomputeCatalogLanguages } from '../../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../../server/crawler/enricher.js';
 import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.js';
-import { MusicHarvester, toCatalogCandidate } from '../../server/crawler/harvester.js';
+import { MusicHarvester, PLAYLIST_SEEDS, toCatalogCandidate } from '../../server/crawler/harvester.js';
 import { routedFetch } from './helpers.js';
 
 test('identity keys keep kana dakuten and composed hangul, and fold Latin accents', () => {
@@ -219,5 +219,41 @@ test('one album request dates every catalog track on it; unknown albums are stam
   assert.notEqual(row(gone).album_checked_at, null);
   assert.equal(stats.missing, 1);
   assert.equal((await enricher.enrichAlbums({ limit: 10 })).checked, 0);
+  catalog.close();
+});
+
+test('playlist seeds come from the themes; artists on a theme playlist get the theme genre', async () => {
+  assert.ok(PLAYLIST_SEEDS.some(seed => seed.query === 'kpop essentials' && seed.genre === 'K-Pop'));
+  assert.ok(PLAYLIST_SEEDS.every(seed => seed.genre === null || typeof seed.genre === 'string'));
+
+  const catalog = new SqliteCatalog(':memory:');
+  catalog.upsertTrack({ title: 'Old Song', artist: 'Known Band', durationMs: 200000, provider: 'deezer', providerTrackId: '500', artistMetadata: { genres: ['Pop'] } });
+  const fetchImpl = routedFetch([
+    [/search\/playlist/, { data: [{ id: 77, title: 'Shoegaze Dream Pop' }] }],
+    [/playlist\/77\/tracks/, { data: [deezerTrack(21, 'Sometimes', 'Known Band'), deezerTrack(22, 'Alison', 'New Band')] }],
+  ]);
+  const result = await new MusicHarvester(catalog, { fetchImpl }).harvestPlaylists('shoegaze dream pop', { genre: 'Alternative' });
+  assert.equal(result.harvested, 2);
+  const genres = (name) => JSON.parse(catalog.db.prepare('SELECT genres_json FROM artists WHERE display_name = ?').get(name).genres_json);
+  assert.deepEqual(genres('Known Band'), ['Pop', 'Alternative'], 'merged into existing genres');
+  assert.deepEqual(genres('New Band'), ['Alternative']);
+  catalog.close();
+});
+
+test('artist enrichment stores English genre names by Deezer genre id, whatever the API locale', async () => {
+  const catalog = new SqliteCatalog(':memory:');
+  catalog.upsertTrack({
+    title: 'Main Theme', artist: 'Score Composer', durationMs: 200000, album: 'OST', provider: 'deezer', providerTrackId: '31',
+    rawMetadata: { albumId: 9031 }, artistMetadata: { deezerId: 7031 },
+  });
+  const enricher = new CatalogEnricher(catalog, {
+    fetchImpl: routedFetch([
+      [/api\.deezer\.com\/artist\/7031$/, { id: 7031, nb_fan: 40000 }],
+      [/api\.deezer\.com\/album\/9031$/, { id: 9031, genres: { data: [{ id: 173, name: 'Filme/Videospiele' }, { id: 16, name: 'Asiatische Musik' }] } }],
+    ]),
+  });
+  await enricher.enrichArtists({ limit: 10 });
+  const { genres_json: json } = catalog.db.prepare("SELECT genres_json FROM artists WHERE display_name = 'Score Composer'").get();
+  assert.deepEqual(JSON.parse(json), ['Films/Games', 'Asian Music']);
   catalog.close();
 });

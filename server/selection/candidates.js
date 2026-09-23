@@ -64,7 +64,7 @@ function catalogRowToCandidate(row) {
  * Weighted random candidates from the catalog for a query plan.
  * @returns {object[]} candidates, most preferred first
  */
-export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds = [], rng }) {
+export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds = [], rng, poolSize = CATALOG_POOL_SIZE }) {
   const settings = POPULARITY_SAMPLING[queryPlan.popularity] || POPULARITY_SAMPLING.balanced;
   const genres = queryPlan.artist ? [] : genresForPrompt(queryPlan.genre || '', prompt || '');
   // A prompt that maps to genre clusters ("80s rock") is matched on artist genres; running the
@@ -86,7 +86,7 @@ export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds =
     minPopularity: queryPlan.artist ? 0 : settings.minPopularity,
     maxPopularity: settings.maxPopularity,
     excludeTrackIds,
-    poolSize: CATALOG_POOL_SIZE,
+    poolSize,
     start: rng(),
   });
 

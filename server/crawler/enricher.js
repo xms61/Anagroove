@@ -27,6 +27,18 @@ import { logger } from '../logger.js';
 const IN_SCOPE = `t.language IN (${ALLOWED_LANGUAGES.map(l => `'${l}'`).join(', ')}) AND t.version_type IN ('original', 'remaster')`;
 const ITUNES_DURATION_TOLERANCE_MS = 3000;
 
+/**
+ * Deezer genre ids -> English names. The API localizes genre names by the caller's location
+ * ("Filme/Videospiele", "Asiatische Musik"), which theme genre filters would never match.
+ */
+export const DEEZER_GENRE_NAMES = Object.freeze({
+  2: 'African Music', 12: 'Arabic Music', 16: 'Asian Music', 65: 'Traditional Mexicano', 67: 'Salsa',
+  71: 'Cumbia', 75: 'Brazilian Music', 81: 'Indian Music', 84: 'Country', 85: 'Alternative', 95: 'Kids',
+  98: 'Classical', 106: 'Electro', 113: 'Dance', 116: 'Rap/Hip Hop', 122: 'Reggaeton', 129: 'Jazz',
+  132: 'Pop', 144: 'Reggae', 152: 'Rock', 153: 'Blues', 165: 'R&B', 169: 'Soul & Funk', 173: 'Films/Games',
+  186: 'Christian', 197: 'Latin Music', 464: 'Metal', 466: 'Folk',
+});
+
 export class CatalogEnricher {
   constructor(catalog = sqliteCatalog, { fetchImpl = politeFetch } = {}) {
     this.catalog = catalog;
@@ -238,7 +250,7 @@ export class CatalogEnricher {
       }
       if (row.album_id) {
         const album = await this._getJson(`https://api.deezer.com/album/${row.album_id}`, deezerRateLimiter);
-        const albumGenres = (album.data?.genres?.data || []).map(g => g.name).filter(Boolean);
+        const albumGenres = (album.data?.genres?.data || []).map(g => DEEZER_GENRE_NAMES[g.id] || g.name).filter(Boolean);
         if (albumGenres.length > 0) {
           genres = [...new Set([...genres, ...albumGenres])];
           stats.genresFilled++;

@@ -256,6 +256,26 @@ function schemaV6(db) {
   recomputeCatalogPopularity(db);
 }
 
+// Genre names the Deezer API returned in German before enrichment asked by genre id
+const LOCALIZED_GENRES = {
+  'Filme/Videospiele': 'Films/Games',
+  Filmmusik: 'Films/Games',
+  'Asiatische Musik': 'Asian Music',
+  Klassik: 'Classical',
+  'Latin Musik': 'Latin Music',
+  'Deutsch-Rap': 'Rap/Hip Hop',
+};
+
+function schemaV7(db) {
+  const update = db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?');
+  for (const { id, genres_json: json } of db.prepare("SELECT id, genres_json FROM artists WHERE genres_json IS NOT NULL AND json_valid(genres_json)").all()) {
+    const genres = JSON.parse(json);
+    if (!Array.isArray(genres)) continue;
+    const english = [...new Set(genres.map(genre => LOCALIZED_GENRES[genre] || genre))];
+    if (JSON.stringify(english) !== JSON.stringify(genres)) update.run(JSON.stringify(english), id);
+  }
+}
+
 export const CATALOG_MIGRATIONS = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
@@ -263,6 +283,7 @@ export const CATALOG_MIGRATIONS = Object.freeze([
   { version: 4, name: 'schema v4: album enrichment marker', up: schemaV4 },
   { version: 5, name: 'schema v5: rand_key index for song selection', up: schemaV5 },
   { version: 6, name: 'schema v6: Deezer placeholder rank dropped, popularity as a per-language percentile', up: schemaV6 },
+  { version: 7, name: 'schema v7: localized Deezer genre names in English', up: schemaV7 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;

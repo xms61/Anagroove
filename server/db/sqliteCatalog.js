@@ -41,6 +41,16 @@ export function normalizeDedupeArtist(artist = '') {
 
 export { detectTrackLanguage, extractIsrcCountryCode };
 
+/** Genres stored as a JSON array; anything else reads as none. */
+function parseGenres(json) {
+  try {
+    const genres = JSON.parse(json || '[]');
+    return Array.isArray(genres) ? genres : [];
+  } catch {
+    return [];
+  }
+}
+
 export class SqliteCatalog {
   constructor(dbPath = DEFAULT_DB_PATH) {
     this.dbPath = dbPath;
@@ -105,6 +115,8 @@ export class SqliteCatalog {
         itunes_artist_id = COALESCE(excluded.itunes_artist_id, artists.itunes_artist_id),
         fans_count = MAX(artists.fans_count, excluded.fans_count)
     `);
+
+    this.stmtUpdateArtistGenres = this.db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?');
 
     this.stmtUpdateArtistProviderIds = this.db.prepare(`
       UPDATE artists
@@ -227,9 +239,20 @@ export class SqliteCatalog {
       } catch {
         // Safe guard against provider ID collisions across alias rows
       }
+      this._addArtistGenres(artist, genres);
     }
 
     return artist;
+  }
+
+  /** Adds genres an existing artist doesn't have yet (e.g. the theme of a playlist they appear in). */
+  _addArtistGenres(artist, genres) {
+    if (!Array.isArray(genres) || genres.length === 0) return;
+    const current = parseGenres(artist.genres_json);
+    const merged = [...new Set([...current, ...genres])];
+    if (merged.length === current.length) return;
+    artist.genres_json = JSON.stringify(merged);
+    this.stmtUpdateArtistGenres.run(artist.genres_json, artist.id);
   }
 
   _reject(reason) {

@@ -6,6 +6,7 @@ import { isAuthenticCandidate } from './authenticityFilter.js';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
 import { STREAMED_ARTIST_NAMES } from './artistBaseline.js';
 import { logger } from '../logger.js';
+import { THEMES } from '../../shared/themes.js';
 
 // High-frequency music words (English, plus romanized Japanese/Korean) for broad search sweeps
 export const MUSIC_LEXICON_SEEDS = [
@@ -131,18 +132,8 @@ export const FOUNDATION_ARTISTS = Array.from(new Set([
 ]));
 
 
-// High-yield curated playlist searches across genres & eras
-export const CURATED_PLAYLIST_SEEDS = [
-  'rock classics', 'pop essentials', 'billboard hot 100', '90s alternative', '80s synthpop',
-  '70s rock', '60s rock', '2000s pop', '2010s hits', 'hip hop golden age',
-  '90s hip hop', '2000s rap', 'modern hip hop', 'classic r&b', 'motown essentials',
-  'neo soul', 'funk & soul classics', 'disco fever', 'electronic journey', 'classic house',
-  'trance anthems', 'techno club', 'indie rock gems', 'shoegaze dream pop', 'post punk essentials',
-  'metal anthems', 'classic country', 'reggae roots', 'top japan', 'top south korea',
-  'kpop essentials', 'anime openings', 'city pop vibes', 'jazz masters', 'blues legends',
-  'j-pop hits', 'k-pop hits', 'japanese city pop', 'j-rock anthems', 'korean r&b', 'top usa', 'top uk',
-  'soundtrack masterpieces', 'acoustic chill', 'road trip anthems', 'party classics', 'all time hits'
-];
+/** Playlist searches from the theme table. The theme's first genre tags the artists they contain. */
+export const PLAYLIST_SEEDS = THEMES.flatMap(theme => theme.seeds.map(query => ({ query, genre: theme.genres[0] || null })));
 
 // Cross-product decade & genre query generator
 export const DECADE_GENRE_SEEDS = [];
@@ -169,7 +160,7 @@ function parseReleaseYear(date) {
  * @param {Object} t Deezer track (search, playlist, album or top-tracks payload)
  * @param {Object} [context] Overrides when the payload lacks album/artist details
  */
-export function toCatalogCandidate(t, { artistName, album, releaseDate, artistId, fansCount } = {}) {
+export function toCatalogCandidate(t, { artistName, album, releaseDate, artistId, fansCount, genre } = {}) {
   const date = t.release_date || releaseDate || null;
   const deezerArtistId = t.artist?.id || artistId;
   return {
@@ -196,6 +187,7 @@ export function toCatalogCandidate(t, { artistName, album, releaseDate, artistId
     artistMetadata: {
       deezerId: deezerArtistId,
       ...(fansCount ? { fansCount } : {}),
+      ...(genre ? { genres: [genre] } : {}),
     },
   };
 }
@@ -261,37 +253,27 @@ export class MusicHarvester {
   }
 
   /**
-   * Harvests tracks from curated playlists.
-   * @param {string[]} queries - Array of playlist search terms
-   * @param {number} maxPlaylistsPerQuery - Number of playlists to fetch per query (e.g. 3)
+   * Harvests the first `maxPlaylists` Deezer playlists found for a search. With a `genre`, every
+   * artist on them gets that genre (their theme), which genre prompts can then match.
    */
-  async harvestCuratedPlaylists(queries, maxPlaylistsPerQuery = 3, onPlProgress = () => {}) {
+  async harvestPlaylists(query, { genre = null, maxPlaylists = 3, onProgress = () => {} } = {}) {
     let harvested = 0;
     let merged = 0;
-
-    for (const query of queries) {
-      if (this.abortRequested) break;
-      try {
-        const searchJson = await this._getJson(`https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylistsPerQuery}`);
-        const playlists = searchJson?.data || [];
-
-        for (const pl of playlists) {
-          if (this.abortRequested) break;
-          if (!pl.id) continue;
-
-          const tracksJson = await this._getJson(`https://api.deezer.com/playlist/${pl.id}/tracks?limit=100`);
-          const tracks = tracksJson?.data || [];
-          const res = this._ingest(tracks);
-          harvested += res.inserted;
-          merged += res.merged;
-
-          onPlProgress({ query, playlistTitle: pl.title, tracksFound: tracks.length, harvested, merged });
-        }
-      } catch (err) {
-        logger.warn('harvester', `Playlist harvest for "${query}" failed: ${err.message}`);
+    try {
+      const searchJson = await this._getJson(`https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylists}`);
+      for (const playlist of searchJson?.data || []) {
+        if (this.abortRequested) break;
+        if (!playlist.id) continue;
+        const tracksJson = await this._getJson(`https://api.deezer.com/playlist/${playlist.id}/tracks?limit=100`);
+        const tracks = tracksJson?.data || [];
+        const res = this._ingest(tracks, { genre });
+        harvested += res.inserted;
+        merged += res.merged;
+        onProgress({ query, playlistTitle: playlist.title, tracksFound: tracks.length, harvested, merged });
       }
+    } catch (err) {
+      logger.warn('harvester', `Playlist harvest for "${query}" failed: ${err.message}`);
     }
-
     return { harvested, merged };
   }
 
@@ -475,14 +457,13 @@ export class MusicHarvester {
 
     // Vector 1: Curated Genre & Historical Playlists Spidering
     if (playlistsLimit > 0 && !isTargetReached() && !this.abortRequested) {
-      const playlistsToCrawl = CURATED_PLAYLIST_SEEDS.slice(0, playlistsLimit);
-      for (const plQuery of playlistsToCrawl) {
+      for (const seed of PLAYLIST_SEEDS.slice(0, playlistsLimit)) {
         if (this.abortRequested || isTargetReached()) break;
-        const res = await this.harvestCuratedPlaylists([plQuery], 3, (p) => report(`Playlist: ${p.query}`));
+        const res = await this.harvestPlaylists(seed.query, { genre: seed.genre, onProgress: (p) => report(`Playlist: ${p.query}`) });
         stats.playlistsCrawled++;
         stats.totalInserted += res.harvested;
         stats.totalMerged += res.merged;
-        report(`Completed playlist: "${plQuery}"`);
+        report(`Completed playlist: "${seed.query}"`);
       }
     }
 
