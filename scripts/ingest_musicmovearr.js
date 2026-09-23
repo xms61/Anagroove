@@ -4,6 +4,7 @@ import path from 'path';
 import readline from 'readline';
 import zlib from 'zlib';
 import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.js';
+import { normalizePopularity } from '../server/db/trackNormalization.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
 
 const args = process.argv.slice(2);
@@ -85,18 +86,17 @@ export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer')
     durationMs = durationMs * 1000;
   }
 
-  let popularity = parseInt(rawPopularity || '0', 10);
-  // If Deezer rank (e.g. 0 - 1,000,000), scale to 0-100 scale
-  if (popularity > 100) {
-    popularity = Math.min(100, Math.round(popularity / 10000));
-  }
+  const rawValue = parseInt(rawPopularity || '0', 10) || 0;
+  // Values above 100 are Deezer ranks (0 - ~1,000,000); keep the raw rank and map it to the 0-100 score
+  const deezerRank = rawValue > 100 ? rawValue : null;
+  const popularity = normalizePopularity({ popularity: rawValue, deezerRank });
 
   const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
   const isExplicit = explicitVal === '1' || String(explicitVal).toLowerCase() === 'true';
 
   const cleanIsrc = isrc ? String(isrc).trim().toUpperCase() : null;
   const countryCode = extractIsrcCountryCode(cleanIsrc);
-  const language = detectTrackLanguage(title, artist);
+  const language = detectTrackLanguage(title, artist, { isrc: cleanIsrc });
 
   return {
     provider: defaultProvider,
@@ -104,8 +104,9 @@ export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer')
     title: String(title).trim(),
     artist: String(artist).trim(),
     album: String(album).trim(),
-    durationMs: durationMs || 180000,
+    durationMs, // 0 when unknown: the catalog rejects it instead of storing a made-up length
     popularity,
+    deezerRank,
     isrc: cleanIsrc,
     releaseYear: Number.isFinite(releaseYear) ? releaseYear : null,
     releaseDate: releaseDate || null,

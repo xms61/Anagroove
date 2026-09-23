@@ -22,7 +22,7 @@ import {
 } from './validators.js';
 import { createRateLimiter, wsRateLimiter } from './middleware/rateLimiter.js';
 import { resolvePreviewRef } from './services/previewResolver.js';
-import { sqliteCatalog } from './db/sqliteCatalog.js';
+import { peekSqliteCatalog } from './db/sqliteCatalog.js';
 import { onShutdown } from './shutdown.js';
 import { logger } from './logger.js';
 
@@ -852,7 +852,8 @@ export { app, server };
 const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename);
 if (isMainModule) {
   onShutdown('catalog-wal-checkpoint', () => {
-    sqliteCatalog.db?.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    // Only checkpoint if the catalog was actually opened in this process
+    peekSqliteCatalog()?.db?.exec('PRAGMA wal_checkpoint(TRUNCATE);');
   });
   server.listen(PORT, '0.0.0.0', () => {
     logger.info('startup', `🎵 SpotySpice Backend API & WebSocket running on port ${PORT} (http://0.0.0.0:${PORT}) [env: ${process.env.NODE_ENV || 'development'}, log: ${process.env.LOG_LEVEL || 'info'}]`);

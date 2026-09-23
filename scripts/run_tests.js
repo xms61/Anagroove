@@ -61,6 +61,17 @@ import {
 import { createLivePuzzleStore, server, parseTrustProxy, clientIpFromUpgrade } from '../server/server.js';
 import { db } from '../server/db.js';
 import { SqliteCatalog, normalizeDedupeTitle, normalizeDedupeArtist } from '../server/db/sqliteCatalog.js';
+import {
+  classifyVersion,
+  baseTitleKey,
+  detectTrackLanguage,
+  deezerRankToScore,
+  normalizePopularity,
+  normalizeIsrc,
+  normalizeReleaseYear,
+} from '../server/db/trackNormalization.js';
+import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../server/db/catalogMigrations.js';
+import { DatabaseSync } from 'node:sqlite';
 import { CatalogValidator } from '../server/db/catalogValidator.js';
 import { AnimeCatalog } from '../server/db/animeCatalog.js';
 import { isAnimeTarget, getAnimeThemeType } from '../server/services/musicService.js';
@@ -1347,12 +1358,12 @@ async function runSqliteCatalogTests() {
   });
   assert(res2 && res2.isNew === false && res2.isMerged === true && res2.trackId === res1.trackId, 'Tier 1 ISRC match merges Spotify track into canonical record');
 
-  // Ingest iTunes Track without ISRC using Compound Key (Tier 2 Normalized Artist + Title + Duration delta <= 3s)
+  // Ingest iTunes release without ISRC: Tier 2 matches artist + base title regardless of duration
   const res3 = memCatalog.upsertTrack({
-    title: 'Get Lucky (Radio Edit)',
+    title: 'Get Lucky',
     artist: 'Daft Punk',
-    album: 'Random Access Memories',
-    durationMs: 370500, // Delta is 1.5s from original 369000ms
+    album: 'Get Lucky - Single',
+    durationMs: 248000,
     provider: 'itunes',
     providerTrackId: '636988899',
     sampleUrl: 'https://audio-ssl.itunes.apple.com/getlucky.m4a',
@@ -1360,7 +1371,7 @@ async function runSqliteCatalogTests() {
     sampleDurationSec: 30,
     artistMetadata: { itunesArtistId: 546829 },
   });
-  assert(res3 && res3.isNew === false && res3.isMerged === true && res3.trackId === res1.trackId, 'Tier 2 Compound key merges iTunes track within 3s delta');
+  assert(res3 && res3.isNew === false && res3.isMerged === true && res3.trackId === res1.trackId, 'Tier 2 base-title key merges the iTunes release of the same song');
 
   // Verify Samples & Providers Attached
   const postMergeStats = memCatalog.getStats();
@@ -1399,7 +1410,93 @@ async function runSqliteCatalogTests() {
   assert(randomPlayable.length >= 2, 'Queries random playable tracks within release year range');
   assert(randomPlayable.every(t => t.sample_url && t.release_year >= 2000 && t.release_year <= 2015), 'All returned tracks have verified samples and match year bounds');
 
+  // Schema v2: admission policy, Unicode base titles, 0-100 popularity, trigram FTS
+  console.log('\n--- 6b. Testing Catalog Schema v2 & Admission Policy ---');
+  assert(memCatalog.db.prepare('PRAGMA user_version').get().user_version === LATEST_CATALOG_VERSION, 'Fresh catalog is migrated to the latest schema version');
+  const base = { durationMs: 200000, provider: 'deezer', album: 'Album', releaseYear: 2020 };
+  let nextId = 700000;
+  const ingest = (extra) => memCatalog.upsertTrack({ ...base, providerTrackId: String(nextId++), ...extra });
+
+  assert(ingest({ title: 'Get Lucky (Radio Edit)', artist: 'Daft Punk' }) === null, 'Radio edit is rejected (originals only)');
+  assert(ingest({ title: 'Around The World - Live', artist: 'Daft Punk' }) === null, 'Live recording is rejected');
+  assert(ingest({ title: 'One More Time (Skrillex Remix)', artist: 'Daft Punk' }) === null, 'Remix is rejected');
+  assert(ingest({ title: 'Digital Love', artist: 'Daft Punk', album: 'Alive 2007 (Live at Bercy)' }) === null, 'Track from a live album is rejected');
+  assert(ingest({ title: 'Vida de Amor', artist: 'Los Cantantes' }) === null, 'Spanish-language track is rejected');
+  assert(ingest({ title: 'Короли ночи', artist: 'Группа' }) === null, 'Cyrillic track is rejected');
+  assert(ingest({ title: 'Short Clip', artist: 'Clipper', durationMs: 8000 }) === null, 'Track under 45 seconds is rejected');
+  const rejections = memCatalog.getRejectionStats();
+  assert(rejections.version === 4 && rejections.language === 2 && rejections.duration === 1, 'Rejections are counted per policy reason');
+
+  const jaTrack = ingest({ title: '夜に駆ける', artist: 'YOASOBI', isrc: 'JPU902000001' });
+  const jaRow = jaTrack && memCatalog.db.prepare('SELECT canonical_title, language FROM tracks WHERE id = ?').get(jaTrack.trackId);
+  assert(jaRow?.canonical_title === '夜に駆ける' && jaRow.language === 'ja', 'Kana title is stored with a non-empty Unicode base title as ja');
+  const kanjiTrack = ingest({ title: '紅蓮華', artist: 'LiSA', isrc: 'JPU901900400' });
+  assert(kanjiTrack && memCatalog.db.prepare('SELECT language FROM tracks WHERE id = ?').get(kanjiTrack.trackId).language === 'ja', 'Kanji-only title with a JP ISRC is ja');
+  const koTrack = ingest({ title: '봄날', artist: 'BTS' });
+  assert(koTrack && memCatalog.db.prepare('SELECT language FROM tracks WHERE id = ?').get(koTrack.trackId).language === 'ko', 'Hangul title is ko');
+  assert(ingest({ title: '月亮代表我的心', artist: '邓丽君' }) === null, 'Chinese title without JP/KR ISRC is rejected');
+
+  const remaster = ingest({ title: 'Hey Jude - Remastered 2015', artist: 'The Beatles', durationMs: 431000, deezerRank: 562000 });
+  const original = ingest({ title: 'Hey Jude', artist: 'The Beatles', durationMs: 425000, spotifyPopularity: 82 });
+  const heyJude = memCatalog.db.prepare('SELECT display_title, version_type, popularity, deezer_rank, spotify_popularity FROM tracks WHERE id = ?').get(remaster?.trackId);
+  assert(original?.isMerged === true && original.trackId === remaster.trackId, 'Remaster and original of one song share a single row');
+  assert(heyJude.display_title === 'Hey Jude' && heyJude.version_type === 'original', 'Plain original replaces the remaster as the displayed release');
+  assert(heyJude.deezer_rank === 562000 && heyJude.spotify_popularity === 82 && heyJude.popularity === 82, 'Raw provider popularity is kept and the 0-100 score prefers Spotify');
+
+  const legacyPop = ingest({ title: 'Legacy Rank Song', artist: 'Old Crawler', popularity: 950000 });
+  assert(memCatalog.db.prepare('SELECT popularity, deezer_rank FROM tracks WHERE id = ?').get(legacyPop.trackId).popularity === deezerRankToScore(950000), 'Legacy Deezer rank passed as popularity is normalized to 0-100');
+
+  const ftsHits = memCatalog.db.prepare('SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?').all('"駆ける"');
+  assert(ftsHits.length === 1 && ftsHits[0].rowid === jaTrack.trackId, 'Trigram FTS finds a Japanese substring');
+  const themed = memCatalog.searchCatalogByTheme({ ftsQuery: '"lucky"', allowSampleless: true, limit: 5 });
+  assert(themed.some(t => t.title.startsWith('Get Lucky')), 'searchCatalogByTheme uses the rebuilt FTS index');
+  memCatalog.db.prepare('DELETE FROM tracks WHERE id = ?').run(jaTrack.trackId);
+  assert(memCatalog.db.prepare('SELECT COUNT(*) AS c FROM tracks_fts WHERE tracks_fts MATCH ?').get('"駆ける"').c === 0, 'FTS trigger removes deleted tracks');
+  const ftsCount = memCatalog.db.prepare('SELECT COUNT(*) AS c FROM tracks_fts').get().c;
+  const trackCount = memCatalog.db.prepare('SELECT COUNT(*) AS c FROM tracks').get().c;
+  assert(ftsCount === trackCount, 'FTS row count matches track count');
+
   memCatalog.close();
+
+  // Normalization helpers
+  assert(classifyVersion('Levels (Original Mix)') === 'original', '"Original Mix" is an original recording');
+  assert(classifyVersion('Dynamite (Japanese Version)') === 'alternate', 'Language version is an alternate, not the original');
+  assert(classifyVersion("Love Story (Taylor's Version)") === 'rerecord', 'Re-recording is detected');
+  assert(classifyVersion('Interlude - The Trio') === 'original' && baseTitleKey('Interlude - The Trio') === 'interludethetrio', 'Unrecognised dash suffix stays part of the title');
+  assert(baseTitleKey('Song - Single Version') === 'song' && baseTitleKey('Let It Go (From "Frozen")') === 'letitgo', 'Credit and release decorations are stripped from base titles');
+  assert(detectTrackLanguage('紅蓮華', 'LiSA') === 'zh' && detectTrackLanguage('紅蓮華', 'LiSA', { isrc: 'JPU901900400' }) === 'ja', 'Han-only language depends on the ISRC registrant');
+  assert(deezerRankToScore(562000) === 76 && deezerRankToScore(10000) === 41 && deezerRankToScore(0) === 0, 'Deezer rank maps onto the calibrated 0-100 scale');
+  assert(normalizePopularity({ spotifyPopularity: 55, deezerRank: 900000 }) === 55 && normalizePopularity({ popularity: 64 }) === 64, 'Spotify popularity is the reference score');
+  assert(normalizeIsrc('us-qx9-13-00105') === 'USQX91300105' && normalizeIsrc('BAD') === null, 'ISRCs are normalized or dropped');
+  assert(normalizeReleaseYear(1850) === null && normalizeReleaseYear('2013-05-17') === 2013, 'Release years are range-checked');
+
+  // Migrating a legacy (v0) catalog
+  const legacyDb = new DatabaseSync(':memory:');
+  legacyDb.exec(`
+    CREATE TABLE artists (id INTEGER PRIMARY KEY AUTOINCREMENT, canonical_name TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
+      spotify_id TEXT UNIQUE, deezer_id INTEGER UNIQUE, itunes_artist_id INTEGER UNIQUE, genres_json TEXT, fans_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')));
+    CREATE TABLE tracks (id INTEGER PRIMARY KEY AUTOINCREMENT, isrc TEXT UNIQUE, canonical_title TEXT NOT NULL, display_title TEXT NOT NULL,
+      artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE, album_name TEXT, duration_ms INTEGER NOT NULL,
+      release_year INTEGER, release_date TEXT, popularity INTEGER DEFAULT 0, is_explicit INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));
+    CREATE TABLE track_providers (id INTEGER PRIMARY KEY AUTOINCREMENT, track_id INTEGER NOT NULL, provider TEXT NOT NULL,
+      provider_track_id TEXT NOT NULL, external_url TEXT, raw_metadata_json TEXT, harvested_at TEXT, UNIQUE(provider, provider_track_id));
+    CREATE VIRTUAL TABLE tracks_fts USING fts5(title, artist, album, content='tracks', content_rowid='id');
+    INSERT INTO artists (id, canonical_name, display_name) VALUES (1, 'lisa', 'LiSA'), (2, 'the beatles', 'The Beatles');
+    INSERT INTO tracks (id, isrc, canonical_title, display_title, artist_id, album_name, duration_ms, popularity)
+      VALUES (1, 'JPU901900400', '', '紅蓮華', 1, 'LEO-NiNE', 239000, 562000),
+             (2, NULL, 'heyjuderemastered2015', 'Hey Jude - Remastered 2015', 2, '1', 431000, 900000);
+    INSERT INTO track_providers (track_id, provider, provider_track_id, raw_metadata_json) VALUES (2, 'spotify', 'sp1', '{"popularity":88}');
+  `);
+  const migration = runCatalogMigrations(legacyDb);
+  const legacyRows = legacyDb.prepare('SELECT id, canonical_title, language, version_type, popularity, deezer_rank, spotify_popularity FROM tracks ORDER BY id').all();
+  assert(migration.from === 0 && migration.to === LATEST_CATALOG_VERSION && migration.applied.length === LATEST_CATALOG_VERSION, 'Legacy catalog migrates from v0 to the latest version');
+  assert(legacyRows[0].canonical_title === '紅蓮華' && legacyRows[0].language === 'ja' && legacyRows[0].popularity === 76 && legacyRows[0].deezer_rank === 562000, 'Migration backfills Unicode base title, ISRC-aware language and 0-100 score');
+  assert(legacyRows[1].canonical_title === 'heyjude' && legacyRows[1].version_type === 'remaster' && legacyRows[1].spotify_popularity === 88 && legacyRows[1].popularity === 88, 'Migration classifies versions and prefers Spotify popularity');
+  assert(legacyDb.prepare('SELECT COUNT(*) AS c FROM tracks_fts WHERE tracks_fts MATCH ?').get('"紅蓮華"').c === 1, 'Migration rebuilds a working FTS index');
+  assert(runCatalogMigrations(legacyDb).applied.length === 0, 'Re-running migrations is a no-op');
+  legacyDb.close();
 }
 
 async function runMusicMoveArrAndLazyResolverTests() {
@@ -1422,7 +1519,7 @@ async function runMusicMoveArrAndLazyResolverTests() {
   assert(candidate.title === 'One More Time', 'Extracts track title');
   assert(candidate.artist === 'Daft Punk', 'Extracts artist name');
   assert(candidate.durationMs === 320000, 'Normalizes duration from seconds to milliseconds');
-  assert(candidate.popularity === 85, 'Scales Deezer rank to 0-100 popularity score');
+  assert(candidate.deezerRank === 850000 && candidate.popularity === deezerRankToScore(850000), 'Keeps the raw Deezer rank and maps it to the calibrated 0-100 score');
   assert(candidate.countryCode === 'US', 'Extracts country code US from ISRC');
   assert(candidate.language === 'en', 'Detects English language');
   assert(candidate.sampleUrl === null, 'Leaves sampleUrl null for on-the-fly lazy hydration');
@@ -1663,33 +1760,42 @@ async function runCatalogValidatorTests() {
     VALUES ('USUM71607008', 'starboy', 'Starboy', 1, 'Starboy (Deluxe)', 231000, 2016, '2016-11-25', 'US', 'en', 900000, 1)
   `).run();
 
+  // Legacy junk from before the admission policy existed (upsertTrack now refuses these rows)
+  const insertLegacyTrack = ({ title, artist, canonicalArtist, isrc, album, durationMs, providerTrackId, sampleUrl, genres = null }) => {
+    memCatalog.db.prepare('INSERT OR IGNORE INTO artists (canonical_name, display_name, genres_json) VALUES (?, ?, ?)')
+      .run(canonicalArtist, artist, genres ? JSON.stringify(genres) : null);
+    const artistId = memCatalog.db.prepare('SELECT id FROM artists WHERE canonical_name = ?').get(canonicalArtist).id;
+    const trackId = Number(memCatalog.db.prepare(`
+      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, language, popularity)
+      VALUES (?, ?, ?, ?, ?, ?, 'de', 41)
+    `).run(isrc, normalizeDedupeTitle(title), title, artistId, album, durationMs).lastInsertRowid);
+    memCatalog.insertSample(trackId, { provider: 'deezer', providerTrackId, sampleUrl });
+    memCatalog.db.prepare("INSERT INTO track_providers (track_id, provider, provider_track_id) VALUES (?, 'deezer', ?)").run(trackId, providerTrackId);
+  };
+
   // Track 3: Contaminated audiobook track
-  memCatalog.upsertTrack({
+  insertLegacyTrack({
     title: 'Kapitel 1 - Das Schloss',
     artist: 'Gruselkabinett',
+    canonicalArtist: 'gruselkabinett',
     isrc: 'DEUM71600001',
     album: 'Folge 01',
     durationMs: 120000,
-    popularity: 50000,
-    provider: 'deezer',
     providerTrackId: '999999',
     sampleUrl: 'https://cdns-preview.deezer.com/preview-audiobook.mp3',
-    releaseYear: 2010,
-    artistMetadata: { genres: ['Spoken Word'] },
+    genres: ['Spoken Word'],
   });
 
   // Track 4: Short duration anomaly (< 15s)
-  memCatalog.upsertTrack({
+  insertLegacyTrack({
     title: 'Intro SFX',
     artist: 'Sound Effects FX',
+    canonicalArtist: 'sound effects fx',
     isrc: 'USFX71600001',
     album: 'Effects',
     durationMs: 8000,
-    popularity: 10000,
-    provider: 'deezer',
     providerTrackId: '888888',
     sampleUrl: 'https://cdns-preview.deezer.com/preview-sfx.mp3',
-    releaseYear: 2021,
   });
 
   // 3. Test findDuplicates

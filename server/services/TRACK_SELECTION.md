@@ -23,5 +23,6 @@ Entry point: `getRandomSongPool(opts)` in `musicService.js`. It is called by `GE
 - `isPreviewUrlFresh` treats URLs within 60 s of `exp` as stale.
 
 ## Known issues
-- The `popularity` scale is mixed, so the SQL ordering is effectively deterministic.
+- Catalog ordering is `popularity*3 + RANDOM()%100` over a 0–100 score, which is still strongly popularity-biased. The planned replacement samples by `rand_key` with weights.
+- Every request still fans out to live Deezer and up to 4 iTunes searches (the iTunes limiter allows 0.25 req/s), which adds 7–17 s. The catalog query itself takes under 350 ms.
 - NULL release years (≈57%) are rejected whenever a decade is requested.
