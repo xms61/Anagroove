@@ -3,6 +3,7 @@ import { Puzzle, Clue, Direction, CellValidity } from '../types/crossword';
 import { apiClient } from '../services/apiClient';
 import { socketService, MultiplayerRoom } from '../services/socketService';
 import confetti from 'canvas-confetti';
+import { themeColors } from '../themes';
 
 interface UseCrosswordGameOptions {
   themeId?: string;
@@ -16,6 +17,9 @@ interface UseCrosswordGameOptions {
 }
 
 const DEFAULT_PLAYER_COLOR = '#3de0ff';
+
+/** Solve celebration in the theme's colours; skipped when the OS asks for reduced motion. */
+const celebrate = () => confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: themeColors(), disableForReducedMotion: true });
 
 // Copy of a letter grid with one cell changed. Key handlers build the next grid from the
 // rendered state for their own checks and saves, and apply the change with a functional
@@ -201,11 +205,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     if (allFilled && !hasError) {
       setIsCompleted(true);
       setShowEndScreen(true);
-      confetti({
-        particleCount: 120,
-        spread: 80,
-        origin: { y: 0.6 }
-      });
+      celebrate();
 
       // Record solved puzzle to server
       apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length, elapsedSeconds());
@@ -523,11 +523,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
     if (allFilledAndCorrect) {
       setIsCompleted(true);
       setShowEndScreen(true);
-      confetti({
-        particleCount: 120,
-        spread: 80,
-        origin: { y: 0.6 }
-      });
+      celebrate();
       apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length, elapsedSeconds());
       if (multiplayerRoom && playerId) {
         socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');

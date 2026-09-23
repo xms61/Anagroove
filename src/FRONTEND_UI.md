@@ -22,11 +22,12 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - `CrosswordGrid`
   - `ClueList`: two columns, or Across/Down tabs below `md`. The headings change per theme.
   - `AudioPlayerBar`: docked at the bottom, with `PlayerDeck` (radio display, step sequencer or turntable, following the theme), a seek slider and volume.
-  - `LoungeDrawer`
+  - `MenuDrawer`: the current puzzle, then Play (custom puzzle, multiplayer), You (songs in this puzzle, history, hidden artists & songs, settings) and the keys.
   - `ThemeBackdrop`
   - `ui.tsx`: `Button` (primary/secondary/ghost/danger), `IconButton` (`label` required), `Panel` and `cx`. Use them instead of restyling buttons and surfaces.
   - `Modal` (shared shell)
-  - the modals: `LiveGenerator`, `Multiplayer`, `Blacklist`, `Hint`, `EndScreen` (current puzzle tracklist), `History` (all solved puzzles), `Settings`, plus the room victory dialog in `App.tsx`.
+  - the modals: `LiveGenerator` ("Custom puzzle"), `Multiplayer`, `Blacklist` ("Hidden artists & songs"), `Hint`, `EndScreen` (the solved puzzle's tracklist), `History` (all solved puzzles), `Settings`, plus the room victory dialog in `App.tsx`.
+  - Dialogs share one layout: a `font-display` title and a one-line muted description, sections labelled in small caps, `Button`s in the footer. Labels are plain ("Hint", "Hidden artists & songs"), and actions that used to appear only on hover are always visible.
 - `types/crossword.ts`: shared puzzle types. `shared/*.d.ts` types the shared JS modules (e.g. `canonicalArtistKey`, which the client uses for recent-artist keys so they match the server).
 
 ## Styling

@@ -17,3 +17,12 @@ export function isThemeId(value: unknown): value is ThemeId {
 export function applyTheme(theme: ThemeId): void {
   document.documentElement.dataset.theme = theme;
 }
+
+/** The active theme's accent, highlight, success and text colours as hex (for canvas-confetti). */
+export function themeColors(): string[] {
+  const style = getComputedStyle(document.documentElement);
+  return ['--c-accent', '--c-hi', '--c-ok', '--c-fg'].map(name => {
+    const channels = style.getPropertyValue(name).trim().split(/\s+/).map(Number);
+    return '#' + [0, 1, 2].map(i => (channels[i] || 0).toString(16).padStart(2, '0')).join('');
+  });
+}
