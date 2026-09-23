@@ -2,7 +2,7 @@
 
 Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is called by `GET /api/music/random` and `POST /api/puzzles/live` (`server/routes/music.js`).
 
-## Themes (`shared/themes.js`)
+## Themes (`shared/themes.ts`)
 `THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there, plus a `DEEZER_GENRE_TAXONOMY` entry for the live fallback; `themes.test.js` checks both. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
 
 ## Modules
@@ -13,7 +13,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
 - Policy: `server/policy/selectionPolicy.js` (`isLanguagePermitted`, `allowedLanguagesForContext`, `isThematicallyPermitted`, `isAuthenticTrack`, `isTemporalPermitted`/`resolveReleaseYear`, anime/Japanese affinity). Authenticity rules: `server/policy/authenticityRules.js`.
 
 ## Pipeline
-1. **Query plan:** `queryBuilder.buildQueryPlan` handles the prompt, genre, decade, artist and popularity. `genresForPrompt` (`shared/themes.js`) maps a theme id, or the words of the genre and prompt, to artist genre clusters.
+1. **Query plan:** `queryBuilder.buildQueryPlan` handles the prompt, genre, decade, artist and popularity. `genresForPrompt` (`shared/themes.ts`) maps a theme id, or the words of the genre and prompt, to artist genre clusters.
 2. **Catalog window** (`sqliteCatalog.sampleCatalogTracks`). Every filter runs in SQL:
    - allowed languages, `original`/`remaster` only, a popularity window, and the year range
    - the artist (resolved to ids first), genres (`artists.genres_json`), and a text theme (trigram FTS, LIKE if FTS finds under 10 rows; skipped when the prompt maps to genres)
@@ -43,7 +43,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
 
 ## Rules
 - **Language:** catalog rows are judged by their stored `language`; live candidates by `resolveTrackLanguage`. An explicit `languages` filter (generator chips, `queryPlan.languages`) replaces the theme languages in both the catalog window and the picker. Otherwise `allowedLanguagesForContext` returns:
-  - a theme id → the theme's `languages` (`shared/themes.js`)
+  - a theme id → the theme's `languages` (`shared/themes.ts`)
   - K-pop or Korean prompts → ko/en
   - Japanese, J-pop, city pop or anime prompts → ja/en
   - everything else → en

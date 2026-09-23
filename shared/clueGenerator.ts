@@ -5,6 +5,30 @@
  * song title, or title keywords) while providing rich, context-aware musical clues.
  */
 
+/** The track fields a clue can mention. Catalog rows use snake_case, provider songs camelCase. */
+export interface ClueTrack {
+  title?: string;
+  artist?: string;
+  album?: string;
+  isAnimeOped?: boolean;
+  animeTitle?: string;
+  themeType?: string;
+  themeSlug?: string;
+  song_title?: string;
+  releaseYear?: number | string | null;
+  release_year?: number | string | null;
+  year?: number | string | null;
+}
+
+/** The chosen answer and what kind of answer it is. */
+export interface ClueKeyword {
+  answer?: string;
+  clueType?: string;
+  clueText?: string;
+  artistName?: string;
+  animeTitle?: string;
+}
+
 const IGNORED_LEAK_WORDS = new Set([
   'the', 'and', 'for', 'you', 'not', 'are', 'one', 'two', 'new', 'all', 'our',
   'out', 'who', 'how', 'man', 'boy', 'day', 'way', 'say', 'see', 'hit', 'let'
@@ -13,14 +37,14 @@ const IGNORED_LEAK_WORDS = new Set([
 /**
  * Escapes regex special characters in a string.
  */
-function escapeRegex(str) {
+function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
  * Strips diacritics, feature annotations, and extraneous brackets from a title.
  */
-export function cleanClueTitle(title) {
+export function cleanClueTitle(title: string | null | undefined): string {
   if (!title) return '';
   return String(title)
     .replace(/&#0*39;|&apos;/gi, "'")
@@ -35,14 +59,10 @@ export function cleanClueTitle(title) {
 }
 
 /**
- * Detects whether a clue text leaks the answer or any non-trivial component tokens of the solution.
- *
- * @param {string} clueText - The candidate clue text
- * @param {string} answer - The crossword grid answer (uppercase alphanumeric)
- * @param {string[]} [extraTokens=[]] - Additional source tokens (e.g. raw artist or raw title)
- * @returns {boolean} True if a spoiler or leak is detected
+ * Whether a clue leaks the answer or any of its tokens (3+ letters), or a token of the extra
+ * source strings (e.g. the raw artist or title).
  */
-export function containsAnswerLeak(clueText, answer, extraTokens = []) {
+export function containsAnswerLeak(clueText: string | null | undefined, answer: string, extraTokens: readonly unknown[] = []): boolean {
   if (!clueText || !answer) return false;
 
   const lowerClue = clueText.toLowerCase();
@@ -55,7 +75,7 @@ export function containsAnswerLeak(clueText, answer, extraTokens = []) {
   }
 
   // 2. Tokenize answer and extra source strings (e.g. artist or title parts)
-  const tokenSet = new Set();
+  const tokenSet = new Set<string>();
   const splitRegex = /[^a-zA-Z0-9]+/;
 
   String(answer).split(splitRegex).forEach(t => {
@@ -83,32 +103,16 @@ export function containsAnswerLeak(clueText, answer, extraTokens = []) {
   return false;
 }
 
-/**
- * Sanitizes a clue text by validating it against the answer.
- * If a leak is detected, falls back to a guaranteed spoiler-free template.
- *
- * @param {string} clueText - The generated candidate clue text
- * @param {string} answer - The crossword answer
- * @param {string} fallback - The fallback clue text if a spoiler is detected
- * @param {string[]} [extraTokens=[]] - Optional additional strings (e.g. artist or title) that shouldn't appear
- * @returns {string} Sanitized clue text
- */
-export function sanitizeClue(clueText, answer, fallback, extraTokens = []) {
+/** The clue, or the spoiler-free fallback when the clue leaks the answer or an extra token. */
+export function sanitizeClue(clueText: string, answer: string, fallback: string, extraTokens: readonly unknown[] = []): string {
   if (containsAnswerLeak(clueText, answer, extraTokens)) {
     return fallback;
   }
   return clueText;
 }
 
-/**
- * Formats a rich, context-aware, spoiler-free crossword clue for a track.
- *
- * @param {object} track - Track metadata
- * @param {object} keyword - Extracted answer candidate ({ answer, clueType, clueText, artistName })
- * @param {object} [options={}] - Formatting options
- * @returns {string} Formatted, leak-proof clue text
- */
-export function formatCrosswordClue(track, keyword, _options = {}) {
+/** A context-aware, spoiler-free clue for a track and its chosen answer. */
+export function formatCrosswordClue(track: ClueTrack | null | undefined, keyword: ClueKeyword | null | undefined): string {
   if (!track || !keyword) {
     return keyword?.clueText || 'Musical clue for this track';
   }
@@ -139,7 +143,7 @@ export function formatCrosswordClue(track, keyword, _options = {}) {
       const hasTitleLeak = cleanTitle ? containsAnswerLeak(cleanTitle, answer) : true;
       const hasArtistLeak = validArtist ? containsAnswerLeak(validArtist, answer) : true;
 
-      let candidateClue;
+      let candidateClue: string;
       if (cleanTitle && !hasTitleLeak) {
         candidateClue = `Anime featuring the ${themeSlug} theme "${cleanTitle}"${yearSuffix}`;
       } else if (validArtist && !hasArtistLeak) {

@@ -2,9 +2,10 @@
 
 ## Modules
 - `musicIdentity.js`: `canonicalMusicKey` (Unicode-aware identity key), `toCrosswordAnswer` (A–Z/0–9 only, `&`/`+` become `AND`, rejects non-Latin), and blacklist matching.
-- `musicKeywords.js`: `extractAnswerKeyword`, `extractAllAnswerCandidates`, `splitArtistNames`, and `isSingleEntityArtist`.
-- `clueGenerator.js`: `formatCrosswordClue`, `sanitizeClue`, and `containsAnswerLeak`.
-- `liveCrossword.js`: `generateLiveCrossword(songs, title, targetWords)`, the grid placement engine.
+- `musicKeywords.ts`: `extractAnswerKeyword`, `extractAllAnswerCandidates`, `splitArtistNames`, and `isSingleEntityArtist`.
+- `clueGenerator.ts`: `formatCrosswordClue`, `sanitizeClue`, and `containsAnswerLeak`.
+- `liveCrossword.ts`: `generateLiveCrossword(songs, title, targetWords)`, the grid placement engine.
+- `types.ts`: `Song`, `Clue`, `Puzzle` and the other puzzle types, shared with the client.
 
 ## Answer rules
 - Strip feat. credits and remaster/version tags before building answers.

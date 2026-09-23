@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { extractAnswerKeyword } from '../../shared/musicKeywords.js';
+import { extractAnswerKeyword } from '../../shared/musicKeywords.ts';
 import {
   allowedLanguagesForContext,
   isAnimeTrack,

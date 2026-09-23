@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Puzzle } from '../types/crossword';
+import { Puzzle } from '../../shared/types';
 import { dynamicMusicService } from '../services/dynamicMusicService';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Modal } from './Modal';

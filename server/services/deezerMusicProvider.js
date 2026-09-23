@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from './fetchWithTimeout.js';
-import { shuffleArray } from '../../shared/shuffle.js';
+import { shuffleArray } from '../../shared/shuffle.ts';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;

@@ -1,6 +1,53 @@
-import { shuffleArray } from './shuffle.js';
+import { shuffleArray } from './shuffle.ts';
+import type { CellData, Clue, Direction, Puzzle, Song } from './types.ts';
 
-function evaluatePlacement(grid, placedWords, word, row, col, direction, options = {}) {
+/** A catalog or provider song with its chosen answer and clue. */
+export interface LiveSong extends Song {
+  answer: string;
+  clueType: string;
+  clueText: string;
+  releaseYear?: number | null;
+}
+
+export type Archetype = 'dense' | 'small' | 'standard';
+
+export interface LiveCrosswordOptions {
+  archetype?: Archetype;
+  targetWords?: number;
+  maxSmallBounds?: number;
+  minAnswerLength?: number;
+  maxAnswerLength?: number;
+  trials?: number;
+  trialsCount?: number;
+}
+
+type Grid = (string | null)[][];
+
+interface PlacedWord {
+  item: LiveSong;
+  row: number;
+  col: number;
+  direction: Direction;
+  length: number;
+  answer: string;
+  currentCrossings: number;
+}
+
+interface Placement {
+  row: number;
+  col: number;
+  direction: Direction;
+  intersections: number;
+  crossedWords: PlacedWord[];
+  score: number;
+}
+
+interface PlacementOptions {
+  archetype?: Archetype;
+  maxSmallBounds?: number;
+}
+
+function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, row: number, col: number, direction: Direction, options: PlacementOptions = {}): Placement | null {
   const size = grid.length;
   const horizontal = direction === 'across';
   if (row < 0 || col < 0) return null;
@@ -9,7 +56,7 @@ function evaluatePlacement(grid, placedWords, word, row, col, direction, options
   if (!horizontal && ((row > 0 && grid[row - 1][col] !== null) || (row + word.length < size && grid[row + word.length][col] !== null))) return null;
 
   let intersections = 0;
-  const crossedWords = [];
+  const crossedWords: PlacedWord[] = [];
 
   for (let index = 0; index < word.length; index++) {
     const targetRow = horizontal ? row : row + index;
@@ -92,12 +139,12 @@ function evaluatePlacement(grid, placedWords, word, row, col, direction, options
   return { row, col, direction, intersections, crossedWords, score };
 }
 
-function placeWord(grid, placedWords, item, row, col, direction, crossedWords = []) {
+function placeWord(grid: Grid, placedWords: PlacedWord[], item: LiveSong, row: number, col: number, direction: Direction, crossedWords: PlacedWord[] = []): void {
   const answer = item.answer.toUpperCase();
   for (let index = 0; index < answer.length; index++) {
     grid[direction === 'across' ? row : row + index][direction === 'across' ? col + index : col] = answer[index];
   }
-  const newWord = {
+  const newWord: PlacedWord = {
     item,
     row,
     col,
@@ -112,7 +159,7 @@ function placeWord(grid, placedWords, item, row, col, direction, crossedWords = 
   placedWords.push(newWord);
 }
 
-function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
+function createPuzzle(grid: Grid, placedWords: PlacedWord[], puzzleId: string, title: string, difficulty: string): Puzzle {
   let minRow = grid.length;
   let maxRow = 0;
   let minCol = grid.length;
@@ -129,8 +176,8 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
   const rows = maxRow - minRow + 1;
   const cols = maxCol - minCol + 1;
   const adjusted = placedWords.map(word => ({ ...word, row: word.row - minRow, col: word.col - minCol }));
-  const cellNumbers = Array.from({ length: rows }, () => Array(cols).fill(null));
-  const clues = [];
+  const cellNumbers: (number | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null));
+  const clues: Clue[] = [];
   let number = 1;
 
   for (let row = 0; row < rows; row++) {
@@ -138,14 +185,15 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
       const across = adjusted.find(word => word.row === row && word.col === col && word.direction === 'across');
       const down = adjusted.find(word => word.row === row && word.col === col && word.direction === 'down');
       if (!across && !down) continue;
-      cellNumbers[row][col] = number++;
+      const cellNumber = number++;
+      cellNumbers[row][col] = cellNumber;
 
       for (const word of [across, down]) {
         if (!word) continue;
         const { item } = word;
         clues.push({
-          id: `${cellNumbers[row][col]}${word.direction === 'across' ? 'A' : 'D'}`,
-          number: cellNumbers[row][col],
+          id: `${cellNumber}${word.direction === 'across' ? 'A' : 'D'}`,
+          number: cellNumber,
           direction: word.direction,
           row,
           col,
@@ -186,7 +234,7 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
     difficulty,
     rows,
     cols,
-    grid: Array.from({ length: rows }, (_, row) => Array.from({ length: cols }, (_, col) => {
+    grid: Array.from({ length: rows }, (_, row) => Array.from({ length: cols }, (_, col): CellData => {
       const char = grid[row + minRow][col + minCol];
       return { row, col, char, isBlock: char === null, number: cellNumbers[row][col] };
     })),
@@ -199,13 +247,17 @@ function createPuzzle(grid, placedWords, puzzleId, title, difficulty) {
  * Actively optimizes word crossings (1 to 3 crossings each) and lattice variety
  * to produce engaging, organic, tightly woven crossword grids.
  */
-export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targetWords = 10, options = {}) {
-  if (typeof targetWords === 'object' && targetWords !== null) {
-    options = targetWords;
-    targetWords = options.targetWords || 10;
-  }
-  const archetype = options?.archetype || 'standard';
-  const maxSmallBounds = options?.maxSmallBounds || 9;
+export function generateLiveCrossword(
+  songs: LiveSong[],
+  title = '⚡ Live Crossword',
+  targetWordsOrOptions: number | LiveCrosswordOptions = 10,
+  moreOptions: LiveCrosswordOptions = {},
+): Puzzle | null {
+  // Called as (songs, title, options) or (songs, title, targetWords, options)
+  const options = typeof targetWordsOrOptions === 'object' ? targetWordsOrOptions : moreOptions;
+  let targetWords = typeof targetWordsOrOptions === 'object' ? (targetWordsOrOptions.targetWords || 10) : targetWordsOrOptions;
+  const archetype = options.archetype || 'standard';
+  const maxSmallBounds = options.maxSmallBounds || 9;
   const placementOpts = { archetype, maxSmallBounds };
 
   let eligible = (songs || []).filter(song => /^[A-Z0-9]{2,20}$/.test(song.answer || ''));
@@ -222,15 +274,15 @@ export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targe
   const requiredMin = archetype === 'small' ? 5 : 6;
   if (eligible.length < requiredMin) return null;
 
-  let bestPuzzle = null;
+  let bestPuzzle: Puzzle | null = null;
   let bestTrialScore = -Infinity;
   const defaultTrials = archetype === 'dense' ? 300 : (archetype === 'small' ? 150 : 150);
-  const trialsCount = options?.trialsCount || options?.trials || defaultTrials;
+  const trialsCount = options.trialsCount || options.trials || defaultTrials;
 
   for (let trial = 0; trial < trialsCount; trial++) {
     const size = archetype === 'small' ? 16 : 24;
-    const grid = Array.from({ length: size }, () => Array(size).fill(null));
-    const placedWords = [];
+    const grid: Grid = Array.from({ length: size }, () => Array(size).fill(null));
+    const placedWords: PlacedWord[] = [];
 
     // Varied starter word seed across trials: mix top longest and randomized selection
     const pool = shuffleArray([...eligible]);
@@ -239,7 +291,7 @@ export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targe
     }
     const firstIdx = Math.floor(Math.random() * Math.min(3, pool.length));
     const first = pool[firstIdx];
-    const direction = Math.random() > 0.5 ? 'across' : 'down';
+    const direction: Direction = Math.random() > 0.5 ? 'across' : 'down';
     placeWord(
       grid,
       placedWords,
@@ -256,12 +308,12 @@ export function generateLiveCrossword(songs, title = '⚡ Live Crossword', targe
       const candidateList = shuffleArray(remaining.filter(item => !placedWords.some(pw => pw.item.id === item.id)));
 
       for (const item of candidateList) {
-        const validPlacements = [];
+        const validPlacements: Placement[] = [];
         for (const existing of placedWords) {
           // If existing word already has 3 crossings, do not overload it
           if (existing.currentCrossings >= 3) continue;
 
-          const targetDirection = existing.direction === 'across' ? 'down' : 'across';
+          const targetDirection: Direction = existing.direction === 'across' ? 'down' : 'across';
           for (let itemIndex = 0; itemIndex < item.answer.length; itemIndex++) {
             for (let existingIndex = 0; existingIndex < existing.answer.length; existingIndex++) {
               if (item.answer[itemIndex] !== existing.answer[existingIndex]) continue;

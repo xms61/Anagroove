@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Puzzle, CellValidity } from '../types/crossword';
+import { Puzzle, CellValidity } from '../../shared/types';
 
 interface CrosswordGridProps {
   puzzle: Puzzle;

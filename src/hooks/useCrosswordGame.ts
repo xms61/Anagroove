@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Puzzle, Clue, Direction, CellValidity } from '../types/crossword';
+import { Puzzle, Clue, Direction, CellValidity } from '../../shared/types';
 import { apiClient } from '../services/apiClient';
 import { socketService, MultiplayerRoom } from '../services/socketService';
 import confetti from 'canvas-confetti';

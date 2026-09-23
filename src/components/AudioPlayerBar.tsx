@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clue } from '../types/crossword';
+import { Clue } from '../../shared/types';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import { playableAudioUrl } from '../services/audioSource';
 import { readSettings } from '../hooks/useSettings';

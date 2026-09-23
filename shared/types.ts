@@ -1,3 +1,4 @@
+/** Puzzle types shared by the server (which builds puzzles) and the client (which renders them). */
 export type Direction = 'across' | 'down';
 
 export interface Song {
@@ -17,6 +18,9 @@ export interface Song {
   themeType?: string;
   isAnimeOped?: boolean;
   imageUrl?: string;
+  language?: string;
+  release_year?: number | null;
+  popularity?: number;
   selection?: {
     source: string;
     rank: number;
@@ -25,7 +29,8 @@ export interface Song {
 }
 
 export interface Clue {
-  id: string; // e.g. "3A", "5D"
+  /** Number and direction, e.g. "3A" or "5D". */
+  id: string;
   number: number;
   direction: Direction;
   row: number;

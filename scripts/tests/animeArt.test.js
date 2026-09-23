@@ -5,7 +5,7 @@ import {
   extractAllAnswerCandidates,
   formatCrosswordClue,
   containsAnswerLeak,
-} from '../../shared/musicKeywords.js';
+} from '../../shared/musicKeywords.ts';
 import { buildQueryPlan, extractAnimeKeyphrase } from '../../server/services/queryBuilder.js';
 import { resolveAnimeCoverImages } from '../../server/services/animeImageService.js';
 import { AnimeCatalog } from '../../server/db/animeCatalog.js';

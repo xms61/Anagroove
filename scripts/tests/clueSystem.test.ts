@@ -5,9 +5,9 @@ import {
   formatCrosswordClue,
   sanitizeClue,
   containsAnswerLeak,
-} from '../../shared/musicKeywords.js';
+} from '../../shared/musicKeywords.ts';
 
-const LEAKS = [
+const LEAKS: [clue: string, answer: string, expected: boolean, what: string][] = [
   ['[Anime] ED1 of "Mahou Sensei Negima!" by Yuu Kobayashi', 'YUUKOBAYASHI', true, 'the concatenated artist'],
   ['[Anime] ED1 of "Mahou Sensei Negima!" by Yuu Kobayashi', 'KOBAYASHI', true, 'one artist token'],
   ['Track by Bad Company', 'BADCOMPANY', true, 'a self-titled artist'],
@@ -88,7 +88,7 @@ test('no clue type leaks its answer for any anime title/artist/franchise combina
     const animeTitle = franchises[(t + a) % franchises.length];
     const themeSlug = `${a % 2 ? 'ED' : 'OP'}${1 + (t % 5)}`;
     const track = { title, song_title: title, artist, artist_name: artist, animeTitle, themeType: themeSlug.slice(0, 2), themeSlug, releaseYear: 2000 + t, isAnimeOped: true };
-    for (const preferredType of ['anime', 'title', 'artist', 'keyword']) {
+    for (const preferredType of ['anime', 'title', 'artist', 'keyword'] as const) {
       const keyword = extractAnswerKeyword(title, artist, { preferredType, allowArtist: true, animeTitle });
       if (!keyword) continue;
       const clue = formatCrosswordClue(track, keyword);

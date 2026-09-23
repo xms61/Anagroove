@@ -4,7 +4,7 @@
  * artists, languages) and generates a few seeded puzzles to check they fill up and differ.
  * Used by `npm run catalog:coverage`; run it with SPOTYSPICE_OFFLINE=1 so nothing leaves the catalog.
  */
-import { THEMES } from '../../shared/themes.js';
+import { THEMES } from '../../shared/themes.ts';
 import { buildQueryPlan } from '../services/queryBuilder.js';
 import { isAnimeTarget } from '../policy/selectionPolicy.js';
 import { catalogCandidates } from './candidates.js';

@@ -1,13 +1,44 @@
 /**
- * Extracts candidate crossword answers (Song title, Artist name, or Title keyword),
+ * Extracts candidate crossword answers (song title, artist name, title keyword or anime title),
  * capped at 14 characters, supporting variable clue distributions.
- *
- * @param {string} title - Track title
- * @param {string} artist - Artist or band name
- * @param {{ preferredType?: 'title' | 'artist' | 'keyword', allowArtist?: boolean, seenAnswers?: Set<string>, artistIndex?: number } | string} [options]
- * @returns {{ answer: string, clueType: string, clueText: string } | null}
  */
 import { toCrosswordAnswer } from './musicIdentity.js';
+
+export type ClueType = 'Song title' | 'Artist name' | 'Song title keyword' | 'Anime title';
+export type LengthBucket = 'short' | 'medium' | 'long';
+
+export interface AnswerCandidate {
+  answer: string;
+  clueType: ClueType;
+  clueText: string;
+  artistName?: string;
+  isCollaboration?: boolean;
+  animeTitle?: string;
+}
+
+export interface AnswerCandidates {
+  title: AnswerCandidate | null;
+  artist: AnswerCandidate | null;
+  artistCandidates: AnswerCandidate[];
+  keyword: AnswerCandidate | null;
+  shortKeyword: AnswerCandidate | null;
+  wordCandidates: AnswerCandidate[];
+  anime: AnswerCandidate | null;
+  animeWordCandidates: AnswerCandidate[];
+}
+
+export interface ExtractKeywordOptions {
+  preferredType?: 'title' | 'artist' | 'keyword' | 'anime';
+  allowArtist?: boolean;
+  seenAnswers?: Set<string>;
+  artistIndex?: number;
+  /** short = 2-5 letters, medium = 6-8, long = 9-14 */
+  targetLengthBucket?: LengthBucket;
+  animeTitle?: string | null;
+}
+
+/** Non-empty answers only; narrows (string | null)[] to string[]. */
+const isAnswer = (value: string | null): value is string => Boolean(value);
 
 const SINGLE_ENTITY_AND_PATTERNS = [
   // 1. Groups with "... & The [Noun]" / "... and the [Noun]" / "... & His ..." / "... & Her ..." / "... & Their ..."
@@ -88,7 +119,7 @@ const KNOWN_SINGLE_ENTITY_NAMES = new Set([
  * unitary band or artistic entity (e.g. "Above & Beyond", "Mumford & Sons", "Simon & Garfunkel"),
  * rather than multiple collaborating artists (e.g. "Ski Aggu & Sira", "Drake & 21 Savage").
  */
-export function isSingleEntityArtist(artistName) {
+export function isSingleEntityArtist(artistName: string | null | undefined): boolean {
   if (!artistName) return false;
   const clean = String(artistName).trim().toLowerCase();
   if (KNOWN_SINGLE_ENTITY_NAMES.has(clean)) return true;
@@ -100,7 +131,7 @@ export function isSingleEntityArtist(artistName) {
  * are present (e.g. "Ski Aggu & Sira" -> ["Ski Aggu", "Sira"]), while preserving
  * single-entity group names (e.g. "Above & Beyond" -> ["Above & Beyond"]).
  */
-export function splitArtistNames(artistName) {
+export function splitArtistNames(artistName: string | null | undefined): string[] {
   if (!artistName) return [];
   const raw = String(artistName).trim();
   if (!raw) return [];
@@ -119,7 +150,7 @@ export function splitArtistNames(artistName) {
   return parts.length > 0 ? parts : [raw];
 }
 
-export function extractAllAnswerCandidates(title, artist, options = {}) {
+export function extractAllAnswerCandidates(title: string, artist: string, options: ExtractKeywordOptions = {}): AnswerCandidates | null {
   if (!title || !artist) return null;
 
   // Thoroughly strip featured artists and parenthetical annotations from song title
@@ -141,7 +172,7 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
   // Combined full song title (2 to 14 letters)
   // e.g. "Go" -> "GO" (2), "Your Love" -> "YOURLOVE" (8), "Blinding Lights" -> "BLINDINGLIGHTS" (14)
   const combinedTitle = toCrosswordAnswer(cleanTitle, { minLength: 2, maxLength: 14 });
-  const titleCandidate = combinedTitle ? {
+  const titleCandidate: AnswerCandidate | null = combinedTitle ? {
     answer: combinedTitle,
     clueType: 'Song title',
     clueText: `Iconic track title (${combinedTitle.length} letters)`
@@ -152,7 +183,7 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
   // whereas single-entity groups with '&' ("Above & Beyond", "Mumford & Sons") remain unitary
   // and expand '&' to 'AND' ("ABOVEANDBEYOND", "MUMFORDANDSONS").
   const artistNames = splitArtistNames(artist);
-  const artistCandidates = [];
+  const artistCandidates: AnswerCandidate[] = [];
 
   for (let i = 0; i < artistNames.length; i++) {
     const name = artistNames[i];
@@ -192,11 +223,11 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
     .trim()
     .split(/\s+/)
     .map(w => toCrosswordAnswer(w, { minLength: 2, maxLength: 12 }))
-    .filter(Boolean);
+    .filter(isAnswer);
 
-  const wordCandidates = [];
-  let keywordCandidate = null;
-  let shortKeywordCandidate = null;
+  const wordCandidates: AnswerCandidate[] = [];
+  let keywordCandidate: AnswerCandidate | null = null;
+  let shortKeywordCandidate: AnswerCandidate | null = null;
 
   if (normalizedWords.length > 0) {
     const meaningfulWords = normalizedWords.filter(w => !COMMON_STOPWORDS.has(w));
@@ -229,9 +260,9 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
   }
 
   // Anime franchise / series title candidates (2 to 14 letters)
-  let animeCandidate = null;
-  const animeWordCandidates = [];
-  const animeTitle = typeof options === 'object' ? options?.animeTitle : null;
+  let animeCandidate: AnswerCandidate | null = null;
+  const animeWordCandidates: AnswerCandidate[] = [];
+  const animeTitle = options.animeTitle;
 
   if (animeTitle) {
     const unescapedAnime = String(animeTitle)
@@ -273,7 +304,8 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
       .trim()
       .split(/\s+/)
       .map(w => toCrosswordAnswer(w, { minLength: 2, maxLength: 12 }))
-      .filter(w => Boolean(w) && !COMMON_STOPWORDS.has(w));
+      .filter(isAnswer)
+      .filter(w => !COMMON_STOPWORDS.has(w));
 
     for (const w of animeWords) {
       animeWordCandidates.push({
@@ -305,17 +337,19 @@ export function extractAllAnswerCandidates(title, artist, options = {}) {
   };
 }
 
-export function extractAnswerKeyword(title, artist, options = {}) {
-  const candidates = extractAllAnswerCandidates(title, artist, options);
-  if (!candidates) return null;
+/** The best answer for a track: the preferred type and length bucket when possible, never a seen answer. */
+export function extractAnswerKeyword(title: string, artist: string, options: ExtractKeywordOptions = {}): AnswerCandidate | null {
+  const found = extractAllAnswerCandidates(title, artist, options);
+  if (!found) return null;
+  const candidates: AnswerCandidates = found;
 
-  const preferred = typeof options === 'string' ? options : options?.preferredType;
-  const allowArtist = options?.allowArtist !== false;
-  const seenAnswers = options?.seenAnswers;
-  const targetBucket = options?.targetLengthBucket; // 'short' (2-5), 'medium' (6-8), 'long' (9-14)
-  const artistIndex = typeof options?.artistIndex === 'number' ? options.artistIndex : null;
+  const preferred = options.preferredType;
+  const allowArtist = options.allowArtist !== false;
+  const seenAnswers = options.seenAnswers;
+  const targetBucket = options.targetLengthBucket;
+  const artistIndex = typeof options.artistIndex === 'number' ? options.artistIndex : null;
 
-  function getBestArtistCandidate() {
+  function getBestArtistCandidate(): AnswerCandidate | null {
     const list = candidates.artistCandidates || [];
     if (list.length === 0) return candidates.artist;
     if (artistIndex !== null && list[artistIndex]) {
@@ -328,7 +362,7 @@ export function extractAnswerKeyword(title, artist, options = {}) {
     return list[0] || candidates.artist;
   }
 
-  const allAvailable = [];
+  const allAvailable: AnswerCandidate[] = [];
   if (candidates.anime) allAvailable.push(candidates.anime);
   if (Array.isArray(candidates.animeWordCandidates)) {
     allAvailable.push(...candidates.animeWordCandidates);
@@ -344,8 +378,8 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   }
 
   // Deduplicate candidates by answer
-  const uniqueAvailable = [];
-  const seenCandidateAnswers = new Set();
+  const uniqueAvailable: AnswerCandidate[] = [];
+  const seenCandidateAnswers = new Set<string>();
   for (const c of allAvailable) {
     if (c && c.answer && !seenCandidateAnswers.has(c.answer)) {
       seenCandidateAnswers.add(c.answer);
@@ -354,7 +388,7 @@ export function extractAnswerKeyword(title, artist, options = {}) {
   }
 
   // Helper to test if a candidate matches the requested length bucket
-  function inLengthBucket(candidate, bucket) {
+  function inLengthBucket(candidate: AnswerCandidate, bucket: LengthBucket): boolean {
     if (!candidate || !candidate.answer) return false;
     const len = candidate.answer.length;
     if (bucket === 'short') return len >= 2 && len <= 5;
@@ -462,5 +496,5 @@ export {
   sanitizeClue,
   containsAnswerLeak,
   cleanClueTitle
-} from './clueGenerator.js';
+} from './clueGenerator.ts';
 

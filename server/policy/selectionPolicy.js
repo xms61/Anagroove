@@ -3,11 +3,11 @@
  * Language, thematic homonym guards, authenticity (shared rules), anime/Japanese affinity and
  * release-year windows. Pure functions: they never mutate the track.
  */
-import { splitArtistNames } from '../../shared/musicKeywords.js';
+import { splitArtistNames } from '../../shared/musicKeywords.ts';
 import { toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { isAuthenticMetadata } from './authenticityRules.js';
 import { resolveTrackLanguage } from '../db/languageClassifier.js';
-import { themeById } from '../../shared/themes.js';
+import { themeById } from '../../shared/themes.ts';
 
 /**
  * Checks if a genre or query prompt specifically targets authentic Anime OP/ED themes.

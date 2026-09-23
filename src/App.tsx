@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Puzzle, CellValidity } from './types/crossword';
+import { Puzzle, CellValidity } from '../shared/types';
 import { useCrosswordGame } from './hooks/useCrosswordGame';
 import { CrosswordGrid } from './components/CrosswordGrid';
 import { ClueList } from './components/ClueList';

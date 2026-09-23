@@ -4,7 +4,7 @@
 import express from 'express';
 import { db } from '../db.js';
 import { getRandomSongPool } from '../selection/songPool.js';
-import { generateLiveCrossword } from '../../shared/liveCrossword.js';
+import { generateLiveCrossword } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.js';
 import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.js';
 import { logger } from '../logger.js';
