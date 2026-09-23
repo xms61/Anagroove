@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.16.0] - 2026-09-23
+
+### Added
+- **Catalog cleanup** (`server/db/catalogCleanup.js`, `npm run db:sanitize`) brings existing rows under the admission policy. The steps are idempotent and run in one transaction; a dry run executes the same steps and rolls back, so its counts are exact.
+  - `text`: decodes HTML entities (`I&#039;m`), removes invisible characters, and merges artists whose names now share a key.
+  - `classify`: recomputes base titles and version types.
+  - `recordings`: folds collaborations stored once per credited artist ("Die With A Smile" under Lady Gaga and Bruno Mars) into the row that owns the provider link.
+  - `links`: restores provider links from stored samples.
+  - `duplicates`: keeps one row per artist and base title, preferring the plain original with a sample, an ISRC and the highest popularity, with the earliest release year and every provider link.
+  - `languages` + `policy`: re-votes languages, then deletes other languages, non-original versions, inauthentic rows, bad durations and unlinked rows. The two repeat until they agree.
+  - `fields`: normalizes ISRCs, registrants, years and 0–100 popularity. `orphans`: removes empty artists. The FTS index is rebuilt once at the end.
+- **Validation gate** (`server/db/catalogGate.js`, `npm run db:validate -- --ci`) exits 1 on duplicates, other languages, non-original versions (stored or re-derived from the title), popularity outside 0–100, bad durations, unlinked or orphan rows, inauthentic rows, uncleaned text, an FTS/track count mismatch, or release-year/ISRC coverage under 95% (`--min-year-coverage`, `--min-isrc-coverage`).
+- **Album enrichment** (`npm run catalog:enrich -- --albums=N`): one Deezer `/album` request dates every catalog track on the album (about 9 tracks per request on the real catalog). **Schema v4** adds the `tracks.album_checked_at` marker.
+- `cleanDisplayText` is applied to titles, albums and artist names on every upsert.
+- 33 new tests: classifier guards, text/version normalization, every cleanup step, idempotence, the gate, album enrichment, and the CLI exit codes and backup.
+
+### Fixed
+- **English songs the cleanup would have deleted as foreign:** "Sweet Child O' Mine" (Tagalog), "Moth To A Flame" (Albanian), "Cutie Pie" (Latvian), D'Angelo's catalog (Tagalog), and KoЯn and DISCIPLΞS (Russian/Greek from one stylized letter).
+  - A non-English verdict must now beat English by a margin that grows as titles get shorter.
+  - Two-word titles can only be ruled es/pt/fr/de/it.
+  - Artist votes need 6+ words and a clear lead.
+  - Other scripts must make up at least half the letters.
+  - Dotted acronyms carry no language evidence.
+- Tags that name the original release ("Single ver.", "Version originale 1981", "Full Version", "Album ver.") were classed as alternate versions and would have been deleted.
+- Artist names containing "Covers" (e.g. "Bossa Nova Covers") are rejected as inauthentic.
+- The validator's contamination checks use the shared authenticity rules; its `LIKE` patterns never matched space-separated names. Duplicate detection uses the one-row-per-song rule instead of a 3-second duration window.
+
+### Changed
+- `scripts/validate_and_sanitize_db.js` is rewritten. The default run prints diagnostics, a cleanup dry run and the gate, and writes the report. `--fix` writes a `VACUUM INTO` backup, migrates if needed, applies the cleanup, then runs ANALYZE, a WAL checkpoint and VACUUM (`--no-backup`, `--no-vacuum`, `--steps=`). `CatalogValidator.sanitize()` is removed.
+- Docs: `CATALOG_DB.md`, `CRAWLER.md`, `SCRIPTS_CLI.md`, `TESTING.md`, `README.md`.
+
+---
+
 ## [1.15.0] - 2026-09-23
 
 ### Added

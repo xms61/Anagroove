@@ -22,7 +22,8 @@ export const MIN_RELEASE_YEAR = 1900;
 
 // Ordered: the first matching rule wins for a segment.
 const VERSION_RULES = [
-  ['original', /\b(original mix|album mix|original version)\b/i],
+  // Tags naming the original release itself ("Single ver.", "Version originale 1981")
+  ['original', /\b(original (mix|version|ver\.?)|album mix|version originale|versi[oó]n original|vers[aã]o original|(single|album|lp|main|full|vocal) (version|ver\.?)|full length)(?=\W|$)/i],
   ['cover', /\b(karaoke|tribute|cover|originally performed|in the style of|made famous by)\b/i],
   ['instrumental', /\b(instrumental|inst\.?|off[\s-]?vocal|backing track|no vocals?|minus one)\b/i],
   ['altered', /\b(sped[\s-]?up|speed[\s-]?up|slowed|nightcore|reverb|8d audio|pitched|bass[\s-]?boosted)\b/i],
@@ -143,6 +144,40 @@ export function isAllowedLanguage(language) {
 // ---------------------------------------------------------------------------
 // Field validation
 // ---------------------------------------------------------------------------
+
+const HTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const ENTITY = /&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{2,6});/gi;
+// Zero-width space, word joiner and BOM (built from code points to keep this file ASCII)
+const INVISIBLE = new RegExp(`[${String.fromCharCode(0x200b, 0x2060, 0xfeff)}]`, 'g');
+
+function decodeEntities(text) {
+  return text.replace(ENTITY, (match, code) => {
+    if (code[0] !== '#') return HTML_ENTITIES[code.toLowerCase()] ?? match;
+    const point = code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+    return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : match;
+  });
+}
+
+/**
+ * Display text as stored: HTML entities decoded (provider payloads carry "I&#039;m", sometimes
+ * double-encoded), invisible characters removed, whitespace collapsed, NFC.
+ */
+export function cleanDisplayText(value) {
+  if (value === null || value === undefined) return '';
+  let text = String(value);
+  for (let i = 0; i < 3; i++) {
+    const decoded = decodeEntities(text);
+    if (decoded === text) break;
+    text = decoded;
+  }
+  // Invisible characters go first so the spaces around them collapse (a zero-width space between two spaces)
+  return text
+    .replace(INVISIBLE, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\p{Cc}/gu, '')
+    .normalize('NFC')
+    .trim();
+}
 
 const ISRC_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 

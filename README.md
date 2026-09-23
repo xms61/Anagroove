@@ -194,11 +194,11 @@ npm run ingest:dataset -- --sql-file=./data/changes_2026_03.sql.gz --provider=de
 # or batch-ingest an entire directory of base tables:
 npm run ingest:dataset -- --base-dir=./data/base_tables/ --min-popularity=31
 
-# 9. Fill in missing metadata (ISRC, release year, rank, artist fans & genres, strict iTunes links)
+# 9. Fill in missing metadata (release years by album, ISRC/rank by track, artist fans & genres, strict iTunes links)
 #    Resumable: rerun to continue. Also recomputes artist/track languages.
 npm run catalog:enrich
 # or one step with a limit:
-npm run catalog:enrich -- --deezer=5000
+npm run catalog:enrich -- --albums=5000
 
 # 10. Inspect database status (including country codes & detected languages)
 npm run crawl:status
@@ -235,14 +235,17 @@ npm run db:migrate
 ```
 Migrating an existing ~500k-track catalog to v2 takes about 20 s and grows the file by the trigram search index (~140 MB).
 
-#### Database Validation & Sanitization
-Run automated health diagnostics, soft-duplicate clustering, and contamination cleanup:
+#### Database Validation & Cleanup
+The cleanup brings existing rows under the admission policy: English/Japanese/Korean only, original recordings only, one row per song and artist, authentic music, and clean text. See `server/db/CATALOG_DB.md`.
 ```bash
-# Validate structural integrity, foreign keys, duplicates, and coverage
+# Diagnostics, an exact cleanup dry run (rolled back), and the validation gate; writes reports/database_validation_report.md
 npm run db:validate
 
-# Execute live deduplication and purge invalid audio or audiobook contaminations
+# Back up (VACUUM INTO), apply the cleanup, then ANALYZE + VACUUM. About 1 minute on a 500k-track catalog
 npm run db:sanitize
+
+# CI gate: exits 1 on duplicates, other languages, non-original versions, orphans, or coverage under 95%
+npm run db:validate -- --ci
 ```
 
 #### Dedicated Anime Catalog & Preview Pipeline
