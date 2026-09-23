@@ -104,7 +104,7 @@ export function createLivePuzzleStore({
 }
 
 const livePuzzles = createLivePuzzleStore();
-const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3011);
+const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
 
 // Configurable CORS Policy
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS

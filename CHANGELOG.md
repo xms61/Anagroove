@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.13.1] - 2026-09-23
+
+### Added
+- **Code review & implementation plan** (`docs/plans/2026-09-23-code-review-plan.md`) covering architecture, crawling (en/ja/ko only, originals only), security, testing, track selection, and DB validation.
+- **Section docs for agents**, colocated with their code: `.github/RELEASE_PROCESS.md`, `server/db/CATALOG_DB.md`, `server/crawler/CRAWLER.md`, `server/services/TRACK_SELECTION.md`, `server/API_SECURITY.md`, `server/MULTIPLAYER_WS.md`, `shared/CROSSWORD_ENGINE.md`, `src/FRONTEND_UI.md`, `scripts/SCRIPTS_CLI.md`, `scripts/tests/TESTING.md`.
+- **`server/paths.js`**: a single `DATA_DIR` for the user store and SQLite catalogs, overridable with `SPOTYSPICE_DATA_DIR`.
+
+### Changed
+- `AGENTS.md` (renamed from `agents.md`) is now a minimal map to the section docs, cutting it from 150 lines to 17.
+- `npm test` preloads `scripts/tests/setup_env.js`, which isolates each run in a temp data dir. Tests no longer write to the real `server/data/store.json` or open `catalog.sqlite`.
+- Node 24 everywhere: the Dockerfile uses `node:24-alpine`, and CI/release workflows read `.nvmrc`.
+- Unified dev ports: API/WebSocket on `3001`, Vite on `3000` (production stays on `3000`).
+- `.dockerignore` excludes SQLite catalogs, `store.json`, dataset dumps, reports, and docs, so user data and the 480 MB catalog are never baked into images.
+- `.env.example` lists the env vars the app actually reads. The unused `GEMINI_API_KEY` is gone.
+- `test:prompts` writes its report to `reports/` instead of a hardcoded absolute path.
+- `README.md`: updated project structure, env setup, testing, and Docker data notes.
+
+### Removed
+- `.agents/skills/*` (folded into the section docs).
+- Offline pools `data/master_song_pool.json` and `data/music_pool.json`, and the scripts that only served them: `generate_puzzles.js`, `generate_all_themes.js`, `refresh_audio_pool.js`, `fetch_all_previews.js`, `test_live_generator.js`, `verify_all_themes.js`, `verify_puzzles.js`. The `generate` and `generate:themes` npm scripts are removed too.
+- Dead code and one-off scripts: `server/data/tracks_cache.json` (expired preview URLs), `src/utils/liveGenerator.ts`, `scripts/test_randomizer.js`, `scripts/inspect_crossword_batch.js`, `scripts/evaluate_city_pop_variance.js`, `scripts/test_features.js`.
+- Generated `reports/*.md` are no longer tracked (`reports/` is gitignored).
+
+---
+
 ## [1.13.0] - 2026-09-21
 
 ### Added

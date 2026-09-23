@@ -1,7 +1,7 @@
 {
   "name": "spotyspice",
   "private": true,
-  "version": "1.13.0",
+  "version": "1.13.1",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "test": "node scripts/run_tests.js",
+    "test": "node --import ./scripts/tests/setup_env.js scripts/run_tests.js",
     "test:prompts": "node scripts/test_prompts_crossword_suite.js",
     "eval:crosswords": "node scripts/eval_crossword_factory.js",
     "test:all": "npm test && npm run test:prompts",
@@ -33,9 +33,7 @@
     "anime:ingest": "node scripts/ingest_anime_catalog.js",
     "anime:images": "node scripts/backfill_anime_images.js",
     "fetch:datasets": "node scripts/fetch_datasets.js",
-    "ingest:dataset": "node scripts/ingest_musicmovearr.js",
-    "generate": "node scripts/generate_puzzles.js",
-    "generate:themes": "node scripts/generate_all_themes.js"
+    "ingest:dataset": "node scripts/ingest_musicmovearr.js"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

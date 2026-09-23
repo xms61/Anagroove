@@ -125,13 +125,12 @@ npm install
 ```
 
 ### 3. Environment Configuration (Optional)
-SpotySpice runs fully functional out-of-the-box in standby mode without requiring any API keys. To activate the **Gemini LLM Judge** for live AI song selection vetting:
+SpotySpice needs no API keys. All settings are optional overrides:
 ```bash
 cp .env.example .env
-# Edit .env and supply your Gemini API key:
-# GEMINI_API_KEY=your_gemini_api_key
+# PORT, VITE_PORT, CORS_ALLOWED_ORIGINS, SPOTYSPICE_DATA_DIR, LOG_LEVEL
 ```
-*Note: Never commit your `.env` file or actual API keys. When unset or set to `TODO`, the LLM Judge remains in zero-overhead standby bypass.*
+*Note: Never commit your `.env` file.*
 
 ### 4. Running in Development
 Start both the Express/WebSocket backend and the Vite frontend dev server concurrently:
@@ -260,85 +259,29 @@ npm run anime:ingest
 
 ```
 SpotySpice/
-├── .agents/                    # Specialized AI agent skills
-│   └── skills/                 # Crawler, crossword engine & release discipline skills
-├── agents.md                   # Agent guidelines, invariants & pre-commit checklist
-├── data/                       # Master music pools & metadata
-│   ├── master_song_pool.json
-│   └── music_pool.json
-├── scripts/                    # Generation, crawl & verification scripts
-│   ├── build_recognized_artists.js
-│   ├── crawl_catalog.js        # Multi-vector SQLite catalog crawler CLI
-│   ├── eval_crossword_factory.js # Large-scale evaluation & benchmark runner
-│   ├── fetch_all_previews.js
-│   ├── generate_all_themes.js
-│   ├── generate_anime_samples.js # FFmpeg 20s multi-sample audio generator
-│   ├── ingest_anime_catalog.js  # Dedicated anime SQLite catalog ingestor
-│   ├── run_tests.js            # Automated test suite (396 passing tests)
-│   ├── sync_anime_metadata.js   # Canonical anime theme metadata synchronizer
-│   ├── test_features.js        # Core API & persistence tests
-│   ├── test_multiplayer_live_sync.js # E2E two-player live sync test
-│   ├── test_randomizer.js      # Recognizable pool entropy test
-│   └── validate_and_sanitize_db.js # DB health, integrity, duplicate & purge runner
-├── server/                     # Node.js backend
-│   ├── crawler/                # Autonomous multi-vector SQLite crawler
-│   │   ├── authenticityFilter.js # Quality filters
-│   │   ├── harvester.js        # Discovery vectors & spiders
-│   │   └── rateLimiter.js      # Polite token bucket rate limiter
-│   ├── data/
-│   │   ├── catalog.sqlite      # Native SQLite database (Node.js 24 node:sqlite)
-│   │   ├── recognized_artists.json # 105+ iconic artists with >= 250k fans
-│   │   ├── store.json          # Anonymous user session store
-│   │   └── tracks_cache.json   # Cached preview URLs & track rank
-│   ├── db/
-│   │   ├── animeCatalog.js     # Dedicated anime OP/ED SQLite database engine
-│   │   ├── catalogValidator.js # Database health, structural integrity & sanitizer
-│   │   ├── sqliteCatalog.js    # SQLite schema, FTS5 & deterministic deduplicator
-│   │   └── db.js               # JSON persistence helper
-│   ├── server.js               # REST endpoints & WebSocket room manager
-│   ├── validators.js           # Endpoint and WebSocket payload validators
-│   └── services/
-│       ├── crosswordJudge.js   # Automated crossword evaluation and judgment engine
-│       ├── deezerMusicProvider.js # Deezer candidate harvesting & catalog taxonomy
-│       ├── ffmpegHelper.js     # Headless FFmpeg clip extractor utility
-│       ├── itunesMusicProvider.js # iTunes candidate harvesting & fallback previews
-│       ├── musicService.js     # Unified random pool, variety & seed selection
-│       ├── previewResolver.js  # JIT Lazy preview hydration & SQLite persistence
-│       └── queryBuilder.js     # Prompt parser & multi-endpoint query planner
-├── shared/                     # Cross-environment shared logic
-│   ├── liveCrossword.js        # On-the-fly crossword grid layout algorithm
-│   ├── musicIdentity.js        # Identity keys, diacritic folding & blacklist matching
-│   ├── musicKeywords.js        # Combined song title & answer keyword extractor (<= 16 chars)
-│   └── shuffle.js              # Fisher-Yates shuffle
-├── src/                        # React 19 Frontend
-│   ├── components/
-│   │   ├── AudioPlayerBar.tsx  # Floating Hi-Fi console audio deck
-│   │   ├── BlacklistModal.tsx  # Blacklist management dialog
-│   │   ├── ClueList.tsx        # Across & Down clues with jewel-toned badges
-│   │   ├── CrosswordGrid.tsx   # Floating physical letter tiles over rotating vinyl
-│   │   ├── EndScreenModal.tsx  # Victory screen & track showcase
-│   │   ├── HintModal.tsx       # 3-tier hint options
-│   │   ├── LiveGeneratorModal.tsx # On-the-fly randomizer UI
-│   │   ├── LoungeDrawer.tsx    # Unified slide-over menu
-│   │   ├── MultiplayerModal.tsx # Room creation & code entry
-│   │   └── PuzzlePickerModal.tsx# 20-puzzle catalog browser
-│   ├── hooks/
-│   │   ├── useBlacklist.ts     # Client & server blacklist synchronization
-│   │   └── useCrosswordGame.ts # Game state, keyboard navigation & co-op sync
-│   ├── services/
-│   │   ├── apiClient.ts        # REST client with X-User-Id header support
-│   │   └── socketService.ts    # WebSocket client with reconnection logic
-│   ├── types/
-│   │   └── crossword.ts        # TypeScript interfaces for puzzles, clues, themes
-│   ├── utils/
-│   │   ├── audioResolver.ts    # Self-healing audio fallback resolver
-│   │   └── liveGenerator.ts    # On-the-fly crossword grid layout algorithm
-│   ├── App.tsx                 # Main application container
-│   ├── index.css               # Tailwind & custom vinyl animations
-│   └── main.tsx                # React root mount
-├── tailwind.config.js          # Custom theme tokens
-├── tsconfig.json               # TypeScript configuration
-└── vite.config.ts              # Vite server & proxy configuration
+├── AGENTS.md                   # Map of agent docs (one per area, colocated below)
+├── .github/                    # CI + manual release workflows, RELEASE_PROCESS.md
+├── data/                       # most_streamed_artists.csv + gitignored dataset dumps
+├── docs/plans/                 # Roadmaps / implementation plans
+├── scripts/                    # Crawl, ingest, anime, validation & eval CLIs (SCRIPTS_CLI.md)
+│   ├── run_tests.js            # Unit & integration test runner
+│   └── tests/                  # Test env preload (temp data dir) & TESTING.md
+├── server/                     # Node.js 24 backend (API_SECURITY.md, MULTIPLAYER_WS.md)
+│   ├── crawler/                # Harvester, authenticity filter, rate limiter (CRAWLER.md)
+│   ├── data/                   # Runtime data (gitignored): catalog.sqlite, anime_catalog.sqlite, store.json
+│   ├── db/                     # sqliteCatalog, animeCatalog, catalogValidator (CATALOG_DB.md)
+│   ├── middleware/             # Rate limiter
+│   ├── services/               # Selection, providers, preview resolver, query planner (TRACK_SELECTION.md)
+│   ├── db.js                   # JSON user store
+│   ├── paths.js                # DATA_DIR (override with SPOTYSPICE_DATA_DIR)
+│   ├── server.js               # REST endpoints & WebSocket rooms
+│   └── validators.js           # Endpoint & WebSocket payload validators
+├── shared/                     # Identity keys, answer/clue extraction, grid engine (CROSSWORD_ENGINE.md)
+└── src/                        # React 19 frontend (FRONTEND_UI.md)
+    ├── components/             # Grid, clues, audio deck, drawer & modals
+    ├── hooks/                  # useCrosswordGame, useBlacklist
+    ├── services/               # apiClient, socketService, dynamicMusicService
+    └── types/                  # Puzzle types
 ```
 
 ---
@@ -377,7 +320,7 @@ SpotySpice uses a lightweight JSON WebSocket protocol on `/ws`:
 Run automated CI-friendly test suites and linters:
 
 ```bash
-# Run the complete automated test suite (396 unit & integration tests)
+# Run the unit & integration suite (isolated temp data dir; never touches server/data)
 npm test
 
 # Run the live multi-prompt crossword verification suite (14 diverse genres, eras, temporal windows & single-artist puzzles)
@@ -395,10 +338,8 @@ npm run test:ci
 # Format codebase with Prettier
 npm run format
 
-# Standalone deep-dive test scripts
+# Manual two-player live sync check (needs `npm run dev:server` on :3001)
 node scripts/test_multiplayer_live_sync.js
-node scripts/test_features.js
-npx tsx scripts/test_randomizer.js
 ```
 
 ---
@@ -407,7 +348,7 @@ npx tsx scripts/test_randomizer.js
 
 SpotySpice provides a manual GitHub Actions release pipeline (`.github/workflows/manual-release.yml`) triggered on-demand via **Workflow Dispatch**:
 
-1. **Validation**: Executes `npm run lint` and all 130 tests via `npm test`. Optionally runs the live 10-genre prompt evaluation suite when `run_prompt_suite` is enabled.
+1. **Validation**: Executes `npm run lint` and the full test suite via `npm test`. Optionally runs the live 10-genre prompt evaluation suite when `run_prompt_suite` is enabled.
 2. **Containerization**: Sets up Docker Buildx and builds a production-optimized container (`spotyspice:<tag>`).
 3. **Automated Tagging**: Creates and pushes the semantic version git tag (e.g. `v1.3.0` or custom).
 4. **Release Notes & Publishing**: Automatically extracts version-specific notes from `CHANGELOG.md` and publishes the GitHub Release.
@@ -424,7 +365,7 @@ SpotySpice features a structured, high-visibility server logging system (`server
 
 | Category | Description | Example Log Output |
 | :--- | :--- | :--- |
-| `[STARTUP]` | Server initialization & port status | `🎵 SpotySpice Backend API & WebSocket running on port 3011 [env: development, log: info]` |
+| `[STARTUP]` | Server initialization & port status | `🎵 SpotySpice Backend API & WebSocket running on port 3001 [env: development, log: info]` |
 | `[API]` | HTTP request method, path, status, latency | `[API] GET /api/puzzles/live -> 200 (154ms) (user: user_123)` |
 | `[HARVEST]` | External provider harvesting metrics | `Aggregator returned 40 candidate tracks in 180ms` |
 | `[SAMPLING]` | Candidate evaluation & rejection telemetry | `Evaluated 40 tracks -> 10 accepted (4 Title, 4 Artist, 2 Keyword) \| Filtered: 8 language, 6 duplicateArtist, 4 duplicateTitle` |
@@ -453,7 +394,7 @@ SpotySpice features a universal, prompt-agnostic music harvesting and sampling e
    - **Tier 0 (Unplayed)**: Fresh tracks are always prioritized first.
    - **Tier 1 & 2 (Played 1-2x)**: Only tapped once the fresh catalog is completely exhausted.
    - **Strict Cap ($\le 3$ plays)**: Tracks with 3 or more previous plays are barred from repeat entry across games.
-4. **Verified Performance**: In a 50-crossword live simulation with rolling session tracking (`evaluate_city_pop_variance.js`), the engine achieved **99.5% uniqueness** (420 unique songs across 422 clues) with a maximum repetition of only **2x** per song across the entire 50-game run.
+4. **Verified Performance**: In a 50-crossword live simulation with rolling session tracking, the engine achieved **99.5% uniqueness** (420 unique songs across 422 clues) with a maximum repetition of only **2x** per song across the entire 50-game run.
 
 ---
 
@@ -466,7 +407,7 @@ SpotySpice includes a production-ready, multi-stage Alpine Docker configuration.
 ```bash
 docker compose up -d
 ```
-The game will be live at `http://localhost:3000`. User progress and cache data will be persisted in a Docker volume (`spotyspice_data`).
+The game will be live at `http://localhost:3000`. User progress and the SQLite catalogs live in the Docker volume (`spotyspice_data`, mounted at `/app/server/data`). The image never contains `catalog.sqlite` or `store.json` (see `.dockerignore`). Copy a catalog into the volume, or crawl inside the container, to populate it.
 
 ### Manual Build & Run
 

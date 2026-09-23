@@ -114,7 +114,7 @@ const PROMPT_TEST_CASES = [
 ];
 
 const TARGET_WORDS = 10;
-const OUTPUT_REPORT_PATH = 'C:/Users/xms/.gemini/antigravity-acp/brain/de7a042a-6932-4ebc-8c01-82d8991e18b2/scratch/prompt_crossword_suite_report.md';
+const OUTPUT_REPORT_PATH = path.resolve(__dirname, '../reports/prompt_crossword_suite_report.md');
 
 async function runPromptCrosswordSuite() {
   console.log('================================================================');
