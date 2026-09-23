@@ -188,9 +188,10 @@ export const db = {
     return user
       ? (user.blacklist || []).map(item => ({
         ...item,
-        canonicalKey: item.canonicalKey || (item.type === 'artist'
+        // Recomputed from the name so keys stay current when normalization rules change
+        canonicalKey: (item.type === 'artist'
           ? canonicalArtistKey(item.name)
-          : canonicalTrackKey(item.name)),
+          : canonicalTrackKey(item.name)) || item.canonicalKey,
       }))
       : [];
   },

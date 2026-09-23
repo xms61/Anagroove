@@ -194,7 +194,13 @@ npm run ingest:dataset -- --sql-file=./data/changes_2026_03.sql.gz --provider=de
 # or batch-ingest an entire directory of base tables:
 npm run ingest:dataset -- --base-dir=./data/base_tables/ --min-popularity=31
 
-# 9. Inspect database status (including country codes & detected languages)
+# 9. Fill in missing metadata (ISRC, release year, rank, artist fans & genres, strict iTunes links)
+#    Resumable: rerun to continue. Also recomputes artist/track languages.
+npm run catalog:enrich
+# or one step with a limit:
+npm run catalog:enrich -- --deezer=5000
+
+# 10. Inspect database status (including country codes & detected languages)
 npm run crawl:status
 ```
 
@@ -253,9 +259,10 @@ npm run anime:ingest
 ```
 
 #### Admission Policy, Deduplication & Integrity
-- **English, Japanese & Korean only**: Every write goes through `upsertTrack`, which rejects any other detected language. Han-only titles count as Japanese or Korean when the ISRC was registered in JP or KR.
+- **English, Japanese & Korean only**: Every write goes through `upsertTrack`, which rejects any other language. Language comes from the script (hangul, kana, Han with a JP/KR ISRC), an artist-level vote over the artist's whole catalog and ISRC registrants, and the ELD n-gram detector for Latin titles. English titles like "Die With A Smile" stay English, and romanized songs by Japanese or Korean artists count as ja/ko.
+- **Crawl sources**: Apple Music charts (US, UK, Japan, Korea) matched to Deezer, curated playlists, and artist discographies. Artists whose catalog is in another language are skipped before any album requests.
 - **Original recordings only**: Live, remix, edit, extended, acoustic, instrumental, demo, re-recorded, sped-up, cover, and language versions are rejected. A remaster counts as the original recording.
-- **Authenticity Filtering**: Covers, karaoke, tribute bands, lullabies, and tracks shorter than 45 s or longer than 20 min are rejected.
+- **Authenticity Filtering**: One shared rulebook (`server/policy/authenticityRules.js`) for crawler, catalog, and song selection rejects covers, karaoke, soundalikes, utility audio, and audiobooks/radio plays. Tracks shorter than 45 s or longer than 20 min are rejected too.
 - **One popularity scale**: `popularity` is a 0–100 score (Spotify popularity, or the Deezer rank mapped onto it). The raw `deezer_rank` and `spotify_popularity` are kept alongside.
 - **Master Deduplication**: Tracks merge across Deezer, Spotify, and Apple Music by ISRC (Tier 1), or by artist plus a Unicode-aware base title with credits and version tags stripped (Tier 2). One row per song, whatever the release.
 - **Full-text search**: A trigram FTS5 index (kept in sync by triggers) gives fast substring search, including for kana, hangul, and kanji.

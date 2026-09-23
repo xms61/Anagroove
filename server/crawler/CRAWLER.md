@@ -1,29 +1,48 @@
 # Crawler & Ingest
 
 ## Modules
-- `harvester.js` (`MusicHarvester`) runs Deezer search/playlist/artist-discography harvesting and iTunes cross-referencing. It has the seed lists (`CURATED_PLAYLIST_SEEDS`, `DECADE_GENRE_SEEDS`, `YEAR_GENRE_SEEDS`, `MUSIC_LEXICON_SEEDS`, `BIGRAM_SEEDS`, `FOUNDATION_ARTISTS`) and `runFullHarvest` (6 vectors, stops at the target track count).
-- `artistBaseline.js`: the 500 most-streamed artists, from `data/most_streamed_artists.csv`.
-- `authenticityFilter.js` (`isAuthenticCandidate(raw, { requireSample })`) rejects covers, karaoke, tributes, lullabies, white noise, workout/8-bit, sped-up/nightcore, and durations outside 45 s–1200 s.
-- `rateLimiter.js` has token buckets plus `politeFetch` (User-Agent, retry on 429/503). Deezer: 5 req/s, burst 8. iTunes: 0.25 req/s, burst 3.
+- `harvester.js` (`MusicHarvester`): all Deezer payloads go through one mapper, `toCatalogCandidate`. The fetch function is injectable (`{ fetchImpl }`) for tests.
+  - Vectors, in order: **Apple Music charts** (`harvestAppleCharts`: us/gb/jp/kr), curated playlists, decade × genre, foundation-artist discographies (plus related artists), lexicon words, year × genre, bigrams. `runFullHarvest` stops at the target track count.
+  - `harvestArtistDiscography` skips an artist whose top tracks vote a language outside en/ja/ko before any album or related-artist requests.
+  - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.
+- `enricher.js` (`CatalogEnricher`) fills in metadata. Each step picks its own worklist with SQL and stamps what it has tried (`tracks.enriched_at`, `tracks.itunes_checked_at`, `artists.enriched_at`), so runs are resumable and never loop.
+  - `enrichDeezerTracks`: `/track/{id}` → ISRC, release date, rank. An ISRC already owned by another row counts as a duplicate conflict and is left for merging.
+  - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres.
+  - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
+  - `recomputeLanguages`: local; runs the artist vote and re-resolves track languages.
+- `authenticityFilter.js` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.js`.
+- `rateLimiter.js`: token buckets plus `politeFetch` (User-Agent, retry on 429/503). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3.
+
+## Shared rules (`server/policy/authenticityRules.js`)
+`checkAuthenticity({ title, artist, album })` → `{ authentic, reason }`, where the reason is `spoken_word`, `cover`, `utility`, `artist`, or `album`. It's the single source for the crawler, `upsertTrack` (`inauthentic` rejections), and song selection (`isAuthenticTrack`). It catches covers, karaoke, soundalikes, workout/sleep/utility audio, and audiobooks/radio plays ("Kapitel 12 - …", Gruselkabinett, Hörspiel, ungekürzt). **Add new junk patterns here.**
+
+## Language (`server/db/languageClassifier.js`)
+1. Script: hangul → ko, kana → ja. Han-only text is ja/ko with a JP/KR ISRC or artist, otherwise zh.
+2. Artist vote (`artists.primary_language`, from `classifyArtistLanguage`): hangul/kana titles or a majority of JP/KR ISRCs make an artist ja/ko; otherwise ELD runs on their joined titles. Japanese and Korean artists keep romanized or English-titled songs.
+3. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4. Artist **names** are never run through the text detector.
+
+After crawls add titles, run `npm run catalog:enrich -- --languages`.
 
 ## Ingest scripts
 | Script | Source |
 |---|---|
-| `scripts/crawl_catalog.js` | Live Deezer crawl. Flags: `--target=N --playlists=N --decades=N --artists=N --lexicon=N --playlists-only --status` |
+| `scripts/crawl_catalog.js` | Live crawl. Flags: `--target=N --charts=N --playlists=N --decades=N --artists=N --lexicon=N --playlists-only --status` |
+| `scripts/enrich_catalog.js` | Enrichment: `--deezer[=N] --artists[=N] --itunes[=N] --languages` (all steps by default) |
 | `scripts/ingest_annas_spotify.js` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
 | `scripts/ingest_musicmovearr.js` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
 | `scripts/fetch_datasets.js` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
-| `scripts/populate_artist_genres.js`, `scripts/build_recognized_artists.js` | Artist metadata helpers |
+| `scripts/populate_artist_genres.js` (`npm run catalog:genres`), `scripts/build_recognized_artists.js` | Curated artist genre clusters and recognized artists |
 
 Dumps under `data/` are gitignored and must never be committed.
 
 ## Provider rules
-- **Deezer:** search/playlist/album-track payloads **don't** include `isrc` or per-track `release_date`; use `/track/{id}` or `/album/{id}` for those. Preview URLs expire, so store ids, not URLs.
-- **iTunes:** match on ISRC, or on artist + title + duration within 3 s. Never create a new track from a fuzzy match.
+- **Deezer:** search results include `isrc` and `rank`; playlist and album-track payloads may not. `/track/{id}` is authoritative. The advanced `artist:"…" track:"…"` search currently returns unrelated or empty results, so use plain `artist title` queries and match the results on artist key plus base title. Preview URLs expire: store ids, not URLs.
+- **Apple Music charts:** `https://rss.marketingtools.apple.com/api/v2/{storefront}/music/most-played/{10|25|50|100}/songs.json`. There are no previews or durations, so entries are matched to Deezer tracks.
+- **iTunes:** match on artist, base title, and duration, and only attach to existing rows.
 - **Spotify:** metadata only, from the dumps (popularity, ISRC). No Web API and no previews.
 
 ## Ingest policy
-`sqliteCatalog.upsertTrack` enforces it for every writer: only `en`/`ja`/`ko`, original recordings (a remaster counts), and a duration of 45 s–20 min. Rejections are counted by reason (`getRejectionStats()`).
+`sqliteCatalog.upsertTrack` enforces it for every writer: only `en`/`ja`/`ko`, original recordings (a remaster counts), authentic music, and a duration of 45 s–20 min. Rejections are counted by reason (`getRejectionStats()`).
 - Pass raw popularity as `deezerRank` (Deezer `rank`) or `spotifyPopularity` (0–100). The catalog stores one 0–100 score, and ingest scripts filter on score > 30.
 - Never invent values (e.g. a default duration). Leave fields unknown so they're rejected or enriched later.
 - Details: `server/db/CATALOG_DB.md`.

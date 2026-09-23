@@ -12,6 +12,8 @@ import {
   deezerRankToScore,
   detectTrackLanguage,
 } from './trackNormalization.js';
+import { recomputeCatalogLanguages } from './catalogLanguages.js';
+import { canonicalArtistKey } from '../../shared/musicIdentity.js';
 
 function baselineSchema(db) {
   db.exec(`
@@ -196,9 +198,39 @@ function schemaV2(db) {
   createTracksFts(db);
 }
 
+function schemaV3(db) {
+  const artistColumns = new Set(db.prepare('PRAGMA table_info(artists)').all().map(c => c.name));
+  if (!artistColumns.has('primary_language')) db.exec('ALTER TABLE artists ADD COLUMN primary_language TEXT;');
+  if (!artistColumns.has('enriched_at')) db.exec('ALTER TABLE artists ADD COLUMN enriched_at TEXT;');
+
+  const trackColumns = new Set(db.prepare('PRAGMA table_info(tracks)').all().map(c => c.name));
+  // Set once a provider lookup has been attempted, so enrichment passes are resumable and never loop
+  if (!trackColumns.has('enriched_at')) db.exec('ALTER TABLE tracks ADD COLUMN enriched_at TEXT;');
+  if (!trackColumns.has('itunes_checked_at')) db.exec('ALTER TABLE tracks ADD COLUMN itunes_checked_at TEXT;');
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_artists_language ON artists(primary_language);');
+
+  // Identity keys used to strip every combining mark, deleting kana dakuten (アイドル -> アイトル)
+  // and decomposing hangul; recompute them with the corrected normalization. New keys only keep
+  // more information, so they cannot collide (OR IGNORE keeps the old key if one ever did).
+  registerNormalizationFunctions(db);
+  db.function('ss_artist_key', { deterministic: true }, (name) => canonicalArtistKey(name || ''));
+  db.exec(`
+    UPDATE OR IGNORE artists SET canonical_name = ss_artist_key(display_name)
+    WHERE canonical_name <> ss_artist_key(display_name) AND ss_artist_key(display_name) <> '';
+    UPDATE tracks SET canonical_title = ss_base_title(display_title)
+    WHERE canonical_title <> ss_base_title(display_title);
+  `);
+
+  // Replace the old title-regex languages ("Die With A Smile" was German) with the
+  // artist-voted ELD classifier
+  recomputeCatalogLanguages(db);
+}
+
 export const CATALOG_MIGRATIONS = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
+  { version: 3, name: 'schema v3: artist languages, enrichment markers, ELD language classifier', up: schemaV3 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;
