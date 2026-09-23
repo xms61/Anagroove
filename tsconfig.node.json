@@ -1,0 +1,29 @@
+{
+  // Type-checks the server, shared modules and scripts. Node 24 runs the .ts files directly by
+  // stripping types, so this config never emits: only syntax Node can erase is allowed, relative
+  // imports name the real .ts file, and type-only imports are marked `import type`.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    // While files move from .js to .ts: .js files are read for their types but not checked
+    "allowJs": true,
+    "checkJs": false,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["server", "shared", "scripts"],
+  "exclude": ["server/data", "node_modules", "dist", "scripts/tests/e2e/*.spec.ts"]
+}
