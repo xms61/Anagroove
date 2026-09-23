@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anonymous user and multiplayer ids come from `crypto.getRandomValues` (was `Math.random`), with a safe fallback when storage is blocked.
 - Audio preview requests have their own 300/min limit and don't count toward the general 120/min API limit.
 
+### Removed
+- The implementation plan is no longer tracked. `docs/plans/` is gitignored (planning docs stay local), and agent/section docs no longer reference it.
+
 ---
 
 ## [1.13.1] - 2026-09-23

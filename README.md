@@ -259,7 +259,6 @@ SpotySpice/
 ├── AGENTS.md                   # Map of agent docs (one per area, colocated below)
 ├── .github/                    # CI + manual release workflows, RELEASE_PROCESS.md
 ├── data/                       # most_streamed_artists.csv + gitignored dataset dumps
-├── docs/plans/                 # Roadmaps / implementation plans
 ├── scripts/                    # Crawl, ingest, anime, validation & eval CLIs (SCRIPTS_CLI.md)
 │   ├── run_tests.js            # Unit & integration test runner
 │   └── tests/                  # Test env preload (temp data dir) & TESTING.md

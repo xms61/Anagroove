@@ -22,6 +22,6 @@ Entry point: `getRandomSongPool(opts)` in `musicService.js`. It is called by `GE
 - Never put a signed Deezer URL (`hdnea=exp=`) in a puzzle or anything that outlives the request. Use `toPreviewPath(ref)`.
 - `isPreviewUrlFresh` treats URLs within 60 s of `exp` as stale.
 
-## Known issues (Phase 5 of the plan)
+## Known issues
 - The `popularity` scale is mixed, so the SQL ordering is effectively deterministic.
 - NULL release years (≈57%) are rejected whenever a decade is requested.

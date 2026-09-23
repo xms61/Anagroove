@@ -22,7 +22,7 @@ Dumps under `data/` are gitignored and must never be committed.
 - **iTunes:** match on ISRC, or on artist + title + duration within 3 s. Never create a new track from a fuzzy match.
 - **Spotify:** metadata only, from the dumps (popularity, ISRC). No Web API and no previews.
 
-## Ingest policy (target, per the plan)
+## Ingest policy (target)
 Only `en`/`ja`/`ko` and original versions, popularity score > 30, and filled metadata. See `server/db/CATALOG_DB.md`.
 
 ## Anime pipeline (`anime_catalog.sqlite`)

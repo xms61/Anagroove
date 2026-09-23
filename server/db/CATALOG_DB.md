@@ -22,7 +22,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long i
 
 A match merges provider links and samples into the existing track and never creates a second row. Use `upsertBatch` (one transaction) for bulk writes.
 
-## Policy (confirmed 2026-09-23; being enforced in Phases 2–4 of the plan)
+## Policy (confirmed 2026-09-23; enforcement in progress)
 - **Languages:** only `en`, `ja`, `ko`. Everything else is rejected at ingest and deleted from the DB.
 - **Versions:** one version per song, **original only**. Reject live/remix/edit/acoustic/instrumental/demo/re-recorded/sped-up versions. A remaster counts as the original recording.
 - **Popularity:** a single 0–100 score, and ingest requires score > 30. Raw values today are mixed (Deezer `rank` up to ~1M vs Spotify 0–100), so don't compare `popularity` across providers.
@@ -33,4 +33,4 @@ A match merges provider links and samples into the existing track and never crea
 - `npm run db:validate` is a dry run and writes `reports/database_validation_report.md` (gitignored).
 - `npm run db:sanitize` applies fixes. Make a backup first (`VACUUM INTO 'backup.sqlite'`).
 
-Known issue: the contamination purge's `LIKE` patterns don't match space-separated canonical names (see the plan, H5).
+Known issue: the contamination purge's `LIKE` patterns don't match space-separated canonical names.
