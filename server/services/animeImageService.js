@@ -60,7 +60,7 @@ export async function resolveAnimeCoverImages(tracks = [], catalog = null) {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'Anagroove-CrosswordEngine/1.0',
+          'User-Agent': 'Anagroove-CrosswordEngine/1.0 (+https://github.com/xms61/Anagroove)',
         },
         body: JSON.stringify({ query }),
         signal: controller.signal,
