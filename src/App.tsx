@@ -11,8 +11,8 @@ import { BlacklistModal } from './components/BlacklistModal';
 import { MultiplayerModal } from './components/MultiplayerModal';
 import { LoungeDrawer } from './components/LoungeDrawer';
 import { apiClient, getMultiplayerPlayerId } from './services/apiClient';
-import { socketService, MultiplayerRoom } from './services/socketService';
 import { useBlacklist } from './hooks/useBlacklist';
+import { useMultiplayer } from './hooks/useMultiplayer';
 import { dynamicMusicService } from './services/dynamicMusicService';
 import { SettingsModal } from './components/SettingsModal';
 import { HistoryModal } from './components/HistoryModal';
@@ -24,6 +24,12 @@ import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shu
 
 /** A saved theme id that no longer exists (e.g. the removed "latin") falls back to Mixed. */
 const knownThemeOr = (id: string) => (themeById(id) ? id : 'all');
+
+type Dialog = 'hint' | 'generator' | 'blacklist' | 'multiplayer' | 'lounge' | 'settings' | 'history';
+
+function emptyGrid<T>(puzzle: Puzzle, value: T): T[][] {
+  return Array.from({ length: puzzle.rows }, () => Array<T>(puzzle.cols).fill(value));
+}
 
 const EMPTY_PUZZLE: Puzzle = {
   id: 'placeholder',
@@ -51,24 +57,26 @@ export default function App() {
   const [isLoadingPuzzle, setIsLoadingPuzzle] = useState(false);
   const [puzzleError, setPuzzleError] = useState<string | null>(null);
 
-  // Modals state
-  const [isHintOpen, setIsHintOpen] = useState(false);
-  const [isLiveGeneratorOpen, setIsLiveGeneratorOpen] = useState(false);
-  const [isBlacklistOpen, setIsBlacklistOpen] = useState(false);
-  const [isMultiplayerOpen, setIsMultiplayerOpen] = useState(false);
-  const [isLoungeDrawerOpen, setIsLoungeDrawerOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // One dialog at a time
+  const [openDialog, setOpenDialog] = useState<Dialog | null>(null);
+  const closeDialog = () => setOpenDialog(null);
 
   const { settings, updateSettings } = useSettings();
   const { enableWordAnimations, defaultVolume } = settings;
   const handleToggleWordAnimations = (enabled: boolean) => updateSettings({ enableWordAnimations: enabled });
   const handleChangeDefaultVolume = (volume: number) => updateSettings({ defaultVolume: volume });
 
-  // Multiplayer state
-  const [multiplayerRoom, setMultiplayerRoom] = useState<MultiplayerRoom | null>(null);
-  const [teammateCell, setTeammateCell] = useState<{ row: number; col: number; name: string; color: string } | null>(null);
-  const [victoryData, setVictoryData] = useState<{ winnerName: string } | null>(null);
+  const multiplayer = useMultiplayer(playerId, {
+    onPuzzle: (puzzle, sharedGrid) => loadPuzzle(puzzle, sharedGrid),
+    onSharedGrid: (grid) => setUserLetters(grid),
+    onCoopLetter: (row, col, char) => setUserLetters(prev => {
+      if (!prev || row >= prev.length || col >= prev[0].length) return prev;
+      const next = prev.map(r => [...r]);
+      next[row][col] = char;
+      return next;
+    }),
+    onGameStarted: () => setOpenDialog(dialog => (dialog === 'multiplayer' ? null : dialog)),
+  });
 
   // Blacklist state
   const { blacklist, addArtist, addSong, removeItem } = useBlacklist();
@@ -110,11 +118,31 @@ export default function App() {
     validateGrid,
   } = useCrosswordGame(activePuzzle, {
     themeId: currentGenre,
-    multiplayerRoom,
+    multiplayerRoom: multiplayer.room,
     playerId,
     playerName: readString(STORAGE_KEYS.playerName, 'Player'),
     playerColor: '#1db954',
   });
+
+  /** Shows a puzzle with an empty grid (or a co-op room's letters) and keeps it for reloads. */
+  const loadPuzzle = useCallback((puzzle: Puzzle, sharedGrid?: string[][]) => {
+    setCurrentPuzzle(puzzle);
+    writeJson(STORAGE_KEYS.activeLivePuzzle, puzzle);
+    setUserLetters(Array.isArray(sharedGrid) ? sharedGrid : emptyGrid(puzzle, ''));
+    setValidity(emptyGrid<CellValidity>(puzzle, 'untested'));
+    setShowEndScreen(false);
+    setIsCompleted(false);
+  }, [setUserLetters, setValidity, setShowEndScreen, setIsCompleted]);
+
+  /** Makes a generator config the active one: its theme, and the settings for the next puzzle. */
+  const adoptConfig = useCallback((config: PuzzleGenerationConfig) => {
+    if (config.genre) {
+      setCurrentGenre(config.genre);
+      writeString(STORAGE_KEYS.activeGenre, config.genre);
+    }
+    setActivePuzzleConfig(config);
+    writeJson(STORAGE_KEYS.activeConfig, config);
+  }, []);
 
   const generateNewPuzzle = useCallback(async (customConfig?: PuzzleGenerationConfig) => {
     const config = customConfig || activePuzzleConfig;
@@ -129,23 +157,15 @@ export default function App() {
         artist: config.artist,
         languages: config.languages,
       });
-      setCurrentPuzzle(puzzle);
-      if (config.genre) setCurrentGenre(config.genre);
-      setActivePuzzleConfig(config);
-      writeJson(STORAGE_KEYS.activeLivePuzzle, (puzzle));
-      writeJson(STORAGE_KEYS.activeConfig, (config));
-      if (config.genre) writeString(STORAGE_KEYS.activeGenre, config.genre);
-      setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
-      setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
-      setShowEndScreen(false);
-      setIsCompleted(false);
+      loadPuzzle(puzzle);
+      adoptConfig(config);
     } catch (err: unknown) {
       console.error('Failed to generate live puzzle:', err);
       setPuzzleError(err instanceof Error ? err.message : 'Could not generate live crossword.');
     } finally {
       setIsLoadingPuzzle(false);
     }
-  }, [activePuzzleConfig, currentGenre, setUserLetters, setValidity, setShowEndScreen, setIsCompleted]);
+  }, [activePuzzleConfig, currentGenre, loadPuzzle, adoptConfig]);
 
   // Initial load: generate random puzzle if none stored in localStorage
   useEffect(() => {
@@ -170,146 +190,12 @@ export default function App() {
     });
   }, [currentPuzzle?.id, setUserLetters, setValidity]);
 
-  // Initialize socket connection on mount
-  useEffect(() => {
-    socketService.init();
-  }, []);
-
-  // Listen to WebSocket events for Multiplayer Lobby
-  useEffect(() => {
-    const offCreated = socketService.on('room_created', (data) => {
-      setMultiplayerRoom(data.room);
-    });
-
-    const offJoined = socketService.on('room_joined', (data) => {
-      setMultiplayerRoom(data.room);
-      if (data.resumed) {
-        // Reconnected to our existing seat: keep local progress, only catch up on co-op letters
-        if (data.room?.mode === 'coop' && Array.isArray(data.room.sharedGrid)) {
-          setUserLetters(data.room.sharedGrid);
-        }
-        return;
-      }
-      if (data.room?.puzzle) {
-        setCurrentPuzzle(data.room.puzzle);
-        writeJson(STORAGE_KEYS.activeLivePuzzle, (data.room.puzzle));
-        if (data.room.sharedGrid && Array.isArray(data.room.sharedGrid)) {
-          setUserLetters(data.room.sharedGrid);
-        } else {
-          setUserLetters(Array.from({ length: data.room.puzzle.rows }, () => Array(data.room.puzzle.cols).fill('')));
-        }
-        setValidity(Array.from({ length: data.room.puzzle.rows }, () => Array(data.room.puzzle.cols).fill('untested')));
-      }
-    });
-
-    const offPlayerJoined = socketService.on('player_joined', (data) => {
-      setMultiplayerRoom(prev => prev ? { ...prev, players: data.players } : null);
-    });
-
-    const offPlayerLeft = socketService.on('player_left', (data) => {
-      setMultiplayerRoom(prev => prev ? { ...prev, players: data.players, hostId: data.newHostId || prev.hostId } : null);
-    });
-
-    const offGameStarted = (data: { puzzle?: Puzzle; sharedGrid?: string[][]; room?: MultiplayerRoom }) => {
-      const puzzle = data.puzzle;
-      if (puzzle) {
-        setCurrentPuzzle(puzzle);
-        writeJson(STORAGE_KEYS.activeLivePuzzle, (puzzle));
-        if (data.sharedGrid && Array.isArray(data.sharedGrid)) {
-          setUserLetters(data.sharedGrid);
-        } else {
-          setUserLetters(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('')));
-        }
-        setValidity(Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill('untested')));
-      }
-      if (data.room) {
-        setMultiplayerRoom(data.room);
-      } else {
-        setMultiplayerRoom(prev => prev ? { ...prev, isStarted: true, puzzle: data.puzzle || prev.puzzle } : null);
-      }
-      setIsMultiplayerOpen(false);
-    };
-
-    const unsubGameStarted = socketService.on('game_started', offGameStarted);
-
-    const offCoopUpdate = socketService.on('coop_cell_update', (data) => {
-      if (data.row !== undefined && data.col !== undefined && data.char !== undefined) {
-        setUserLetters(prev => {
-          if (!prev || data.row >= prev.length || data.col >= prev[0].length) return prev;
-          const next = prev.map(r => [...r]);
-          next[data.row][data.col] = data.char;
-          return next;
-        });
-      }
-      setTeammateCell({
-        row: data.row,
-        col: data.col,
-        name: data.playerName,
-        color: data.playerColor,
-      });
-      setTimeout(() => setTeammateCell(null), 1500);
-    });
-
-    const offRaceProgress = socketService.on('race_progress_update', (data) => {
-      setMultiplayerRoom(prev => {
-        if (!prev) return null;
-        const updated = prev.players.map(p =>
-          p.id === data.playerId ? { ...p, progress: data.progress } : p
-        );
-        return { ...prev, players: updated };
-      });
-    });
-
-    const offPuzzleSolved = socketService.on('puzzle_solved', (data) => {
-      setVictoryData({ winnerName: data.winnerName || 'A player' });
-    });
-
-    return () => {
-      offCreated();
-      offJoined();
-      offPlayerJoined();
-      offPlayerLeft();
-      unsubGameStarted();
-      offCoopUpdate();
-      offRaceProgress();
-      offPuzzleSolved();
-    };
-  }, [setUserLetters, setValidity]);
-
   const handleNextPuzzle = () => {
     generateNewPuzzle(activePuzzleConfig);
   };
 
   const handleRestartPuzzle = () => {
-    if (currentPuzzle) {
-      setUserLetters(Array.from({ length: currentPuzzle.rows }, () => Array(currentPuzzle.cols).fill('')));
-      setValidity(Array.from({ length: currentPuzzle.rows }, () => Array(currentPuzzle.cols).fill('untested')));
-    }
-    setShowEndScreen(false);
-    setIsCompleted(false);
-  };
-
-  const handleCreateRoom = useCallback(async (playerName: string, mode: 'coop' | 'race', themeId = 'all') => {
-    try {
-      const { puzzle: newLobbyPuzzle, livePuzzleToken } = await dynamicMusicService.generateLivePuzzle(themeId === 'mixed' ? 'all' : themeId);
-      setCurrentPuzzle(newLobbyPuzzle);
-      writeJson(STORAGE_KEYS.activeLivePuzzle, (newLobbyPuzzle));
-      setUserLetters(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('')));
-      setValidity(Array.from({ length: newLobbyPuzzle.rows }, () => Array(newLobbyPuzzle.cols).fill('untested')));
-      socketService.createRoom(playerId, playerName, mode, livePuzzleToken);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to generate a live multiplayer puzzle.');
-    }
-  }, [playerId, setUserLetters, setValidity]);
-
-  const handleJoinRoom = (roomCode: string, playerName: string) => {
-    socketService.joinRoom(roomCode, playerId, playerName);
-  };
-
-  const handleStartRoomGame = () => {
-    if (multiplayerRoom) {
-      socketService.startGame(multiplayerRoom.code, playerId, multiplayerRoom.puzzle || activePuzzle);
-    }
+    if (currentPuzzle) loadPuzzle(currentPuzzle);
   };
 
   return (
@@ -331,7 +217,7 @@ export default function App() {
             {/* Live Style Badge & Generator Trigger */}
             <button
               type="button"
-              onClick={() => setIsLiveGeneratorOpen(true)}
+              onClick={() => setOpenDialog('generator')}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel border border-amber-500/30 hover:border-amber-500/60 text-xs font-semibold text-slate-200 transition cursor-pointer shadow-sm group"
               title="Click to generate a custom live crossword or change musical style"
             >
@@ -366,7 +252,7 @@ export default function App() {
             {/* Hint Button */}
             <button
               type="button"
-              onClick={() => setIsHintOpen(true)}
+              onClick={() => setOpenDialog('hint')}
               disabled={!currentPuzzle || currentPuzzle.clues.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm disabled:opacity-40"
               title="Get a hint ([Space] Letter, [Tab] Word, [Shift+Tab] Reveal All)"
@@ -392,7 +278,7 @@ export default function App() {
             {/* Settings Button */}
             <button
               type="button"
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={() => setOpenDialog('settings')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-kissa-card hover:bg-kissa-panel text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/30 transition cursor-pointer shadow-sm"
               title="Open Lounge Settings"
               aria-label="Settings"
@@ -404,9 +290,9 @@ export default function App() {
             {/* Lounge Menu Button */}
             <button
               type="button"
-              onClick={() => setIsLoungeDrawerOpen(true)}
+              onClick={() => setOpenDialog('lounge')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shadow-sm relative ${
-                multiplayerRoom
+                multiplayer.room
                   ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
                   : 'bg-kissa-card hover:bg-kissa-panel text-slate-200 border-white/10 hover:border-amber-500/40'
               }`}
@@ -417,7 +303,7 @@ export default function App() {
               <span className="hidden sm:inline">Menu</span>
 
               {/* Status indicator dot if multiplayer is active */}
-              {multiplayerRoom && (
+              {multiplayer.room && (
                 <span className="w-2 h-2 rounded-full bg-cyan-300 animate-ping absolute -top-0.5 -right-0.5" />
               )}
             </button>
@@ -426,7 +312,7 @@ export default function App() {
       </header>
 
       {/* Versus Race Mode Live Leaderboard Bar (if in race mode) */}
-      {multiplayerRoom?.mode === 'race' && (
+      {multiplayer.room?.mode === 'race' && (
         <div className="bg-rose-950/40 border-b border-rose-500/30 px-4 py-2 text-sm" role="status" aria-label="Race leaderboard">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <span className="font-bold text-rose-300 flex items-center gap-1.5">
@@ -434,7 +320,7 @@ export default function App() {
               <span>VERSUS RACE LEADERBOARD</span>
             </span>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              {multiplayerRoom.players.map(p => (
+              {multiplayer.room.players.map(p => (
                 <div key={p.id} className="flex items-center gap-2 min-w-0">
                   <span className="font-medium text-slate-200 truncate max-w-[8rem]">{p.name}:</span>
                   <div className="w-16 sm:w-24 bg-black/40 rounded-full h-2 overflow-hidden border border-white/10" aria-hidden="true">
@@ -497,7 +383,7 @@ export default function App() {
               onBackspace={handleBackspace}
               onMoveCursor={moveCursor}
               onApplyHint={applyHint}
-              teammateCell={teammateCell}
+              teammateCell={multiplayer.teammateCell}
               isPlaying={isAudioPlaying}
               celebratingCells={celebratingCells}
               enableWordAnimations={enableWordAnimations}
@@ -539,26 +425,18 @@ export default function App() {
 
       {/* On-The-Fly Live Generator Modal */}
       <LiveGeneratorModal
-        isOpen={isLiveGeneratorOpen}
-        onClose={() => setIsLiveGeneratorOpen(false)}
+        isOpen={openDialog === 'generator'}
+        onClose={closeDialog}
         onPuzzleGenerated={(livePuzzle, config) => {
-          setCurrentPuzzle(livePuzzle);
-          if (config.genre) setCurrentGenre(config.genre);
-          setActivePuzzleConfig(config);
-          writeJson(STORAGE_KEYS.activeConfig, (config));
-          if (config.genre) writeString(STORAGE_KEYS.activeGenre, config.genre);
-          writeJson(STORAGE_KEYS.activeLivePuzzle, (livePuzzle));
-          setUserLetters(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('')));
-          setValidity(Array.from({ length: livePuzzle.rows }, () => Array(livePuzzle.cols).fill('untested')));
-          setShowEndScreen(false);
-          setIsCompleted(false);
+          loadPuzzle(livePuzzle);
+          adoptConfig(config);
         }}
       />
 
       {/* Blacklist Management Modal */}
       <BlacklistModal
-        isOpen={isBlacklistOpen}
-        onClose={() => setIsBlacklistOpen(false)}
+        isOpen={openDialog === 'blacklist'}
+        onClose={closeDialog}
         blacklist={blacklist}
         onAddArtist={addArtist}
         onAddSong={addSong}
@@ -567,20 +445,20 @@ export default function App() {
 
       {/* Multiplayer Lobby Modal */}
       <MultiplayerModal
-        isOpen={isMultiplayerOpen}
-        onClose={() => setIsMultiplayerOpen(false)}
-        currentRoom={multiplayerRoom}
+        isOpen={openDialog === 'multiplayer'}
+        onClose={closeDialog}
+        currentRoom={multiplayer.room}
         playerId={playerId}
-        onCreateRoom={handleCreateRoom}
-        onJoinRoom={handleJoinRoom}
-        onStartGame={handleStartRoomGame}
+        onCreateRoom={multiplayer.createRoom}
+        onJoinRoom={multiplayer.joinRoom}
+        onStartGame={() => multiplayer.startGame(activePuzzle)}
         currentPuzzle={currentPuzzle || undefined}
       />
 
       {/* Hint Modal */}
       <HintModal
-        isOpen={isHintOpen}
-        onClose={() => setIsHintOpen(false)}
+        isOpen={openDialog === 'hint'}
+        onClose={closeDialog}
         activeClue={activeClue}
         onApplyHint={applyHint}
       />
@@ -601,8 +479,8 @@ export default function App() {
 
       {/* Settings Modal */}
       <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        isOpen={openDialog === 'settings'}
+        onClose={closeDialog}
         enableWordAnimations={enableWordAnimations}
         onToggleWordAnimations={handleToggleWordAnimations}
         defaultVolume={defaultVolume}
@@ -610,41 +488,41 @@ export default function App() {
       />
 
       {/* Solved puzzles from /api/history */}
-      <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} />
+      <HistoryModal isOpen={openDialog === 'history'} onClose={closeDialog} />
 
       {/* Unified Lounge Slide-Over Menu */}
       <LoungeDrawer
-        isOpen={isLoungeDrawerOpen}
-        onClose={() => setIsLoungeDrawerOpen(false)}
-        onOpenLiveGenerator={() => setIsLiveGeneratorOpen(true)}
+        isOpen={openDialog === 'lounge'}
+        onClose={closeDialog}
+        onOpenLiveGenerator={() => setOpenDialog('generator')}
         onInstantRandomPuzzle={() => {
-          setIsLoungeDrawerOpen(false);
+          closeDialog();
           generateNewPuzzle({ genre: currentGenre, targetWords: 10 });
         }}
-        onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
-        onOpenBlacklist={() => setIsBlacklistOpen(true)}
+        onOpenMultiplayer={() => setOpenDialog('multiplayer')}
+        onOpenBlacklist={() => setOpenDialog('blacklist')}
         onOpenSolvedHistory={() => setShowEndScreen(true)}
-        onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenHistory={() => setOpenDialog('history')}
+        onOpenSettings={() => setOpenDialog('settings')}
         blacklistCount={blacklist.length}
-        multiplayerCode={multiplayerRoom?.code}
+        multiplayerCode={multiplayer.room?.code}
         activePuzzleTitle={currentPuzzle?.title || 'Live Crossword'}
       />
 
       {/* Multiplayer victory modal */}
-      <Modal isOpen={Boolean(victoryData)} onClose={() => setVictoryData(null)} className="border-amber-500/40 max-w-sm p-8 text-center" closeLabel={null}>
+      <Modal isOpen={Boolean(multiplayer.winnerName)} onClose={multiplayer.dismissWinner} className="border-amber-500/40 max-w-sm p-8 text-center" closeLabel={null}>
         {({ titleId, descriptionId }) => (
           <>
             <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center">
               <Trophy className="w-7 h-7" aria-hidden="true" />
             </div>
             <h2 id={titleId} className="text-2xl font-black text-amber-300 mb-2">Room Victory!</h2>
-            <p id={descriptionId} className="text-slate-200 text-lg mb-6">{victoryData?.winnerName} solved the puzzle!</p>
+            <p id={descriptionId} className="text-slate-200 text-lg mb-6">{multiplayer.winnerName} solved the puzzle!</p>
             <button
               type="button"
               data-autofocus
               className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-              onClick={() => setVictoryData(null)}
+              onClick={multiplayer.dismissWinner}
             >
               Awesome!
             </button>

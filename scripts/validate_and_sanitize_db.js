@@ -4,7 +4,7 @@ import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../server/paths.js';
-import { CatalogValidator } from '../server/db/catalogValidator.js';
+import { catalogStatistics, renderValidationReport } from '../server/db/catalogReport.js';
 import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup } from '../server/db/catalogCleanup.js';
 import { DEFAULT_GATE_THRESHOLDS, evaluateCatalogGate } from '../server/db/catalogGate.js';
 import { LATEST_CATALOG_VERSION, runCatalogMigrations } from '../server/db/catalogMigrations.js';
@@ -98,16 +98,10 @@ function main() {
       console.log(`Migrated v${migration.from} -> v${migration.to}`);
     }
 
-    const validator = new CatalogValidator(db);
-    const pragmas = validator.checkPragmas();
-    const orphans = validator.findOrphans();
-    const duplicates = validator.findDuplicates();
-    const anomalies = validator.findDataAnomalies();
-    const stats = validator.generateStatistics();
-
-    console.log(`\nIntegrity: ${pragmas.integrityOk && pragmas.quickOk ? 'ok' : 'FAILED'}, foreign keys: ${pragmas.foreignKeysOk ? 'ok' : `${pragmas.fkIssues.length} violations`}`);
-    console.log(`Tracks ${stats.overview.totalTracks.toLocaleString()}, artists ${stats.overview.totalArtists.toLocaleString()}, duplicate groups ${duplicates.softDuplicateClustersCount.toLocaleString()}, contaminated ${anomalies.contamination.totalContaminatedCount.toLocaleString()}`);
-    console.log(`Languages: ${stats.languageDistribution.slice(0, 6).map(l => `${l.language} ${l.count.toLocaleString()}`).join(', ')}`);
+    let stats = catalogStatistics(db);
+    const { overview } = stats;
+    console.log(`\nTracks ${overview.tracks.toLocaleString()}, artists ${overview.artists.toLocaleString()} (${overview.artistsEnriched}% enriched), release year known ${overview.releaseYearKnown}%`);
+    console.log(`Languages: ${stats.languages.map(l => `${l.language} ${l.count.toLocaleString()}`).join(', ')}`);
 
     let cleanup = null;
     if (!ciMode) {
@@ -128,22 +122,14 @@ function main() {
       console.log(`   ${check.ok ? 'ok  ' : 'FAIL'} ${check.label.padEnd(48)} ${value.padStart(10)}  (${check.limit})`);
     }
 
-    const result = {
-      pragmas,
-      orphans,
-      duplicates,
-      anomalies,
-      stats: shouldFix ? validator.generateStatistics() : stats,
-      cleanup,
-      gate,
-    };
+    if (shouldFix) stats = catalogStatistics(db);
+    const result = { stats, cleanup, gate };
 
     if (!flag('no-report') && !ciMode) {
       const reportsDir = path.resolve(__dirname, '../reports');
       fs.mkdirSync(reportsDir, { recursive: true });
       const reportPath = path.join(reportsDir, 'database_validation_report.md');
-      validator.dbPath = dbPath;
-      fs.writeFileSync(reportPath, validator.generateMarkdownReport(result), 'utf8');
+      fs.writeFileSync(reportPath, renderValidationReport({ dbPath, ...result }), 'utf8');
       console.log(`\nReport: ${reportPath}`);
     }
     if (flag('json')) console.log(JSON.stringify(result, null, 2));

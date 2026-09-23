@@ -77,7 +77,7 @@ Known limit: without an artist vote, about 2.5% of plain two-word English titles
 The FTS triggers are dropped during the run and the index is rebuilt once at the end.
 
 ## Validation & gate
-- `catalogValidator.js`: integrity, orphans, duplicate groups, anomalies, contamination (via the shared authenticity rules), statistics, and the markdown report.
+- `catalogReport.js`: catalog statistics (inventory, coverage, languages, decades, popularity buckets, genres, most prolific artists) and the markdown report that combines them with the gate and the cleanup dry run. The checks themselves are only in the gate and the cleanup.
 - `catalogGate.js` (`evaluateCatalogGate`): the hard checks for `npm run db:validate -- --ci`. They cover duplicates, language, stored and re-derived version, popularity, duration, empty keys, unlinked/orphan rows, authenticity, uncleaned text, FTS count, and release-year/ISRC coverage ≥ 95% (thresholds can be overridden).
 - `npm run db:validate` runs diagnostics, a cleanup dry run and the gate, and writes `reports/database_validation_report.md` (gitignored).
 - `npm run db:sanitize` writes a `catalog.backup-cleanup-<ts>.sqlite` copy, migrates if needed, applies the cleanup, then runs ANALYZE, a WAL checkpoint and VACUUM.
