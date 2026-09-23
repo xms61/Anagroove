@@ -537,6 +537,106 @@ export class SqliteCatalog {
   }
 
   /**
+   * Random window over the catalog for song selection: every filter runs in SQL on indexed
+   * columns, then rows are read in `rand_key` order from a random start (wrapping around), so
+   * the cost is independent of catalog size and no `ORDER BY RANDOM()` is needed. One row per
+   * track (best sample chosen by subquery), never one per sample.
+   *
+   * `start` in [0, 1) comes from the caller's (seeded) RNG, which makes the window reproducible.
+   * A theme (`ftsQuery`) matches through the trigram index, or LIKE when that finds < 10 rows.
+   */
+  sampleCatalogTracks({
+    ftsQuery = '',
+    genres = [],
+    artist = '',
+    languages = null,
+    yearRange = null,
+    minPopularity = 0,
+    maxPopularity = 100,
+    excludeTrackIds = [],
+    poolSize = 400,
+    start = Math.random(),
+  } = {}) {
+    const conditions = ["t.version_type IN ('original', 'remaster')"];
+    const params = [];
+
+    if (artist && typeof artist === 'string' && artist.trim()) {
+      // Resolve the artist rows first so the track lookup uses the artist_id index
+      const name = artist.trim();
+      const collaborations = ['&', ',', 'x', 'and', 'with', 'feat.', 'ft.'].map(joiner => `${name}${joiner === ',' ? ',' : ` ${joiner}`} %`);
+      const artistIds = this.db.prepare(
+        `SELECT id FROM artists WHERE canonical_name = ? OR display_name = ? OR ${collaborations.map(() => 'display_name LIKE ?').join(' OR ')}`
+      ).all(normalizeDedupeArtist(name), name, ...collaborations).map(r => r.id);
+      if (artistIds.length === 0) return [];
+      conditions.push(`t.artist_id IN (${artistIds.map(() => '?').join(', ')})`);
+      params.push(...artistIds);
+    }
+    if (Array.isArray(genres) && genres.length > 0) {
+      conditions.push(`(${genres.map(() => 'a.genres_json LIKE ?').join(' OR ')})`);
+      params.push(...genres.map(g => `%"${String(g).trim()}"%`));
+    }
+    if (Array.isArray(languages) && languages.length > 0) {
+      conditions.push(`t.language IN (${languages.map(() => '?').join(', ')})`);
+      params.push(...languages);
+    }
+    if (yearRange && typeof yearRange === 'object') {
+      if (yearRange.start !== undefined) {
+        conditions.push('t.release_year >= ?');
+        params.push(yearRange.start);
+      }
+      if (yearRange.end !== undefined) {
+        conditions.push('t.release_year <= ?');
+        params.push(yearRange.end);
+      }
+    }
+    if (minPopularity > 0) {
+      conditions.push('t.popularity >= ?');
+      params.push(minPopularity);
+    }
+    if (maxPopularity < 100) {
+      conditions.push('t.popularity <= ?');
+      params.push(maxPopularity);
+    }
+    if (Array.isArray(excludeTrackIds) && excludeTrackIds.length > 0) {
+      conditions.push(`t.id NOT IN (${excludeTrackIds.map(() => '?').join(', ')})`);
+      params.push(...excludeTrackIds);
+    }
+
+    const select = `
+      SELECT t.id, t.isrc, t.language, t.display_title AS title, a.display_name AS artist,
+             t.album_name AS album, t.duration_ms, t.release_year, t.release_date, t.popularity, t.rand_key,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id,
+             (SELECT sample_url FROM track_samples WHERE track_id = t.id ORDER BY provider = 'deezer' DESC LIMIT 1) AS sample_url
+      FROM tracks t
+      JOIN artists a ON a.id = t.artist_id`;
+    const startKey = Math.min(Math.max(Number(start) || 0, 0), 0.999999999);
+
+    const windowed = (extraCondition, extraParams) => {
+      const where = [...conditions, extraCondition].filter(Boolean).join(' AND ');
+      const head = this.db.prepare(`${select} WHERE ${where} AND t.rand_key >= ? ORDER BY t.rand_key LIMIT ?`)
+        .all(...params, ...extraParams, startKey, poolSize);
+      if (head.length >= poolSize) return head;
+      const tail = this.db.prepare(`${select} WHERE ${where} AND t.rand_key < ? ORDER BY t.rand_key LIMIT ?`)
+        .all(...params, ...extraParams, startKey, poolSize - head.length);
+      return [...head, ...tail];
+    };
+
+    if (ftsQuery && typeof ftsQuery === 'string' && ftsQuery.trim()) {
+      try {
+        const matched = windowed('t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)', [ftsQuery]);
+        if (matched.length >= 10) return matched;
+      } catch {
+        // FTS syntax error (e.g. a token under 3 characters): fall back to LIKE
+      }
+      const term = `%${ftsQuery.replace(/['"*]/g, '').trim()}%`;
+      return windowed('(t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)', [term, term, term]);
+    }
+    return windowed(null, []);
+  }
+
+  /**
    * Theme-aware catalog search combining FTS5 full-text matching on titles/artists/albums
    * with genre JSON filtering on artist metadata. Returns a popularity-weighted
    * random sample ideal for crossword puzzle candidate selection.

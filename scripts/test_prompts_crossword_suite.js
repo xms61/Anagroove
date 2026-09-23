@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getRandomSongPool } from '../server/services/musicService.js';
+import { getRandomSongPool } from '../server/selection/songPool.js';
 import { generateLiveCrossword } from '../shared/liveCrossword.js';
-import { isThematicallyPermitted } from '../server/services/musicService.js';
+import { isThematicallyPermitted } from '../server/policy/selectionPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

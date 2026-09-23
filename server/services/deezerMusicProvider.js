@@ -56,6 +56,10 @@ export function mapDeezerTrack(track, artistDetails = track.artist) {
     fans: Number(artistDetails?.nb_fan ?? artistDetails?.fans) || 0,
     contributorArtistIds: Array.isArray(track.contributors) ? track.contributors.map(c => String(c.id)) : [],
     releaseDate: track.release_date || track.album?.release_date || '',
+    // Kept so fallback results can be written to the catalog (selection/candidates.js)
+    durationMs: Number(track.duration) > 0 ? Number(track.duration) * 1000 : null,
+    isrc: track.isrc || null,
+    albumId: track.album?.id ? String(track.album.id) : null,
     selection: {
       source: 'deezer',
       rank: Number(track.rank) || 0,

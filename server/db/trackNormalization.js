@@ -27,9 +27,9 @@ const VERSION_RULES = [
   ['cover', /\b(karaoke|tribute|cover|originally performed|in the style of|made famous by)\b/i],
   ['instrumental', /\b(instrumental|inst\.?|off[\s-]?vocal|backing track|no vocals?|minus one)\b/i],
   ['altered', /\b(sped[\s-]?up|speed[\s-]?up|slowed|nightcore|reverb|8d audio|pitched|bass[\s-]?boosted)\b/i],
-  ['live', /\b(live|unplugged|in concert|concert version|session|sessions|rehearsal)\b/i],
+  ['live', /\b(live|unplugged|in concert|concert version|session|sessions|rehearsal|tour|at (the )?[\w .'-]*(dome|arena|stadium|budokan|coliseum))\b/i],
   ['demo', /\b(demo|early take|alternate take|alt\.? take|outtake|work tape|home recording|rough mix)\b/i],
-  ['rerecord', /\b(taylor'?s version|re-?recorded|re-?record|rerecord|new recording)\b/i],
+  ['rerecord', /\b(taylor'?s version|re-?recorded|re-?recording|re-?record|rerecord|new recording)\b/i],
   ['remix', /\b(remix|rmx|re-?mix|mix|dub|bootleg|flip|rework|edit mix)\b/i],
   ['extended', /\b(extended|long version|12["”]? version|12 inch)\b/i],
   ['edit', /\b(radio edit|single edit|radio version|edit|short version|clean edit)\b/i],
@@ -41,6 +41,8 @@ const VERSION_RULES = [
 const ORIGINAL_SEGMENT = /\b(feat\.?|ft\.?|featuring|with|prod\.?|produced by|from|original|album version|single version|lp version|main version|explicit|clean|bonus track|theme from|soundtrack|ost|op|ed|opening|ending)\b/i;
 // "(Japanese Version)", "(English Ver.)": language/alternate versions of the song.
 const ALTERNATE_VERSION = /\b(version|ver\.?)\b/i;
+// "(Tagalog)", "[English]": a bracket holding only a language name is a language version
+const LANGUAGE_SEGMENT = /^(english|japanese|korean|chinese|mandarin|cantonese|spanish|espa[ñn]ol|french|fran[çc]ais|german|deutsch|italian|portuguese|tagalog|filipino|thai|vietnamese|indonesian|malay|russian|hindi|arabic|turkish)$/i;
 
 const LIVE_ALBUM = /\b(live (at|in|from|on|@)|in concert|unplugged|mtv unplugged|live!?$|\(live\)|\[live\]|live recordings?|live session)\b/i;
 const COVER_ALBUM = /\b(karaoke|tribute|covers?|cover versions|in the style of)\b/i;
@@ -81,7 +83,7 @@ export function classifyVersion(title = '', album = '') {
     }
     if (type) return type;
     if (ORIGINAL_SEGMENT.test(segment)) continue;
-    if (ALTERNATE_VERSION.test(segment)) return 'alternate';
+    if (ALTERNATE_VERSION.test(segment) || LANGUAGE_SEGMENT.test(segment)) return 'alternate';
   }
 
   const albumText = String(album || '');
@@ -106,7 +108,7 @@ export function stripVersionTags(title = '') {
   let text = String(title || '');
   text = text.replace(/\s*[([（【]([^)\]）】]+)[)\]）】]/g, (whole, inner) => {
     const segment = inner.trim();
-    return classifySegment(segment) || ORIGINAL_SEGMENT.test(segment) || ALTERNATE_VERSION.test(segment) ? '' : whole;
+    return classifySegment(segment) || ORIGINAL_SEGMENT.test(segment) || ALTERNATE_VERSION.test(segment) || LANGUAGE_SEGMENT.test(segment) ? '' : whole;
   });
   text = text.replace(/\s[-–—]\s([^()[\]]+)$/, (whole, suffix) => {
     const segment = suffix.trim();

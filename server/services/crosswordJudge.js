@@ -1,4 +1,4 @@
-import { isAnimeTrack, isJapaneseTrack, isAuthenticTrack, isTemporalPermitted } from './musicService.js';
+import { isAnimeTrack, isJapaneseTrack, isAuthenticTrack, isTemporalPermitted } from '../policy/selectionPolicy.js';
 
 export function normalizePop(p) {
   const num = Number(p) || 0;

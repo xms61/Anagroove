@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { db } from './db.js';
-import { getRandomSongPool } from './services/musicService.js';
+import { getRandomSongPool } from './selection/songPool.js';
 import { generateLiveCrossword } from '../shared/liveCrossword.js';
 import {
   validateUserId,
