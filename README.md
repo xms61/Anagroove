@@ -3,7 +3,7 @@
 A blind audio crossword: every clue is a 30-second song preview. Guess the title, artist or a keyword from the title, without seeing either until the puzzle is solved. Play solo, co-op or versus.
 
 ## Features
-- **Live puzzles** from a local SQLite catalog of English, Japanese and Korean original recordings. You can pick a theme (pop, rock, hip-hop, EDM, K-pop, anime, gaming, cinematic, pop-punk, …), or type a prompt such as "80s synth-pop", "songs by Queen" or "rock before 1990".
+- **Live puzzles** from a local SQLite catalog of English, Japanese and Korean original recordings. You can pick one of 16 themes (pop, rock, indie, hip-hop, R&B, EDM, metal, country, jazz, K-pop, J-pop, anime, …), or type a prompt such as "80s synth-pop", "songs by Queen" or "rock before 1990".
 - **Popularity control:** top hits, balanced, hidden gems or pure random. Recently played songs and artists are avoided.
 - **Zero-spoiler clues**: an answer never appears in its own clue.
 - **Multiplayer** over WebSockets: co-op (shared grid) and versus (race).

@@ -56,18 +56,6 @@ export interface Puzzle {
   clues: Clue[];
 }
 
-export interface ThemeCategory {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  puzzles: Puzzle[];
-}
-
-export interface ThemesCatalog {
-  themes: ThemeCategory[];
-}
-
 export type CellValidity = 'untested' | 'correct' | 'wrong';
 
 export interface HintAction {

@@ -19,7 +19,11 @@ import { HistoryModal } from './components/HistoryModal';
 import { Modal } from './components/Modal';
 import { useSettings } from './hooks/useSettings';
 import { readJson, readString, STORAGE_KEYS, writeJson, writeString } from './services/storage';
+import { themeById } from '../shared/themes';
 import { Disc3, Lightbulb, CheckSquare, Menu, ChevronDown, Swords, Sparkles, Shuffle, AlertCircle, Settings, Trophy } from 'lucide-react';
+
+/** A saved theme id that no longer exists (e.g. the removed "latin") falls back to Mixed. */
+const knownThemeOr = (id: string) => (themeById(id) ? id : 'all');
 
 const EMPTY_PUZZLE: Puzzle = {
   id: 'placeholder',
@@ -41,7 +45,7 @@ const EMPTY_PUZZLE: Puzzle = {
 
 export default function App() {
   const playerId = useMemo(() => getMultiplayerPlayerId(), []);
-  const [currentGenre, setCurrentGenre] = useState<string>(() => readString(STORAGE_KEYS.activeGenre, 'all'));
+  const [currentGenre, setCurrentGenre] = useState<string>(() => knownThemeOr(readString(STORAGE_KEYS.activeGenre, 'all')));
   const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(() => readJson<Puzzle | null>(STORAGE_KEYS.activeLivePuzzle, null));
 
   const [isLoadingPuzzle, setIsLoadingPuzzle] = useState(false);
@@ -75,7 +79,10 @@ export default function App() {
   const activePuzzle = currentPuzzle || EMPTY_PUZZLE;
 
   const [activePuzzleConfig, setActivePuzzleConfig] = useState<PuzzleGenerationConfig>(
-    () => readJson<PuzzleGenerationConfig>(STORAGE_KEYS.activeConfig, { genre: currentGenre, targetWords: 10 })
+    () => {
+      const saved = readJson<PuzzleGenerationConfig>(STORAGE_KEYS.activeConfig, { genre: currentGenre, targetWords: 10 });
+      return { ...saved, genre: knownThemeOr(saved.genre || 'all') };
+    }
   );
 
   const {

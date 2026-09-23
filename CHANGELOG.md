@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.21.0] - 2026-09-23
+
+### Added
+- **`shared/themes.js`, the single theme table.** Before, theme knowledge lived in six places that disagreed: two UI lists, prompt mapping, theme variations, the live taxonomy and the crawler seeds.
+  - Each theme has `genres` (values in `artists.genres_json`), `languages` and the crawler's playlist `seeds`.
+  - The generator and multiplayer pickers render it, and selection reads it through `genresForPrompt` and `allowedLanguagesForContext`.
+- **Six new themes:** Indie & Alternative, R&B/Soul/Funk, Metal, Country, Jazz & Blues, and J-Pop & City Pop (ja/en), each with a live Deezer configuration. There are now 16.
+- Free-text prompts map to genres through ordered phrase rules. The most specific phrase wins and is removed before the next rule runs, so "city pop", "k-pop" and "pop-punk" no longer also add Pop. Word boundaries stop "trapped" from counting as rap.
+- `themes.test.js`: unique ids, admitted languages only, genres and seeds per theme, a live configuration per theme, theme languages, and prompt → genre cases.
+
+### Removed
+- **The "Latin & Reggaeton" theme.** The catalog only admits en/ja/ko, so it could never be served. A saved `latin` theme falls back to Mixed.
+- Other non-en/ja/ko remnants:
+  - the "international → any language" branch in `allowedLanguagesForContext`
+  - the FR/DE/BR/ES/IT/JM/NG iTunes storefronts
+  - the Latin Quarter guard and the Bossa Nova variation
+- `server/services/queryFactory.js` (`mapPromptToGenres` moved to `genresForPrompt`), the unused `ThemeBar` component, and the `ThemeCategory`/`ThemesCatalog` types.
+
+---
+
 ## [1.20.1] - 2026-09-23
 
 ### Changed

@@ -9,11 +9,11 @@
  *   anime     the isolated anime OP/ED catalog.
  */
 import { deezerRankToScore } from '../db/trackNormalization.js';
-import { mapPromptToGenres } from '../services/queryFactory.js';
 import { toFtsQuery } from '../services/queryBuilder.js';
 import { allowedLanguagesForContext } from '../policy/selectionPolicy.js';
 import { logger } from '../logger.js';
 import { weightedOrder } from './random.js';
+import { genresForPrompt } from '../../shared/themes.js';
 
 /** Popularity setting -> catalog score window and weighting exponent (0 = uniform). */
 export const POPULARITY_SAMPLING = Object.freeze({
@@ -63,7 +63,7 @@ function catalogRowToCandidate(row) {
  */
 export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds = [], rng }) {
   const settings = POPULARITY_SAMPLING[queryPlan.popularity] || POPULARITY_SAMPLING.balanced;
-  const genres = queryPlan.artist ? [] : mapPromptToGenres(queryPlan.genre || '', prompt || '');
+  const genres = queryPlan.artist ? [] : genresForPrompt(queryPlan.genre || '', prompt || '');
   // A prompt that maps to genre clusters ("80s rock") is matched on artist genres; running the
   // same words as a title search on top ("rock" in the title) would starve the pool
   const ftsQuery = genres.length > 0 ? '' : toFtsQuery(prompt, { artist: queryPlan.artist });

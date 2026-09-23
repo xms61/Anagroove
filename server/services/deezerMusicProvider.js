@@ -89,12 +89,17 @@ export const DEEZER_GENRE_TAXONOMY = {
   hiphop: { chartId: 116, searches: ['genre:"rap"', 'genre:"hip hop"', 'hip hop classics'], minFans: 150000, minRank: 300000 },
   edm: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"', 'electronic dance music'], minFans: 100000, minRank: 250000 },
   electronic: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"', 'electronic dance music'], minFans: 100000, minRank: 250000 },
-  latin: { chartId: 197, searches: ['genre:"latin"'], minFans: 150000, minRank: 300000 },
   kpop: { chartId: null, searches: ['k-pop', 'kpop', 'genre:"k-pop"'], minFans: 25000, minRank: 200000 },
   anime: { chartId: null, searches: ['anime opening theme', 'anime ending theme', 'anime ost', 'tv anime opening'], minFans: 25000, minRank: 200000 },
   gaming: { chartId: 173, searches: ['video game soundtrack', 'video game music', 'original video game score'], minFans: 1000, minRank: 150000 },
   cinematic: { chartId: 173, searches: ['film score', 'motion picture soundtrack', 'cinematic score'], minFans: 1000, minRank: 150000 },
   poppunk: { chartId: 85, searches: ['pop punk', 'midwest emo', 'emo punk'], minFans: 50000, minRank: 250000 },
+  indie: { chartId: 85, searches: ['genre:"alternative"', 'indie rock'], minFans: 50000, minRank: 250000 },
+  rnb: { chartId: 165, searches: ['genre:"r&b"', 'soul classics'], minFans: 100000, minRank: 250000 },
+  metal: { chartId: 464, searches: ['genre:"metal"', 'heavy metal'], minFans: 100000, minRank: 250000 },
+  country: { chartId: 84, searches: ['genre:"country"'], minFans: 100000, minRank: 250000 },
+  jazz: { chartId: 129, searches: ['genre:"jazz"', 'genre:"blues"'], minFans: 25000, minRank: 150000 },
+  jpop: { chartId: null, searches: ['j-pop', 'japanese city pop', 'j-rock'], minFans: 25000, minRank: 200000 },
 };
 
 /**

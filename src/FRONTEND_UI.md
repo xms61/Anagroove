@@ -16,7 +16,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - `storage.ts`: guarded storage.
   - `audioSource.ts`
 - `components/`:
-  - `CrosswordGrid`, `ClueList`, `AudioPlayerBar`, `ThemeBar`, `LoungeDrawer`
+  - `CrosswordGrid`, `ClueList`, `AudioPlayerBar`, `LoungeDrawer`
   - `Modal` (shared shell)
   - the modals: `LiveGenerator`, `Multiplayer`, `Blacklist`, `Hint`, `EndScreen` (current puzzle tracklist), `History` (all solved puzzles), `Settings`, plus the room victory dialog in `App.tsx`.
 - `types/crossword.ts`: shared puzzle types. `shared/*.d.ts` types the shared JS modules (e.g. `canonicalArtistKey`, which the client uses for recent-artist keys so they match the server).
@@ -44,6 +44,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - Keys: `spotyspice_user_id`, `spotyspice_settings`, `spotyspice_active_genre`, `spotyspice_active_config`, `spotyspice_active_live_puzzle`, `spotyspice_recent_songs`, `spotyspice_player_name`, `spotyspice_local_blacklist`.
 - **Settings:** read and write through `useSettings()`/`readSettings()`. Don't parse `spotyspice_settings` in components.
 - **Language filter:** the live generator's EN/JA/KO chips send `languages` (a subset of en/ja/ko; empty means the theme decides). The server applies it to the catalog window and the picker.
+- **Themes:** the generator and multiplayer theme pickers render `THEMES` from `shared/themes.js`. A saved theme id that no longer exists (the removed "latin") falls back to Mixed (`knownThemeOr` in `App.tsx`).
 - **Audio:** play through `playableAudioUrl(song)` (`services/audioSource.ts`). It keeps `/api/preview/...` and `/audio/...` paths and rebuilds a stable path for older saved puzzles that hold expiring Deezer URLs.
 - **Multiplayer:** `socketService` remembers the room seat (`resumeToken`) and rejoins on reconnect. A `room_joined` with `resumed: true` must not reset local progress.
 - **Grid key handlers** build the next grid from the rendered state (`withCell`) for their checks and saves, and apply it with a functional `setUserLetters`. Never read values out of a state updater: React may run it later, and the handler then sees an empty grid.

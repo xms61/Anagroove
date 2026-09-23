@@ -6,8 +6,8 @@
 import { splitArtistNames } from '../../shared/musicKeywords.js';
 import { toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { isAuthenticMetadata } from './authenticityRules.js';
-import { ALLOWED_LANGUAGES } from '../db/trackNormalization.js';
 import { resolveTrackLanguage } from '../db/languageClassifier.js';
+import { themeById } from '../../shared/themes.js';
 
 /**
  * Checks if a genre or query prompt specifically targets authentic Anime OP/ED themes.
@@ -30,9 +30,8 @@ export function getAnimeThemeType(genre = '', prompt = '') {
 }
 
 /**
- * Language Policy: Enforces English for Western mainstream categories,
- * with explicit exemption for non-English cultural genres and prompts
- * (Japanese/Anime, City Pop, K-Pop, Latin, Reggaeton, etc.).
+ * Language policy: English for most themes; Japanese and Korean only for themes and prompts
+ * that ask for them (anime, J-pop, city pop, K-pop) or an explicit language filter.
  */
 export function isLanguagePermitted(track, genre = 'all', prompt = '', { languages = null } = {}) {
   // Anime OP/ED tracks from the dedicated anime catalog are always permitted
@@ -89,17 +88,16 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '', { languag
 }
 
 /**
- * Catalog languages a theme may use. The catalog only holds en/ja/ko (decision D1):
- * K-pop themes take Korean + English, Japanese/anime themes Japanese + English, other
- * international themes any catalog language, everything else English.
+ * Catalog languages (en/ja/ko) a theme may use: the theme's own list for a theme id,
+ * otherwise Korean + English for K-pop prompts, Japanese + English for Japanese/anime
+ * prompts, and English for everything else.
  */
 export function allowedLanguagesForContext(genre = 'all', prompt = '') {
+  const theme = typeof genre === 'string' ? themeById(genre) : undefined;
+  if (theme && theme.id !== 'all') return [...theme.languages];
   const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
   if (/\b(kpop|k-pop|korean)\b/i.test(context)) return ['ko', 'en'];
   if (/\b(anime|japanese|japan|city\s*pop|j-pop|jpop|j-rock|jrock)\b/i.test(context)) return ['ja', 'en'];
-  if (/\b(latin|spanish|french|german|brazil|bossanova|reggaeton|cumbia|salsa|flamenco|afrobeats|bollywood|mandopop|cantopop|international|world)\b/i.test(context)) {
-    return [...ALLOWED_LANGUAGES];
-  }
   return ['en'];
 }
 
@@ -305,13 +303,6 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
       return false;
     }
     if (/\bprivate\s+dancer\b/i.test(lowerTitle)) {
-      return false;
-    }
-  }
-
-  // LATIN GUARDRAILS
-  if (/\blatin\b/i.test(context)) {
-    if (/\blatin\s+quarter\b/i.test(lowerArtist) || /\blatin\s+alliance\b/i.test(lowerArtist)) {
       return false;
     }
   }
