@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { getRandomSongPool } from '../../server/selection/songPool.js';
-import { clearPreviewCacheForTesting, resolvePreviewRef } from '../../server/services/previewResolver.js';
+import { getRandomSongPool } from '../../server/selection/songPool.ts';
+import { clearPreviewCacheForTesting, resolvePreviewRef } from '../../server/services/previewResolver.ts';
 
 const originalFetch = globalThis.fetch;
 const requests = [];

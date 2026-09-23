@@ -1,12 +1,52 @@
-import { fetchWithTimeout } from './fetchWithTimeout.js';
+import { fetchWithTimeout } from './fetchWithTimeout.ts';
 import { shuffleArray } from '../../shared/shuffle.ts';
+import type { SongCandidate } from '../types.ts';
+
+/** A track as the Deezer API returns it (search, chart and track endpoints). */
+export interface DeezerApiTrack {
+  id?: number;
+  title?: string;
+  preview?: string;
+  link?: string;
+  rank?: number;
+  duration?: number;
+  isrc?: string;
+  explicit_lyrics?: boolean;
+  release_date?: string;
+  artist?: { id?: number; name?: string; nb_fan?: number; fans?: number };
+  album?: { id?: number; title?: string; cover_big?: string; cover_medium?: string; release_date?: string };
+  contributors?: { id: number }[];
+}
+
+type DeezerArtist = { nb_fan?: number; fans?: number } | undefined;
+
+export interface DeezerGenreConfig {
+  chartId: number | null;
+  searches: string[];
+  minFans: number;
+  minRank: number;
+}
+
+export interface DeezerQuery {
+  genre?: string;
+  limit?: number;
+  minFans?: number;
+  maxFans?: number;
+  minRank?: number;
+  maxRank?: number;
+  searches?: string[];
+  offset?: number;
+  popularity?: string;
+}
+
+type Cache<T> = Map<string, { value: T; expiresAt: number }>;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
-const trackCache = new Map();
-const artistCache = new Map();
+const trackCache: Cache<SongCandidate[]> = new Map();
+const artistCache: Cache<DeezerArtist> = new Map();
 
-function cacheGet(cache, key) {
+function cacheGet<T>(cache: Cache<T>, key: string): T | null {
   const cached = cache.get(key);
   if (!cached) return null;
   if (cached.expiresAt > Date.now()) return cached.value;
@@ -14,11 +54,11 @@ function cacheGet(cache, key) {
   return null;
 }
 
-function cacheSet(cache, key, value) {
+function cacheSet<T>(cache: Cache<T>, key: string, value: T): T {
   // Reinserting a key makes refreshed entries newest; eviction is FIFO.
   cache.delete(key);
   while (cache.size >= MAX_CACHE_ENTRIES) {
-    cache.delete(cache.keys().next().value);
+    cache.delete(cache.keys().next().value!);
   }
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
@@ -33,7 +73,7 @@ export function getDeezerCacheStatsForTesting() {
   return { trackEntries: trackCache.size, artistEntries: artistCache.size };
 }
 
-export function mapDeezerTrack(track, artistDetails = track.artist) {
+export function mapDeezerTrack(track: DeezerApiTrack, artistDetails: DeezerArtist = track.artist): SongCandidate & { providerTrackId: string; fans: number; rank: number } | null {
   if (!track?.id || !track?.artist?.id || !track.preview || !track.title || !track.artist.name) return null;
 
   // Filter out audiobooks, spoken radio drama episodes, and raw file rips
@@ -56,7 +96,7 @@ export function mapDeezerTrack(track, artistDetails = track.artist) {
     fans: Number(artistDetails?.nb_fan ?? artistDetails?.fans) || 0,
     contributorArtistIds: Array.isArray(track.contributors) ? track.contributors.map(c => String(c.id)) : [],
     releaseDate: track.release_date || track.album?.release_date || '',
-    // Kept so fallback results can be written to the catalog (selection/candidates.js)
+    // Kept so fallback results can be written to the catalog (selection/candidates.ts)
     durationMs: Number(track.duration) > 0 ? Number(track.duration) * 1000 : null,
     isrc: track.isrc || null,
     albumId: track.album?.id ? String(track.album.id) : null,
@@ -68,20 +108,20 @@ export function mapDeezerTrack(track, artistDetails = track.artist) {
   };
 }
 
-async function fetchJson(url) {
+async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetchWithTimeout(url, {}, 6000, 2);
   if (!response.ok) throw new Error(`Deezer returned ${response.status}`);
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
-async function getArtistDetails(artistId) {
+async function getArtistDetails(artistId: number): Promise<DeezerArtist> {
   const cacheKey = String(artistId);
   const cached = cacheGet(artistCache, cacheKey);
   if (cached) return cached;
-  return cacheSet(artistCache, cacheKey, await fetchJson(`https://api.deezer.com/artist/${encodeURIComponent(cacheKey)}`));
+  return cacheSet(artistCache, cacheKey, await fetchJson<DeezerArtist>(`https://api.deezer.com/artist/${encodeURIComponent(cacheKey)}`));
 }
 
-export const DEEZER_GENRE_TAXONOMY = {
+export const DEEZER_GENRE_TAXONOMY: Record<string, DeezerGenreConfig> = {
   all: { chartId: 0, searches: [], minFans: 250000, minRank: 350000 },
   mixed: { chartId: 0, searches: [], minFans: 250000, minRank: 350000 },
   pop: { chartId: 132, searches: ['genre:"pop"'], minFans: 200000, minRank: 350000 },
@@ -119,9 +159,9 @@ export const deezerMusicProvider = {
     searches = [],
     offset = 0,
     popularity = 'balanced',
-  } = {}) {
+  }: DeezerQuery = {}): Promise<SongCandidate[]> {
     const normalizedGenre = typeof genre === 'string' ? genre.toLowerCase().trim() : 'all';
-    const genreConfig = DEEZER_GENRE_TAXONOMY[normalizedGenre] || {
+    const genreConfig: DeezerGenreConfig = DEEZER_GENRE_TAXONOMY[normalizedGenre] || {
       chartId: 0,
       searches: [normalizedGenre],
       minFans: 50000,
@@ -136,7 +176,7 @@ export const deezerMusicProvider = {
     const cached = cacheGet(trackCache, cacheKey);
     if (cached) return cached;
 
-    const requests = [];
+    const requests: Promise<{ data?: DeezerApiTrack[] }>[] = [];
     if (customSearches.length === 0 && genreConfig.chartId !== null && genreConfig.chartId !== undefined && !isPure) {
       requests.push(fetchJson(`https://api.deezer.com/chart/${genreConfig.chartId}/tracks?limit=100`));
     }
@@ -154,14 +194,15 @@ export const deezerMusicProvider = {
     const rawTracks = results.flatMap(result => Array.isArray(result?.data) ? result.data : []);
     const uniqueTracks = shuffleArray(
       [...new Map(rawTracks.map(track => [String(track.id), track])).values()]
-        .filter(track => track.preview && track.title && track.artist?.id && track.artist?.name)
+        .filter((track): track is DeezerApiTrack & { artist: { id: number; name: string } } =>
+          Boolean(track.preview && track.title && track.artist?.id && track.artist?.name))
     );
 
-    const candidates = [];
-    const relaxedCandidates = [];
+    const candidates: SongCandidate[] = [];
+    const relaxedCandidates: SongCandidate[] = [];
 
     for (const track of uniqueTracks) {
-      let artist;
+      let artist: DeezerArtist;
       try {
         artist = await getArtistDetails(track.artist.id);
       } catch {

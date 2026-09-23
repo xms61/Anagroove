@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { extractAnswerKeyword } from '../../shared/musicKeywords.ts';
+import { extractAnswerKeyword, type LengthBucket } from '../../shared/musicKeywords.ts';
+import type { SongCandidate, YearRange } from '../../server/types.ts';
+
+type Track = Partial<SongCandidate>;
 import {
   allowedLanguagesForContext,
   isAnimeTrack,
@@ -10,10 +13,10 @@ import {
   isTemporalPermitted,
   isThematicallyPermitted,
   resolveReleaseYear,
-} from '../../server/policy/selectionPolicy.js';
+} from '../../server/policy/selectionPolicy.ts';
 
 // [track, year window, expected, why]
-const YEAR_WINDOWS = [
+const YEAR_WINDOWS: [track: Track, window: YearRange | null, expected: boolean, why: string][] = [
   [{ releaseDate: '1991-09-24', title: 'Smells Like Teen Spirit', artist: 'Nirvana' }, { start: 1990, end: 1999 }, true, 'release date inside'],
   [{ releaseDate: '2022-03-01', title: 'As It Was', artist: 'Harry Styles' }, { start: 1990, end: 1999 }, false, 'release date outside'],
   [{ releaseDate: '2024-05-01', title: 'Espresso', artist: 'Sabrina Carpenter' }, { start: 2020, end: 2026 }, true, 'recent release'],
@@ -30,14 +33,14 @@ for (const [track, window, expected, why] of YEAR_WINDOWS) {
 }
 
 test('isTemporalPermitted never mutates the track; resolveReleaseYear gives the vintage year', () => {
-  const track = { title: 'Dreams (2004 Remaster)', releaseDate: '2018-01-01' };
+  const track: Track = { title: 'Dreams (2004 Remaster)', releaseDate: '2018-01-01' };
   assert.equal(isTemporalPermitted(track, { start: 2000, end: 2009 }), true);
   assert.equal(track.releaseYear, undefined);
   assert.equal(resolveReleaseYear(track), 2004);
 });
 
 // [track, genre, prompt, options, expected, why]
-const LANGUAGE_CASES = [
+const LANGUAGE_CASES: [track: Track, genre: string, prompt: string, options: { languages?: string[] }, expected: boolean, why: string][] = [
   [{ title: 'Despacito', artist: 'Luis Fonsi' }, 'all', '', {}, false, 'Spanish in a random puzzle'],
   [{ title: "Je t'aime", artist: 'Lara Fabian' }, 'all', '', {}, false, 'French in a random puzzle'],
   [{ title: 'Atemlos durch die Nacht', artist: 'Helene Fischer' }, 'all', '', {}, false, 'German in a random puzzle'],
@@ -60,7 +63,7 @@ test('theme languages map onto the en/ja/ko catalog', () => {
   assert.deepEqual(allowedLanguagesForContext('rock'), ['en']);
 });
 
-const LENGTH_BUCKETS = [
+const LENGTH_BUCKETS: [title: string, artist: string, bucket: LengthBucket, min: number, max: number][] = [
   ['Dancing in the Dark', 'Bruce Springsteen', 'short', 2, 5],
   ['Dancing in the Dark', 'Bruce Springsteen', 'medium', 6, 8],
   ['Blinding Lights', 'The Weeknd', 'long', 9, 14],
@@ -72,7 +75,7 @@ for (const [title, artist, bucket, min, max] of LENGTH_BUCKETS) {
   });
 }
 
-const ANIME_CASES = [
+const ANIME_CASES: [track: Track, expected: boolean][] = [
   [{ artist: 'FLOW', title: 'Colors (Code Geass Opening Theme)', album: 'FLOW THE BEST' }, true],
   [{ artist: 'Linked Horizon', title: 'Guren no Yumiya', album: 'Attack on Titan OST' }, true],
   [{ artist: 'Tatsuro Yamashita', title: 'Plastic Love', album: 'Big Wave' }, false],
@@ -87,7 +90,7 @@ for (const [track, expected] of ANIME_CASES) {
   });
 }
 
-const JAPANESE_CASES = [
+const JAPANESE_CASES: [track: Track, expected: boolean][] = [
   [{ artist: 'Tatsuro Yamashita', title: 'Ride On Time', language: 'ja' }, true],
   [{ artist: 'Miki Matsubara', title: 'Stay With Me', album: 'Pocket Park' }, true],
   [{ artist: 'The Japanese House', title: 'Saw You In A Dream', language: 'en' }, false],
@@ -99,7 +102,7 @@ for (const [track, expected] of JAPANESE_CASES) {
   });
 }
 
-const AUTHENTIC_CASES = [
+const AUTHENTIC_CASES: [track: Track, expected: boolean][] = [
   [{ artist: 'Fonzi M', title: 'Yumetourou [Guitar Version]' }, false],
   [{ artist: 'Various Artists', title: 'Bohemian Rhapsody (Karaoke Version)' }, false],
   [{ artist: 'Workout Crew', title: 'Levitating (130 BPM Workout Mix)' }, false],
@@ -112,7 +115,7 @@ for (const [track, expected] of AUTHENTIC_CASES) {
 }
 
 // [track, genre, prompt, expected, why]
-const THEMATIC_CASES = [
+const THEMATIC_CASES: [track: Track, genre: string, prompt: string, expected: boolean, why: string][] = [
   [{ title: 'Something', artist: 'The Japanese House' }, 'all', 'Japanese City Pop', false, '"The Japanese House" homonym'],
   [{ title: 'Face Melter', artist: 'The Japanese Popstars' }, 'all', 'Japanese City Pop', false, '"The Japanese Popstars" homonym'],
   [{ title: 'Japanese Boy', artist: 'Aneka' }, 'all', 'Japanese City Pop', false, 'novelty title'],
@@ -161,7 +164,7 @@ for (const [track, genre, prompt, expected, why] of THEMATIC_CASES) {
 }
 
 // Live candidates carry no stored language: the heuristics decide. [track, genre, prompt, expected, why]
-const LIVE_LANGUAGE_CASES = [
+const LIVE_LANGUAGE_CASES: [track: Track, genre: string, prompt: string, expected: boolean, why: string][] = [
   [{ title: 'Blinding Lights', artist: 'The Weeknd' }, 'pop', '', true, 'English pop'],
   [{ title: 'Amor de Mi Vida', artist: 'Artista' }, 'pop', '', false, 'Spanish in English pop'],
   [{ title: 'Gurenge', artist: 'LiSA' }, 'anime', '', true, 'Japanese in anime'],
@@ -179,7 +182,7 @@ for (const [track, genre, prompt, expected, why] of LIVE_LANGUAGE_CASES) {
   });
 }
 
-const MORE_AUTHENTIC_CASES = [
+const MORE_AUTHENTIC_CASES: [track: Track, expected: boolean][] = [
   [{ title: 'Like a G6 (Workout Mix 128 BPM)', artist: 'Power Music Workout' }, false],
   [{ title: 'NewJeans (8-Bit Computer Game Version)', artist: '8-Bit Arcade' }, false],
   [{ title: 'White Winged Dove', artist: '1981 Rock Classics' }, false],
@@ -200,7 +203,7 @@ for (const [track, expected] of MORE_AUTHENTIC_CASES) {
 }
 
 // [track, year window, expected]
-const MORE_YEAR_WINDOWS = [
+const MORE_YEAR_WINDOWS: [track: Track, window: YearRange | null, expected: boolean][] = [
   [{ releaseDate: '2022-04-06T00:00:00Z' }, { start: 2020, end: 2026 }, true],
   [{ releaseDate: '2019-12-31T00:00:00Z' }, { start: 2020, end: 2026 }, false],
   [{ releaseDate: '2027-01-01T00:00:00Z' }, { start: 2020, end: 2026 }, false],

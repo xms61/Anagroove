@@ -6,7 +6,7 @@ import zlib from 'zlib';
 import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.js';
 import { normalizeDeezerRank, provisionalPopularity } from '../server/db/trackNormalization.js';
 import { isAbovePopularityFloor } from '../server/db/catalogPopularity.js';
-import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
+import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const USAGE = `

@@ -4,7 +4,7 @@ import {
   deezerMusicProvider,
   getDeezerCacheStatsForTesting,
   resetDeezerCachesForTesting,
-} from '../../server/services/deezerMusicProvider.js';
+} from '../../server/services/deezerMusicProvider.ts';
 import { createLivePuzzleStore } from '../../server/server.js';
 
 const CHART = {

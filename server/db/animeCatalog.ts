@@ -51,7 +51,7 @@ export interface AnimeSampleRow {
 }
 
 /** A playable anime theme, shaped like a catalog song for the puzzle generator. */
-export interface AnimeSong {
+export type AnimeSong = {
   id: string;
   catalogTrackId: number;
   provider: 'anime_oped';
@@ -76,7 +76,7 @@ export interface AnimeSong {
   malId: number | null;
   sampleVariations: { index: number; url: string; offset: number; duration: number }[];
   isAnimeOped: true;
-}
+};
 
 export interface AnimeTrackQuery {
   count?: number;

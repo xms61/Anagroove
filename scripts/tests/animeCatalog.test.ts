@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isAnimeTarget, getAnimeThemeType } from '../../server/policy/selectionPolicy.js';
+import { isAnimeTarget, getAnimeThemeType } from '../../server/policy/selectionPolicy.ts';
 import { AnimeCatalog } from '../../server/db/animeCatalog.ts';
 
-const TARGETS = [
+const TARGETS: [genre: string, prompt: string, expected: boolean][] = [
   ['anime', '', true],
   ['anime openings', '', true],
   ['all', 'anime ed', true],

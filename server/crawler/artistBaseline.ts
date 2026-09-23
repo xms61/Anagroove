@@ -9,11 +9,24 @@ const DATA_DIR = path.resolve(__dirname, '../../data');
 const CSV_FILENAME = 'most_streamed_artists.csv';
 const PRIMARY_CSV_PATH = path.join(DATA_DIR, CSV_FILENAME);
 
+export interface StreamedArtist {
+  name: string;
+  sex: string;
+  country: string;
+  language: string;
+  genre: string;
+  artistType: string;
+  debutYear: number | null;
+  totalStreams: number;
+  leadStreams: number;
+  soloStreams: number;
+}
+
 /**
  * Parses a single CSV line respecting quotes and escaped quotes.
  */
-export function parseCsvLine(line = '') {
-  const values = [];
+export function parseCsvLine(line = ''): string[] {
+  const values: string[] = [];
   let current = '';
   let insideQuotes = false;
 
@@ -37,12 +50,8 @@ export function parseCsvLine(line = '') {
   return values;
 }
 
-/**
- * Reads and parses the Most Streamed Artists dataset.
- * @param {string} [customPath]
- * @returns {Array<{ name: string, sex: string, country: string, language: string, genre: string, artistType: string, debutYear: number|null, totalStreams: number, leadStreams: number, soloStreams: number }>}
- */
-export function loadStreamedArtists(customPath = null) {
+/** Reads the Most Streamed Artists dataset, most streamed first; [] when the file is missing. */
+export function loadStreamedArtists(customPath: string | null = null): StreamedArtist[] {
   const filePath = customPath || PRIMARY_CSV_PATH;
   if (!fs.existsSync(filePath)) {
     return [];
@@ -64,7 +73,7 @@ export function loadStreamedArtists(customPath = null) {
   const leadStreamsIdx = headers.findIndex(h => h.includes('lead streams'));
   const soloStreamsIdx = headers.findIndex(h => h.includes('solo streams'));
 
-  const artists = [];
+  const artists: StreamedArtist[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
     const name = cols[nameIdx >= 0 ? nameIdx : 0];

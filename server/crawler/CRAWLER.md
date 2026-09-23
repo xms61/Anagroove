@@ -1,7 +1,7 @@
 # Crawler & Ingest
 
 ## Modules
-- `harvester.js` (`MusicHarvester`): all Deezer payloads go through one mapper, `toCatalogCandidate`. The fetch function is injectable (`{ fetchImpl }`) for tests.
+- `harvester.ts` (`MusicHarvester`): all Deezer payloads go through one mapper, `toCatalogCandidate`. The fetch function is injectable (`{ fetchImpl }`) for tests.
   - Vectors, in order, each bounded by its limit (0 = off); `runFullHarvest` also stops at the target track count:
     1. `charts`: **Apple Music "most played"** (`harvestAppleCharts`: us/gb/jp/kr), matched to Deezer tracks.
     2. `playlists`: theme playlists (`PLAYLIST_SEEDS`, the `seeds` in `shared/themes.ts`). Every artist on a theme playlist gets the theme's first genre.
@@ -17,7 +17,7 @@
   - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres. Genres are stored by Deezer genre id as English names (`DEEZER_GENRE_NAMES`): the API localizes names by the caller's location.
   - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
   - Languages and popularity are recomputed locally by `npm run catalog:recompute` (`recomputeCatalogLanguages`, `recomputeCatalogPopularity`).
-- `authenticityFilter.js` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.js`.
+- `authenticityFilter.ts` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.js`.
 - `rateLimiter.js`: token buckets plus `politeFetch` (User-Agent, retry on 429/503). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3.
 
 ## Shared rules (`server/policy/authenticityRules.js`)

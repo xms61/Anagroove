@@ -3,9 +3,9 @@
  */
 import express from 'express';
 import { db } from '../db.ts';
-import { getRandomSongPool } from '../selection/songPool.js';
+import { getRandomSongPool } from '../selection/songPool.ts';
 import { generateLiveCrossword } from '../../shared/liveCrossword.ts';
-import { resolvePreviewRef } from '../services/previewResolver.js';
+import { resolvePreviewRef } from '../services/previewResolver.ts';
 import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.js';
 import { logger } from '../logger.js';
 

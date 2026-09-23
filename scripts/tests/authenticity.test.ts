@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.js';
+import { isAuthenticCandidate, type RawTrack } from '../../server/crawler/authenticityFilter.ts';
 
 const PREVIEW = 'https://cdnt-preview.dzcdn.net/sample.mp3';
 
 // [why, raw provider payload, expected]
-const CANDIDATES = [
+const CANDIDATES: [why: string, candidate: RawTrack, expected: boolean][] = [
   ['"(Cover)" in the title', { title: 'Bohemian Rhapsody (Cover)', artist: 'Some Cover Band', preview: PREVIEW, duration: 200 }, false],
   ['karaoke artist', { title: 'Smells Like Teen Spirit', artist: 'Karaoke All Stars', preview: PREVIEW, duration: 210 }, false],
   ['tribute band', { title: 'Wonderwall', artist: 'Oasis Tribute Band', preview: PREVIEW, duration: 250 }, false],

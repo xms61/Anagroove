@@ -7,7 +7,7 @@ import {
   batchResolvePreviews,
   extractNumericCatalogTrackId,
   clearPreviewCacheForTesting,
-} from '../../server/services/previewResolver.js';
+} from '../../server/services/previewResolver.ts';
 import { parseDelimitedLine, mapRowToCandidate, parseSqlInsertTuple } from '../ingest_musicmovearr.js';
 
 test('delimited lines keep quoted delimiters (CSV) and split on tabs (TSV)', () => {

@@ -9,17 +9,17 @@
  *      `count` songs are picked.
  *   4. Stable /api/preview/<ref> audio paths.
  */
-import { deezerMusicProvider } from '../services/deezerMusicProvider.js';
-import { itunesMusicProvider } from '../services/itunesMusicProvider.js';
-import { buildQueryPlan, extractAnimeKeyphrase } from '../services/queryBuilder.js';
-import { resolveAnimeCoverImages } from '../services/animeImageService.js';
-import { batchResolvePreviews, previewRefForTrack, toPreviewPath } from '../services/previewResolver.js';
+import { deezerMusicProvider } from '../services/deezerMusicProvider.ts';
+import { itunesMusicProvider } from '../services/itunesMusicProvider.ts';
+import { buildQueryPlan, extractAnimeKeyphrase } from '../services/queryBuilder.ts';
+import { resolveAnimeCoverImages } from '../services/animeImageService.ts';
+import { batchResolvePreviews, previewRefForTrack, toPreviewPath } from '../services/previewResolver.ts';
 import { sqliteCatalog } from '../db/sqliteCatalog.js';
 import { animeCatalog } from '../db/animeCatalog.ts';
-import { getAnimeThemeType, isAnimeTarget } from '../policy/selectionPolicy.js';
+import { getAnimeThemeType, isAnimeTarget } from '../policy/selectionPolicy.ts';
 import { logger } from '../logger.js';
 import { isOfflineMode } from '../offline.ts';
-import { createRng, weightedOrder } from './random.js';
+import { createRng, weightedOrder } from './random.ts';
 import {
   POPULARITY_SAMPLING,
   catalogCandidates,
@@ -28,13 +28,37 @@ import {
   externalPopularity,
   learnFromExternal,
   popularityWeight,
-} from './candidates.js';
-import { createRecentCounter, createTrackPicker } from './trackPicker.js';
+} from './candidates.ts';
+import { createRecentCounter, createTrackPicker, type PickedSong } from './trackPicker.ts';
+import type { CatalogSource, MusicProvider } from './candidates.ts';
+import type { QueryPlan } from '../services/queryBuilder.ts';
+import type { BlacklistEntry } from '../db/userStore.ts';
+import type { SongCandidate } from '../types.ts';
+import { errorMessage } from '../errors.ts';
 
-let musicProvider = deezerMusicProvider;
+// sqliteCatalog.js is still JavaScript; its inferred method types are narrower than the code (T7)
+const catalog = sqliteCatalog as unknown as CatalogSource;
+
+/** What a puzzle asks for (GET /api/music/random, POST /api/puzzles/live). */
+export interface SongPoolRequest {
+  genre?: string;
+  minFans?: number;
+  count?: number;
+  blacklist?: BlacklistEntry[];
+  recentIds?: unknown[];
+  prompt?: string;
+  artist?: string;
+  album?: string;
+  decade?: string;
+  popularity?: string;
+  seed?: string;
+  languages?: string[] | null;
+}
+
+let musicProvider: MusicProvider = deezerMusicProvider;
 
 /** Replaces the live providers (and bypasses the catalog) in tests. */
-export function setMusicProviderForTesting(provider) {
+export function setMusicProviderForTesting(provider: MusicProvider | null): void {
   musicProvider = provider || deezerMusicProvider;
 }
 
@@ -43,9 +67,9 @@ const isLiveProvider = () => musicProvider === deezerMusicProvider;
 // Live fallbacks are best-effort: a slow provider must not stall puzzle generation
 const EXTERNAL_TIMEOUT_MS = 10000;
 
-function withTimeout(promise, ms, fallback) {
-  let timer;
-  const timeout = new Promise(resolve => {
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<T>(resolve => {
     timer = setTimeout(() => {
       logger.warn('music_service', `External providers timed out after ${ms}ms`);
       resolve(fallback);
@@ -54,14 +78,19 @@ function withTimeout(promise, ms, fallback) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-function animeCandidates({ queryPlan, prompt, animeKeyphrase, limit }) {
+function animeCandidates({ queryPlan, prompt, animeKeyphrase, limit }: {
+  queryPlan: QueryPlan;
+  prompt: string;
+  animeKeyphrase: string | null;
+  limit: number;
+}): SongCandidate[] {
   const themeType = getAnimeThemeType(queryPlan.genre, prompt);
   const genericAnimePrompt = /^(anime|anime openings?|anime endings?|anime themes?|anime ost)$/i;
   const search = animeKeyphrase || (prompt && !genericAnimePrompt.test(prompt.trim()) ? prompt : null);
   try {
     return animeCatalog.getRandomAnimeTracks({ count: limit, yearRange: queryPlan.yearRange, type: themeType, search, requireSamples: true }) || [];
   } catch (err) {
-    logger.warn('music_service', `Anime catalog candidate harvest failed: ${err.message}`);
+    logger.warn('music_service', `Anime catalog candidate harvest failed: ${errorMessage(err)}`);
     return [];
   }
 }
@@ -71,8 +100,8 @@ function animeCandidates({ queryPlan, prompt, animeKeyphrase, limit }) {
  * within minutes, so puzzles carry /api/preview/<provider>:<id> and the server redirects to a
  * fresh URL at play time. Songs with no resolvable preview are dropped.
  */
-async function attachPreviewRefs(songs) {
-  const isLocalAudio = s => typeof s.audioUrl === 'string' && s.audioUrl.startsWith('/audio/');
+async function attachPreviewRefs(songs: PickedSong[]): Promise<PickedSong[]> {
+  const isLocalAudio = (s: SongCandidate) => typeof s.audioUrl === 'string' && s.audioUrl.startsWith('/audio/');
   for (const song of songs) {
     if (!isLocalAudio(song)) song.previewRef = previewRefForTrack(song);
   }
@@ -85,7 +114,7 @@ async function attachPreviewRefs(songs) {
       const resolvedRefs = new Map(resolvedTracks.map(t => [t.id, t.previewRef]));
       for (const song of needsLookup) song.previewRef = resolvedRefs.get(song.id) || null;
     } catch (err) {
-      logger.warn('preview_resolver', `Error during batch preview lookup: ${err.message}`);
+      logger.warn('preview_resolver', `Error during batch preview lookup: ${errorMessage(err)}`);
     }
   }
 
@@ -118,7 +147,7 @@ export async function getRandomSongPool({
   popularity,
   seed,
   languages,
-} = {}) {
+}: SongPoolRequest = {}): Promise<PickedSong[]> {
   const queryPlan = buildQueryPlan({ genre, minFans, prompt, artist, album, decade, popularity });
   // An explicit EN/JA/KO filter from the generator replaces the theme's default languages
   queryPlan.languages = Array.isArray(languages) && languages.length > 0 ? languages : null;
@@ -143,15 +172,15 @@ export async function getRandomSongPool({
 
   // Recency tiers (never / once / twice / 3+ recent plays), filled in order until the pool is full
   let candidateCount = 0;
-  const pickFrom = (candidates) => {
+  const pickFrom = (candidates: SongCandidate[]) => {
     candidateCount += candidates.length;
-    const tiers = [[], [], [], []];
+    const tiers: SongCandidate[][] = [[], [], [], []];
     for (const track of candidates) tiers[Math.min(recentCount(track), 3)].push(track);
     tiers.forEach((tier, plays) => picker.pick(tier, plays === 3 ? Infinity : plays));
   };
 
   let externalTried = false;
-  const fetchExternal = async (needed) => {
+  const fetchExternal = async (needed: number): Promise<SongCandidate[]> => {
     externalTried = true;
     if (isLiveProvider() && isOfflineMode()) return [];
     const request = externalCandidates({
@@ -165,10 +194,10 @@ export async function getRandomSongPool({
     const external = isLiveProvider() ? await withTimeout(request, EXTERNAL_TIMEOUT_MS, []) : await request;
     if (isLiveProvider() && external.length > 0) {
       try {
-        const learned = learnFromExternal(sqliteCatalog, external);
+        const learned = learnFromExternal(catalog, external);
         logger.info('music_service', `External fallback: ${external.length} candidates, ${learned.inserted} new catalog tracks`);
       } catch (err) {
-        logger.warn('music_service', `Could not store fallback tracks: ${err.message}`);
+        logger.warn('music_service', `Could not store fallback tracks: ${errorMessage(err)}`);
       }
     }
     return weightedOrder(external, c => popularityWeight(externalPopularity(c), alpha), rng);
@@ -178,12 +207,12 @@ export async function getRandomSongPool({
   if (isAnimeTheme) {
     pickFrom(weightedOrder(animeCandidates({ queryPlan, prompt, animeKeyphrase, limit }), () => 1, rng));
   } else {
-    let catalogPool = [];
+    let catalogPool: SongCandidate[] = [];
     if (isLiveProvider()) {
       try {
-        catalogPool = catalogCandidates({ catalog: sqliteCatalog, queryPlan, prompt, recentIds: recentList, rng });
+        catalogPool = catalogCandidates({ catalog, queryPlan, prompt, recentIds: recentList, rng });
       } catch (err) {
-        logger.warn('music_service', `Catalog candidates failed: ${err.message}`);
+        logger.warn('music_service', `Catalog candidates failed: ${errorMessage(err)}`);
       }
     }
 
@@ -194,7 +223,7 @@ export async function getRandomSongPool({
       } catch (err) {
         // A failing provider is fatal only when nothing else produced candidates
         if (catalogPool.length === 0) throw err;
-        logger.warn('music_service', `External fallback failed: ${err.message}`);
+        logger.warn('music_service', `External fallback failed: ${errorMessage(err)}`);
       }
     }
     pickFrom(catalogPool);
@@ -204,7 +233,7 @@ export async function getRandomSongPool({
       try {
         pickFrom(await fetchExternal(count * 3));
       } catch (err) {
-        logger.warn('music_service', `External top-up failed: ${err.message}`);
+        logger.warn('music_service', `External top-up failed: ${errorMessage(err)}`);
       }
     }
   }
@@ -214,7 +243,7 @@ export async function getRandomSongPool({
     try {
       await resolveAnimeCoverImages(picker.songs, animeCatalog);
     } catch (err) {
-      logger.warn('music_service', `Anime cover art resolution error: ${err.message}`);
+      logger.warn('music_service', `Anime cover art resolution error: ${errorMessage(err)}`);
     }
   }
 

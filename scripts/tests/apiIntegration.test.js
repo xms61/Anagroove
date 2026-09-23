@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, describe, test } from 'node:test';
 import { blacklistMatchesTrack } from '../../shared/musicIdentity.js';
-import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.js';
-import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.js';
+import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.ts';
+import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { server } from '../../server/server.js';
 import { db } from '../../server/db.ts';
 import { wsTestClient } from './helpers.js';

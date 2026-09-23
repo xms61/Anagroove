@@ -1,10 +1,26 @@
-import { fetchWithTimeout } from './fetchWithTimeout.js';
+import { fetchWithTimeout } from './fetchWithTimeout.ts';
+import { errorMessage } from '../errors.ts';
+import type { SongCandidate } from '../types.ts';
+
+/** A song as the iTunes Search API returns it. */
+export interface ItunesApiTrack {
+  trackId?: number;
+  trackName?: string;
+  artistId?: number;
+  artistName?: string;
+  collectionName?: string;
+  previewUrl?: string;
+  artworkUrl100?: string;
+  trackViewUrl?: string;
+  releaseDate?: string;
+  primaryGenreName?: string;
+}
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
-const itunesCache = new Map();
+const itunesCache = new Map<string, { value: SongCandidate[]; expiresAt: number }>();
 
-function cacheGet(key) {
+function cacheGet(key: string): SongCandidate[] | null {
   const cached = itunesCache.get(key);
   if (!cached) return null;
   if (cached.expiresAt > Date.now()) return cached.value;
@@ -12,16 +28,16 @@ function cacheGet(key) {
   return null;
 }
 
-function cacheSet(key, value) {
+function cacheSet(key: string, value: SongCandidate[]): SongCandidate[] {
   itunesCache.delete(key);
   while (itunesCache.size >= MAX_CACHE_ENTRIES) {
-    itunesCache.delete(itunesCache.keys().next().value);
+    itunesCache.delete(itunesCache.keys().next().value!);
   }
   itunesCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
 
-export function detectStorefront(query = '') {
+export function detectStorefront(query = ''): string {
   const q = String(query).toLowerCase();
   if (/\b(japanese|japan|city\s*pop|citypop|j-pop|jpop|anime|shibuya-kei|kayokyoku|enka)\b/i.test(q)) {
     return 'JP';
@@ -38,7 +54,7 @@ export function detectStorefront(query = '') {
   return 'US';
 }
 
-export function mapItunesTrack(track, storefront = '') {
+export function mapItunesTrack(track: ItunesApiTrack | null | undefined, storefront = ''): SongCandidate | null {
   if (!track?.trackId || !track?.trackName || !track?.artistName || !track?.previewUrl) {
     return null;
   }
@@ -75,16 +91,16 @@ export function mapItunesTrack(track, storefront = '') {
   };
 }
 
-async function fetchJson(url) {
+async function fetchJson(url: string): Promise<{ results?: ItunesApiTrack[] }> {
   const response = await fetchWithTimeout(url, {}, 6000, 2);
   if (!response.ok) throw new Error(`iTunes returned ${response.status}`);
-  return response.json();
+  return response.json() as Promise<{ results?: ItunesApiTrack[] }>;
 }
 
 export const itunesMusicProvider = {
   name: 'itunes',
 
-  async getCandidateTracks({ query = '', limit = 50, country } = {}) {
+  async getCandidateTracks({ query = '', limit = 50, country }: { query?: string; limit?: number; country?: string } = {}): Promise<SongCandidate[]> {
     const trimmed = typeof query === 'string' ? query.trim() : '';
     if (!trimmed) return [];
 
@@ -101,11 +117,11 @@ export const itunesMusicProvider = {
 
       const candidates = results
         .map(track => mapItunesTrack(track, effectiveCountry))
-        .filter(Boolean);
+        .filter((track): track is SongCandidate => Boolean(track));
 
       return cacheSet(cacheKey, candidates);
     } catch (err) {
-      console.warn(`[iTunes Provider] Search query "${trimmed}" failed:`, err.message);
+      console.warn(`[iTunes Provider] Search query "${trimmed}" failed:`, errorMessage(err));
       return [];
     }
   },

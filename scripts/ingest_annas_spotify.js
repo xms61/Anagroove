@@ -3,7 +3,7 @@ import https from 'https';
 import http from 'http';
 import fs from 'fs';
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
-import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.js';
+import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const ANNAS_ARCHIVE_URL =

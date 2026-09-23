@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { sqliteCatalog, normalizeDedupeArtist } from '../server/db/sqliteCatalog.js';
-import { loadStreamedArtists } from '../server/crawler/artistBaseline.js';
+import { loadStreamedArtists } from '../server/crawler/artistBaseline.ts';
 
 const GENRE_CLUSTERS = {
   'Classic Rock': [

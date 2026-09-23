@@ -23,7 +23,7 @@ process.env.LOG_LEVEL ??= 'warn';
 if (flags['data-dir']) process.env.SPOTYSPICE_DATA_DIR = path.resolve(flags['data-dir']);
 
 const { sqliteCatalog } = await import('../server/db/sqliteCatalog.js');
-const { measureCoverage, COVERAGE_TARGETS } = await import('../server/selection/coverage.js');
+const { measureCoverage, COVERAGE_TARGETS } = await import('../server/selection/coverage.ts');
 
 const started = Date.now();
 const results = await measureCoverage({ catalog: sqliteCatalog });

@@ -10,7 +10,7 @@ import {
   recomputeCatalogPopularity,
 } from '../../server/db/catalogPopularity.js';
 import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
-import { POPULARITY_SAMPLING, popularityWeight } from '../../server/selection/candidates.js';
+import { POPULARITY_SAMPLING, popularityWeight } from '../../server/selection/candidates.ts';
 
 test('the Deezer placeholder rank and invalid ranks are unknown', () => {
   assert.equal(normalizeDeezerRank(DEEZER_PLACEHOLDER_RANK), null);

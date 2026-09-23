@@ -9,17 +9,63 @@
  *   anime     the isolated anime OP/ED catalog.
  */
 import { normalizeDeezerRank, provisionalPopularity } from '../db/trackNormalization.js';
-import { toFtsQuery } from '../services/queryBuilder.js';
-import { allowedLanguagesForContext } from '../policy/selectionPolicy.js';
+import { toFtsQuery } from '../services/queryBuilder.ts';
+import { allowedLanguagesForContext } from '../policy/selectionPolicy.ts';
 import { logger } from '../logger.js';
-import { weightedOrder } from './random.js';
+import { weightedOrder } from './random.ts';
 import { genresForPrompt } from '../../shared/themes.ts';
+import type { QueryPlan } from '../services/queryBuilder.ts';
+import type { Rng } from './random.ts';
+import type { SongCandidate, YearRange } from '../types.ts';
+
+/** A row of sqliteCatalog.sampleCatalogTracks. */
+export interface CatalogRow {
+  id: number;
+  isrc: string | null;
+  language: string | null;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_ms: number | null;
+  release_year: number | null;
+  release_date: string | null;
+  popularity: number | null;
+  deezer_id: string | null;
+  spotify_id: string | null;
+  itunes_id: string | null;
+  sample_url: string | null;
+}
+
+/** The catalog methods song selection uses (implemented by SqliteCatalog). */
+export interface CatalogSource {
+  sampleCatalogTracks(query: {
+    ftsQuery?: string;
+    genres?: string[];
+    artist?: string;
+    languages?: string[] | null;
+    yearRange?: YearRange | null;
+    minPopularity?: number;
+    maxPopularity?: number;
+    excludeTrackIds?: number[];
+    poolSize?: number;
+    start?: number;
+  }): CatalogRow[];
+  upsertBatch(batch: object[]): { inserted: number; merged: number; total: number };
+}
+
+/** A live provider (Deezer, iTunes, or a test double). */
+export interface MusicProvider {
+  getCandidateTracks(query: Record<string, unknown>): Promise<SongCandidate[]>;
+}
+
+// trackNormalization.js is still JavaScript: its inferred parameter types are narrower than the code
+const provisional = provisionalPopularity as (input: { deezerRank?: number | null }) => number;
 
 /**
  * Popularity setting -> window on the catalog's percentile score and weighting exponent
  * (0 = uniform). Mainstream is the top quarter of each language, balanced drops the bottom 30%.
  */
-export const POPULARITY_SAMPLING = Object.freeze({
+export const POPULARITY_SAMPLING: Readonly<Record<string, { minPopularity: number; maxPopularity: number; alpha: number }>> = Object.freeze({
   obscure: { minPopularity: 0, maxPopularity: 50, alpha: 0 },
   pure: { minPopularity: 0, maxPopularity: 100, alpha: 0 },
   balanced: { minPopularity: 30, maxPopularity: 100, alpha: 1 },
@@ -29,15 +75,15 @@ export const POPULARITY_SAMPLING = Object.freeze({
 const CATALOG_POOL_SIZE = 400;
 
 /** Minimum catalog pool before external providers are asked for more. */
-export function externalFallbackThreshold(count) {
+export function externalFallbackThreshold(count: number): number {
   return Math.max(count * 3, 30);
 }
 
-export function popularityWeight(popularity, alpha) {
+export function popularityWeight(popularity: unknown, alpha: number): number {
   return (Math.max(0, Number(popularity) || 0) + 1) ** alpha;
 }
 
-function catalogRowToCandidate(row) {
+function catalogRowToCandidate(row: CatalogRow): SongCandidate {
   return {
     id: `sqlite:${row.id}`,
     catalogTrackId: row.id,
@@ -60,11 +106,15 @@ function catalogRowToCandidate(row) {
   };
 }
 
-/**
- * Weighted random candidates from the catalog for a query plan.
- * @returns {object[]} candidates, most preferred first
- */
-export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds = [], rng, poolSize = CATALOG_POOL_SIZE }) {
+/** Weighted random candidates from the catalog for a query plan, most preferred first. */
+export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds = [], rng, poolSize = CATALOG_POOL_SIZE }: {
+  catalog: CatalogSource;
+  queryPlan: QueryPlan;
+  prompt?: string;
+  recentIds?: readonly unknown[];
+  rng: Rng;
+  poolSize?: number;
+}): SongCandidate[] {
   const settings = POPULARITY_SAMPLING[queryPlan.popularity] || POPULARITY_SAMPLING.balanced;
   const genres = queryPlan.artist ? [] : genresForPrompt(queryPlan.genre || '', prompt || '');
   // A prompt that maps to genre clusters ("80s rock") is matched on artist genres; running the
@@ -98,7 +148,14 @@ export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds =
  * Live provider candidates. Deezer first; iTunes (rate-limited to 0.25 req/s, so each search
  * costs seconds) only when the pool is still below `needed`.
  */
-export async function externalCandidates({ provider, itunesProvider, queryPlan, limit, includeItunes, needed = 0 }) {
+export async function externalCandidates({ provider, itunesProvider, queryPlan, limit, includeItunes, needed = 0 }: {
+  provider: MusicProvider;
+  itunesProvider: MusicProvider;
+  queryPlan: QueryPlan;
+  limit: number;
+  includeItunes: boolean;
+  needed?: number;
+}): Promise<SongCandidate[]> {
   const deezer = await provider.getCandidateTracks({
       genre: queryPlan.genre,
       minFans: queryPlan.minFans,
@@ -113,7 +170,7 @@ export async function externalCandidates({ provider, itunesProvider, queryPlan, 
   if (!includeItunes || deezer.length >= needed) return deezer;
 
   const itunes = await Promise.all(queryPlan.itunesSearches.slice(0, 2).map(term =>
-    itunesProvider.getCandidateTracks({ query: term, limit: 100 }).catch(err => {
+    itunesProvider.getCandidateTracks({ query: term, limit: 100 }).catch((err: Error): SongCandidate[] => {
       logger.warn('music_service', `iTunes harvesting error: ${err.message}`);
       return [];
     })
@@ -124,9 +181,8 @@ export async function externalCandidates({ provider, itunesProvider, queryPlan, 
 /**
  * Writes Deezer fallback results into the catalog. upsertTrack applies the admission policy,
  * so only en/ja/ko originals with a real duration get in.
- * @returns {{ inserted: number, merged: number, total: number }}
  */
-export function learnFromExternal(catalog, candidates) {
+export function learnFromExternal(catalog: CatalogSource, candidates: readonly SongCandidate[]): { inserted: number; merged: number; total: number } {
   const batch = candidates
     .filter(c => c.provider === 'deezer' && c.providerTrackId && c.durationMs)
     .map(c => ({
@@ -148,6 +204,6 @@ export function learnFromExternal(catalog, candidates) {
 }
 
 /** Popularity of an external candidate: its own score, else the provisional catalog score. */
-export function externalPopularity(candidate) {
-  return Number(candidate.popularity) || provisionalPopularity({ deezerRank: normalizeDeezerRank(candidate.rank) });
+export function externalPopularity(candidate: SongCandidate): number {
+  return Number(candidate.popularity) || provisional({ deezerRank: normalizeDeezerRank(candidate.rank) });
 }

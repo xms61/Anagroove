@@ -5,8 +5,28 @@
  */
 import { isAuthenticMetadata } from '../policy/authenticityRules.js';
 
+/** A provider track in any of the shapes the crawlers see (Deezer, iTunes, catalog rows). */
+export interface RawTrack {
+  title?: unknown;
+  trackName?: unknown;
+  name?: unknown;
+  artist?: unknown;
+  artistName?: unknown;
+  album?: unknown;
+  collectionName?: unknown;
+  preview?: string;
+  previewUrl?: string;
+  sample_url?: string;
+  duration?: number;
+  duration_ms?: number;
+  trackTimeMillis?: number;
+}
 
-export function isAuthenticCandidate(rawTrack = {}, options = {}) {
+const nested = (value: unknown, key: string): unknown =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
+
+/** Title, artist, a playable preview (unless not required), a song-length duration and the authenticity rules. */
+export function isAuthenticCandidate(rawTrack: RawTrack = {}, options: { requireSample?: boolean } = {}): boolean {
   const { requireSample = true } = options;
   const title = (
     typeof rawTrack.title === 'string' ? rawTrack.title :
@@ -16,13 +36,13 @@ export function isAuthenticCandidate(rawTrack = {}, options = {}) {
 
   const artist = (
     typeof rawTrack.artist === 'string' ? rawTrack.artist :
-    typeof rawTrack.artist?.name === 'string' ? rawTrack.artist.name :
+    typeof nested(rawTrack.artist, 'name') === 'string' ? nested(rawTrack.artist, 'name') as string :
     typeof rawTrack.artistName === 'string' ? rawTrack.artistName : ''
   ).trim();
 
   const album = (
     typeof rawTrack.album === 'string' ? rawTrack.album :
-    typeof rawTrack.album?.title === 'string' ? rawTrack.album.title :
+    typeof nested(rawTrack.album, 'title') === 'string' ? nested(rawTrack.album, 'title') as string :
     typeof rawTrack.collectionName === 'string' ? rawTrack.collectionName : ''
   ).trim();
   const sampleUrl = rawTrack.preview || rawTrack.previewUrl || rawTrack.sample_url || '';

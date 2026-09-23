@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { THEMES, themeById, genresForPrompt } from '../../shared/themes.ts';
 import { ALLOWED_LANGUAGES } from '../../server/db/trackNormalization.js';
-import { allowedLanguagesForContext } from '../../server/policy/selectionPolicy.js';
-import { DEEZER_GENRE_TAXONOMY } from '../../server/services/deezerMusicProvider.js';
+import { allowedLanguagesForContext } from '../../server/policy/selectionPolicy.ts';
+import { DEEZER_GENRE_TAXONOMY } from '../../server/services/deezerMusicProvider.ts';
 import { validateLivePuzzlePayload } from '../../server/validators.js';
 
 test('theme ids are unique and every theme has a label, icon and description', () => {

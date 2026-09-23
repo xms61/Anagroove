@@ -1,18 +1,20 @@
 import { logger } from '../logger.js';
+import { errorMessage } from '../errors.ts';
+import type { AnimeCatalog } from '../db/animeCatalog.ts';
+import type { SongCandidate } from '../types.ts';
+
+type CoverCatalog = Pick<AnimeCatalog, 'updateTrackImageUrl' | 'updateAnimeCoverByTitle'>;
+type MediaCovers = Record<string, { coverImage?: { large?: string; medium?: string } } | null>;
 
 const ANILIST_GRAPHQL_ENDPOINT = 'https://graphql.anilist.co';
 const REQUEST_TIMEOUT_MS = 3500;
 
 /**
- * Resolves high-resolution anime cover artwork for a batch of crossword tracks.
- * Queries AniList GraphQL in batched calls and persists resolved image URLs directly
- * into SQLite for zero-latency cached future lookups.
- *
- * @param {Array<object>} tracks - Candidate crossword track objects
- * @param {object} catalog - AnimeCatalog SQLite instance
- * @returns {Promise<Array<object>>} The mutated tracks with albumArt populated
+ * Resolves anime cover artwork for a batch of crossword tracks: batched AniList GraphQL queries,
+ * with the image URLs stored in the anime catalog so later lookups skip the network. Mutates and
+ * returns the tracks (albumArt and imageUrl set).
  */
-export async function resolveAnimeCoverImages(tracks = [], catalog = null) {
+export async function resolveAnimeCoverImages<T extends SongCandidate>(tracks: T[] = [], catalog: CoverCatalog | null = null): Promise<T[]> {
   if (!Array.isArray(tracks) || tracks.length === 0) {
     return tracks;
   }
@@ -24,14 +26,13 @@ export async function resolveAnimeCoverImages(tracks = [], catalog = null) {
   }
 
   // Group by anilistId to avoid duplicate requests for the same anime series
-  const anilistGroups = new Map();
+  const anilistGroups = new Map<number, T[]>();
   for (const track of missingTracks) {
     const aid = Number(track.anilistId);
     if (Number.isInteger(aid) && aid > 0) {
-      if (!anilistGroups.has(aid)) {
-        anilistGroups.set(aid, []);
-      }
-      anilistGroups.get(aid).push(track);
+      const group = anilistGroups.get(aid) ?? [];
+      group.push(track);
+      anilistGroups.set(aid, group);
     }
   }
 
@@ -71,8 +72,8 @@ export async function resolveAnimeCoverImages(tracks = [], catalog = null) {
         continue;
       }
 
-      const json = await res.json();
-      const data = json?.data || {};
+      const json = await res.json() as { data?: MediaCovers } | null;
+      const data: MediaCovers = json?.data || {};
 
       for (const id of chunk) {
         const media = data[`a${id}`];
@@ -92,7 +93,7 @@ export async function resolveAnimeCoverImages(tracks = [], catalog = null) {
         }
       }
     } catch (err) {
-      logger.warn('anime_art', `Failed resolving AniList cover images batch: ${err.message}`);
+      logger.warn('anime_art', `Failed resolving AniList cover images batch: ${errorMessage(err)}`);
     }
   }
 

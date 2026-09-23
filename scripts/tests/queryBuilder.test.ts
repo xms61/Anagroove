@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePrompt, buildQueryPlan, generateThemeVariations } from '../../server/services/queryBuilder.js';
+import { parsePrompt, buildQueryPlan, generateThemeVariations, type PromptOptions } from '../../server/services/queryBuilder.ts';
 
 const years = (parsed) => [parsed.yearRange?.start, parsed.yearRange?.end];
 
 // [prompt, check]
-const PROMPTS = [
+const PROMPTS: [prompt: string, check: (parsed: PromptOptions) => void][] = [
   ['obscure 80s synth-pop by Daft Punk', p => assert.deepEqual([p.popularity, p.decade, p.artist, p.genre], ['obscure', '1980s', 'Daft Punk', 'synth-pop'])],
   ['anime from the years 2020-2026', p => assert.deepEqual([p.genre, p.artist, ...years(p)], ['anime', undefined, 2020, 2026])],
   ['rock between 1970 and 1976', p => assert.deepEqual([p.genre, ...years(p)], ['rock', 1970, 1976])],

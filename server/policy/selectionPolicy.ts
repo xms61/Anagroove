@@ -3,6 +3,7 @@
  * Language, thematic homonym guards, authenticity (shared rules), anime/Japanese affinity and
  * release-year windows. Pure functions: they never mutate the track.
  */
+import type { TrackLike, YearRange } from '../types.ts';
 import { splitArtistNames } from '../../shared/musicKeywords.ts';
 import { toCrosswordAnswer } from '../../shared/musicIdentity.js';
 import { isAuthenticMetadata } from './authenticityRules.js';
@@ -33,7 +34,7 @@ export function getAnimeThemeType(genre = '', prompt = '') {
  * Language policy: English for most themes; Japanese and Korean only for themes and prompts
  * that ask for them (anime, J-pop, city pop, K-pop) or an explicit language filter.
  */
-export function isLanguagePermitted(track, genre = 'all', prompt = '', { languages = null } = {}) {
+export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = '', { languages = null }: { languages?: readonly string[] | null } = {}): boolean {
   // Anime OP/ED tracks from the dedicated anime catalog are always permitted
   if (track?.isAnimeOped) {
     return true;
@@ -92,7 +93,7 @@ export function isLanguagePermitted(track, genre = 'all', prompt = '', { languag
  * otherwise Korean + English for K-pop prompts, Japanese + English for Japanese/anime
  * prompts, and English for everything else.
  */
-export function allowedLanguagesForContext(genre = 'all', prompt = '') {
+export function allowedLanguagesForContext(genre = 'all', prompt = ''): string[] {
   const theme = typeof genre === 'string' ? themeById(genre) : undefined;
   if (theme && theme.id !== 'all') return [...theme.languages];
   const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
@@ -102,7 +103,7 @@ export function allowedLanguagesForContext(genre = 'all', prompt = '') {
 }
 
 // Classical movements and children's music only belong in puzzles that ask for them
-function isClassicalOrKidsMismatch(title, artist, context) {
+function isClassicalOrKidsMismatch(title: string, artist: string, context: string): boolean {
   const isClassicalContext = /\b(classical|baroque|orchestra|symphon|opera|choir|choral)\b/i.test(context);
   if (!isClassicalContext) {
     const classicalMarkers = /\b(symphonie|symphony|concerto|sonata|opus|\bop\.\s*\d+|bwv\s*\d+|larghetto|allegro|adagio|andante|presto|philharmonic|orchester|orchestra|chœur|chor\b)\b/i;
@@ -121,7 +122,7 @@ function isClassicalOrKidsMismatch(title, artist, context) {
  * Detects whether a candidate track is an unintended homonym or keyword collision
  * for cultural/regional or compound genre themes.
  */
-export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
+export function isThematicallyPermitted(track: TrackLike, genre = 'all', prompt = ''): boolean {
   const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
   const artist = String(track?.artist || '').trim();
   const title = String(track?.title || '').trim();
@@ -314,7 +315,7 @@ export function isThematicallyPermitted(track, genre = 'all', prompt = '') {
  * Rejects low-quality imitation tracks, workout mixes, generic cover/tribute artists,
  * and sped-up/slowed-down audio modifications.
  */
-export function isAuthenticTrack(track) {
+export function isAuthenticTrack(track: TrackLike): boolean {
   return isAuthenticMetadata({
     title: track?.title || track?.display_title || '',
     artist: track?.artist || track?.display_name || '',
@@ -326,7 +327,7 @@ export function isAuthenticTrack(track) {
  * Distinguishes authentic anime openings, endings, insert songs, and official anime soundtracks
  * from generic Japanese pop/rock or foreign homonym collisions.
  */
-export function isAnimeTrack(track) {
+export function isAnimeTrack(track: TrackLike): boolean {
   if (!track) return false;
   if (!isAuthenticTrack(track)) return false;
 
@@ -400,7 +401,7 @@ export function isAnimeTrack(track) {
  * Verifies that a candidate track represents authentic Japanese music
  * while rejecting western homonyms and foreign collisions.
  */
-export function isJapaneseTrack(track) {
+export function isJapaneseTrack(track: TrackLike): boolean {
   if (!track) return false;
   if (!isAuthenticTrack(track)) return false;
 
@@ -424,11 +425,10 @@ export function isJapaneseTrack(track) {
 /**
  * Best-known release year of a candidate: a vintage year in a remaster/reissue tag wins
  * ("Dreams (2004 Remaster)" -> 2004), then the stored year/date, then a year in the title/album.
- * @returns {number|null}
  */
-export function resolveReleaseYear(track) {
+export function resolveReleaseYear(track: TrackLike): number | null {
   const dateStr = track?.releaseDate || track?.selection?.releaseDate || track?.release_date || '';
-  let year = track?.release_year ? Number(track.release_year) : null;
+  let year: number | null = track?.release_year ? Number(track.release_year) : null;
   if (!year && dateStr) {
     const match = String(dateStr).match(/\b(\d{4})\b/);
     if (match) year = parseInt(match[1], 10);
@@ -455,7 +455,7 @@ export function resolveReleaseYear(track) {
  * track passes (unknown years included); with one, the year must be known and inside it.
  * Legacy remasters never count as contemporary (2020+) releases.
  */
-export function isTemporalPermitted(track, yearRange) {
+export function isTemporalPermitted(track: TrackLike, yearRange: YearRange | null | undefined): boolean {
   if (!yearRange || (yearRange.start === undefined && yearRange.end === undefined)) {
     return true;
   }
