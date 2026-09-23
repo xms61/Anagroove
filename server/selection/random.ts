@@ -4,11 +4,11 @@
  */
 import crypto from 'crypto';
 
-/**
- * sfc32 generator seeded from a string (SHA-256 of the seed). Without a seed: Math.random.
- * @returns {() => number} uniform in [0, 1)
- */
-export function createRng(seed) {
+/** A random source: uniform in [0, 1). */
+export type Rng = () => number;
+
+/** sfc32 generator seeded from a string (SHA-256 of the seed). Without a seed: Math.random. */
+export function createRng(seed?: string | number | null): Rng {
   if (seed === undefined || seed === null || !String(seed).trim()) return Math.random;
   const hash = crypto.createHash('sha256').update(String(seed).trim()).digest();
   let a = hash.readUInt32LE(0);
@@ -31,7 +31,7 @@ export function createRng(seed) {
  * u^(1/w) (computed as ln(u)/w) and items are ordered by key, highest first. Taking the first
  * k items is a weighted sample of size k; weight 1 for every item is a uniform shuffle.
  */
-export function weightedOrder(items, weightOf, rng = Math.random) {
+export function weightedOrder<T>(items: readonly T[], weightOf: (item: T) => unknown, rng: Rng = Math.random): T[] {
   return items
     .map(item => {
       const weight = Math.max(Number(weightOf(item)) || 0, 1e-6);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
-import { musicHarvester } from '../server/crawler/harvester.js';
+import { musicHarvester } from '../server/crawler/harvester.ts';
 import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
 const USAGE = `

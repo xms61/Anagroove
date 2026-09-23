@@ -2,11 +2,53 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import type { YearRange } from '../types.ts';
+
+/** What a prompt says about the songs it wants. */
+export interface PromptOptions {
+  artist?: string;
+  album?: string;
+  genre?: string;
+  decade?: string;
+  popularity?: string;
+  yearRange?: YearRange;
+  generation?: string;
+}
+
+/** Options from the API: a theme, a free-text prompt and explicit filters. */
+export interface QueryOptions extends PromptOptions {
+  prompt?: string;
+  minFans?: number | string;
+  [option: string]: unknown;
+}
+
+/** Everything song selection needs to know about a request. */
+export interface QueryPlan {
+  genre: string;
+  popularity: string;
+  artist: string;
+  album: string;
+  decade: string;
+  yearRange?: YearRange;
+  targetAnimeKeyphrase: string | null;
+  prompt: string;
+  minFans: number;
+  maxFans: number;
+  minRank: number;
+  maxRank: number;
+  deezerSearches: string[];
+  itunesSearches: string[];
+  randomOffset: number;
+  sortOrder: string;
+  /** Explicit song languages (the API's language filter); otherwise the theme decides. */
+  languages?: string[] | null;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Preload recognized artists for standalone artist prompt recognition (e.g. "Queen", "Daft Punk")
-let recognizedArtistsSet = new Set();
+const recognizedArtistsSet = new Set<string>();
 try {
   const artistsPath = path.resolve(__dirname, '../data/recognized_artists.json');
   if (fs.existsSync(artistsPath)) {
@@ -28,13 +70,13 @@ try {
  * Handles single artists, compound genres, popularity modifiers, and temporal bounds/ranges.
  * e.g. "anime from the years 2020-2026", "songs by Daft Punk", "Queen", "rock before 1990"
  */
-export function parsePrompt(prompt = '') {
+export function parsePrompt(prompt: unknown = ''): PromptOptions {
   if (typeof prompt !== 'string' || !prompt.trim()) {
     return {};
   }
 
   let text = prompt.trim();
-  const options = {};
+  const options: PromptOptions = {};
 
   // 1. Quoted artist or album: "Daft Punk"
   const quoteMatch = text.match(/"([^"]+)"/);
@@ -199,8 +241,8 @@ export function parsePrompt(prompt = '') {
  * Generates complementary search variations for any theme or genre.
  * Universally applicable to any query prompt (e.g. "Japanese City Pop", "90s Grunge Rock", "French House").
  */
-export function generateThemeVariations(genre = '', decade = '') {
-  const variations = new Set();
+export function generateThemeVariations(genre = '', decade = ''): string[] {
+  const variations = new Set<string>();
   const trimmed = typeof genre === 'string' ? genre.trim() : '';
   if (!trimmed) return [];
 
@@ -316,7 +358,7 @@ export function extractAnimeKeyphrase(prompt = '', genre = '') {
 /**
  * Builds a query plan with search terms and filtering thresholds for Deezer and iTunes.
  */
-export function buildQueryPlan(userOptions = {}) {
+export function buildQueryPlan(userOptions: QueryOptions = {}): QueryPlan {
   // Parse prompt-extracted options
   const promptOptions = parsePrompt(userOptions.prompt);
 
@@ -333,7 +375,7 @@ export function buildQueryPlan(userOptions = {}) {
   }
 
   // Merge options with promptOptions taking precedence when userOptions fields are empty
-  const options = {
+  const options: QueryOptions & { targetAnimeKeyphrase?: string } = {
     ...promptOptions,
     ...userOptions,
     artist: userOptions.artist || promptOptions.artist || '',
@@ -385,8 +427,8 @@ export function buildQueryPlan(userOptions = {}) {
   }
 
   // Build targeted Deezer & iTunes searches
-  const deezerSearches = [];
-  const itunesSearches = [];
+  const deezerSearches: string[] = [];
+  const itunesSearches: string[] = [];
 
   if (artist) {
     deezerSearches.push(`artist:"${artist}"`);
@@ -407,7 +449,7 @@ export function buildQueryPlan(userOptions = {}) {
 
     // Targeted artist seeding for K-Pop to avoid fuzzy matches on non-Korean tracks
     if (genre.toLowerCase() === 'kpop' || genre.toLowerCase() === 'k-pop') {
-      const isNewGen = options.generation === 'new' || (options.yearRange && options.yearRange.start >= 2020);
+      const isNewGen = options.generation === 'new' || (options.yearRange?.start ?? 0) >= 2020;
       const seeds = isNewGen
         ? ['NewJeans', 'LE SSERAFIM', 'aespa', 'Stray Kids', 'IVE', 'ENHYPEN', 'TXT', 'ITZY', 'KISS OF LIFE']
         : ['BTS', 'BLACKPINK', 'TWICE', 'SEVENTEEN', 'Red Velvet', 'NewJeans', 'Stray Kids'];
@@ -543,7 +585,7 @@ export function buildQueryPlan(userOptions = {}) {
  *   parsePrompt("songs by Daft Punk") + toFtsQuery → '' (artist handled by filter)
  *   parsePrompt("French house classics") + toFtsQuery → '"house"'
  */
-export function toFtsQuery(prompt = '', parsedOptions = {}) {
+export function toFtsQuery(prompt = '', parsedOptions: { artist?: string } = {}): string {
   if (!prompt || typeof prompt !== 'string') return '';
 
   const NOISE_WORDS = new Set([

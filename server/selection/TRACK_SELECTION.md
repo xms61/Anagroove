@@ -1,16 +1,16 @@
 # Track Selection
 
-Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is called by `GET /api/music/random` and `POST /api/puzzles/live` (`server/routes/music.js`).
+Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is called by `GET /api/music/random` and `POST /api/puzzles/live` (`server/routes/music.js`).
 
 ## Themes (`shared/themes.ts`)
 `THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there, plus a `DEEZER_GENRE_TAXONOMY` entry for the live fallback; `themes.test.js` checks both. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
 
 ## Modules
-- `songPool.js`: orchestrator (query plan → candidates → recency tiers → picker → preview paths). `setMusicProviderForTesting(mock)` replaces the live providers **and** bypasses the catalog.
-- `candidates.js`: candidate sources, `POPULARITY_SAMPLING`, and catalog learning.
-- `trackPicker.js`: the variety/policy/answer loop (`createTrackPicker`, `createRecentCounter`).
-- `random.js`: `createRng(seed)` (sfc32 seeded from SHA-256 of the seed, hashed once) and `weightedOrder` (Efraimidis–Spirakis).
-- Policy: `server/policy/selectionPolicy.js` (`isLanguagePermitted`, `allowedLanguagesForContext`, `isThematicallyPermitted`, `isAuthenticTrack`, `isTemporalPermitted`/`resolveReleaseYear`, anime/Japanese affinity). Authenticity rules: `server/policy/authenticityRules.js`.
+- `songPool.ts`: orchestrator (query plan → candidates → recency tiers → picker → preview paths). `setMusicProviderForTesting(mock)` replaces the live providers **and** bypasses the catalog.
+- `candidates.ts`: candidate sources, `POPULARITY_SAMPLING`, and catalog learning.
+- `trackPicker.ts`: the variety/policy/answer loop (`createTrackPicker`, `createRecentCounter`).
+- `random.ts`: `createRng(seed)` (sfc32 seeded from SHA-256 of the seed, hashed once) and `weightedOrder` (Efraimidis–Spirakis).
+- Policy: `server/policy/selectionPolicy.ts` (`isLanguagePermitted`, `allowedLanguagesForContext`, `isThematicallyPermitted`, `isAuthenticTrack`, `isTemporalPermitted`/`resolveReleaseYear`, anime/Japanese affinity). Authenticity rules: `server/policy/authenticityRules.js`.
 
 ## Pipeline
 1. **Query plan:** `queryBuilder.buildQueryPlan` handles the prompt, genre, decade, artist and popularity. `genresForPrompt` (`shared/themes.ts`) maps a theme id, or the words of the genre and prompt, to artist genre clusters.
@@ -57,7 +57,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.js`. It is 
 - Never put a signed Deezer URL (`hdnea=exp=`) in a puzzle or anything that outlives the request. Use `toPreviewPath(ref)`.
 - `isPreviewUrlFresh` treats URLs within 60 s of `exp` as stale.
 
-## Coverage (`server/selection/coverage.js`, `npm run catalog:coverage`)
+## Coverage (`server/selection/coverage.ts`, `npm run catalog:coverage`)
 For every theme (except anime, which has its own catalog) and about 40 benchmark prompts (moods, eras, genres, artists), offline:
 - the catalog window at `balanced`: tracks (up to 5,000), distinct artists, languages
 - five seeded 12-song puzzles: whether they fill up, and their average overlap (Jaccard, 0 = all different)
@@ -67,4 +67,4 @@ Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist 
 ## Known limits
 - Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist, so they fall back to live providers.
 - Decade prompts depend on release-year coverage (`catalog:enrich -- --albums=N`). Years come from the album, so compilations carry their own year.
-- Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are still code in `selectionPolicy.js`, not data.
+- Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are still code in `selectionPolicy.ts`, not data.

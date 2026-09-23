@@ -1,6 +1,32 @@
 # Changelog archive
 
-Releases before 1.28.0. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.1. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.0] - 2026-09-23
+
+### Changed
+- **Menu (`MenuDrawer`, was `LoungeDrawer`):**
+  - the current puzzle with "New puzzle, same theme"
+  - **Play:** custom puzzle, multiplayer (showing the room code while in one)
+  - **You:** songs in this puzzle, history, hidden artists & songs (with the count), settings
+  - the keyboard shortcuts
+- **All dialogs share one clean layout.** They take the theme's heading face, use plain labels and the shared buttons, and drop their per-dialog accent colours.
+  - **Custom puzzle** (Theme / Prompt tabs, popularity, languages, size, and "Artist and seed" folded away).
+  - **Multiplayer** (mode, theme, room code, players, start).
+  - **Hidden artists & songs** (was "Music Blacklist").
+  - **Hint:** three options, each with its shortcut.
+  - **History.**
+  - **End screen:**
+    - the tracklist with previews and the answer
+    - a provider link labelled by provider (the "Spotify" fallback label is gone)
+    - "Hide artist" / "Hide song" buttons that are always visible instead of appearing only on hover
+  - **Room victory.**
+- **Confetti** uses the active theme's colours and is skipped when the OS asks for reduced motion.
+
+### Removed
+- The "Jazz Kissa & Audio Salon" wording, the generator's info banner and gradient buttons.
+
+---
 
 ## [1.27.0] - 2026-09-23
 

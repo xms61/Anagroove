@@ -1,14 +1,8 @@
 /**
- * Resilient fetch wrapper with AbortController timeout and bounded exponential backoff retries.
- *
- * @param {string} url - Target URL to fetch
- * @param {RequestInit} [options={}] - Standard Fetch options
- * @param {number} [timeoutMs=6000] - Request timeout in milliseconds
- * @param {number} [retries=2] - Maximum number of retries on 5xx or network errors
- * @param {number} [backoffMs=500] - Initial backoff interval in milliseconds
- * @returns {Promise<Response>}
+ * fetch with an AbortController timeout, retrying 5xx responses and network errors with
+ * exponential backoff (backoffMs, 2×, 4×, …).
  */
-export async function fetchWithTimeout(url, options = {}, timeoutMs = 6000, retries = 2, backoffMs = 500) {
+export async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 6000, retries = 2, backoffMs = 500): Promise<Response> {
   let attempt = 0;
 
   while (true) {

@@ -5,11 +5,26 @@
  * Used by `npm run catalog:coverage`; run it with SPOTYSPICE_OFFLINE=1 so nothing leaves the catalog.
  */
 import { THEMES } from '../../shared/themes.ts';
-import { buildQueryPlan } from '../services/queryBuilder.js';
-import { isAnimeTarget } from '../policy/selectionPolicy.js';
-import { catalogCandidates } from './candidates.js';
-import { createRng } from './random.js';
-import { getRandomSongPool } from './songPool.js';
+import { buildQueryPlan } from '../services/queryBuilder.ts';
+import { isAnimeTarget } from '../policy/selectionPolicy.ts';
+import { catalogCandidates } from './candidates.ts';
+import { createRng } from './random.ts';
+import { getRandomSongPool } from './songPool.ts';
+import type { CatalogSource } from './candidates.ts';
+
+type TargetKind = 'theme' | 'prompt' | 'artist';
+
+export interface CoverageResult {
+  label: string;
+  kind: TargetKind;
+  tracks: number;
+  capped: boolean;
+  artists: number;
+  languages: Record<string, number>;
+  puzzleSongs: number;
+  overlap: number;
+  ok: boolean;
+}
 
 /** Minimum window per target kind. A puzzle takes ~12 songs, one per artist, over ~10 puzzles. */
 export const COVERAGE_TARGETS = Object.freeze({
@@ -37,7 +52,7 @@ const PUZZLE_SIZE = 12;
 const PUZZLE_RUNS = 5;
 
 /** Average pairwise Jaccard overlap of the puzzles' song ids (0 = all different, 1 = identical). */
-export function averageOverlap(puzzles) {
+export function averageOverlap(puzzles: readonly (readonly string[])[]): number {
   let total = 0;
   let pairs = 0;
   for (let i = 0; i < puzzles.length; i++) {
@@ -52,19 +67,23 @@ export function averageOverlap(puzzles) {
   return pairs === 0 ? 0 : total / pairs;
 }
 
-/**
- * Measures one theme or prompt.
- * @returns {{ label: string, kind: 'theme'|'prompt'|'artist', tracks: number, capped: boolean, artists: number,
- *             languages: Record<string, number>, puzzleSongs: number, overlap: number, ok: boolean }}
- */
-export async function measureTarget({ catalog, label, genre = 'all', prompt = '' }) {
+/** Measures one theme or prompt. */
+export async function measureTarget({ catalog, label, genre = 'all', prompt = '' }: {
+  catalog: CatalogSource;
+  label: string;
+  genre?: string;
+  prompt?: string;
+}): Promise<CoverageResult> {
   const queryPlan = buildQueryPlan({ genre, prompt });
-  const kind = queryPlan.artist ? 'artist' : (prompt ? 'prompt' : 'theme');
+  const kind: TargetKind = queryPlan.artist ? 'artist' : (prompt ? 'prompt' : 'theme');
   const rows = catalogCandidates({ catalog, queryPlan, prompt, rng: createRng(`coverage-${label}`), poolSize: WINDOW_SIZE });
-  const languages = {};
-  for (const row of rows) languages[row.language] = (languages[row.language] || 0) + 1;
+  const languages: Record<string, number> = {};
+  for (const row of rows) {
+    const language = String(row.language);
+    languages[language] = (languages[language] || 0) + 1;
+  }
 
-  const puzzles = [];
+  const puzzles: string[][] = [];
   for (let run = 0; run < PUZZLE_RUNS; run++) {
     const songs = await getRandomSongPool({ genre, prompt, count: PUZZLE_SIZE, seed: `coverage-${label}-${run}` });
     puzzles.push(songs.map(song => song.id));
@@ -87,8 +106,11 @@ export async function measureTarget({ catalog, label, genre = 'all', prompt = ''
 }
 
 /** Every theme (the anime theme is served from its own catalog and skipped) and every benchmark prompt. */
-export async function measureCoverage({ catalog, prompts = BENCHMARK_PROMPTS } = {}) {
-  const results = [];
+export async function measureCoverage({ catalog, prompts = BENCHMARK_PROMPTS }: {
+  catalog: CatalogSource;
+  prompts?: readonly string[];
+}): Promise<CoverageResult[]> {
+  const results: CoverageResult[] = [];
   for (const theme of THEMES.filter(t => !isAnimeTarget(t.id, ''))) {
     results.push(await measureTarget({ catalog, label: `theme: ${theme.id}`, genre: theme.id }));
   }

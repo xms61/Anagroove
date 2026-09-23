@@ -2,10 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-let cachedFfmpegPath = null;
-let cachedFfprobePath = null;
+let cachedFfmpegPath: string | null = null;
+let cachedFfprobePath: string | null = null;
 
-export function findFfmpegPath() {
+/** ffmpeg on PATH, or a WinGet install on Windows; null when not installed. */
+export function findFfmpegPath(): string | null {
   if (cachedFfmpegPath && fs.existsSync(cachedFfmpegPath)) {
     return cachedFfmpegPath;
   }
@@ -51,7 +52,8 @@ export function findFfmpegPath() {
   return null;
 }
 
-export function findFfprobePath() {
+/** ffprobe next to ffmpeg, or on PATH; null when not installed. */
+export function findFfprobePath(): string | null {
   if (cachedFfprobePath && fs.existsSync(cachedFfprobePath)) {
     return cachedFfprobePath;
   }

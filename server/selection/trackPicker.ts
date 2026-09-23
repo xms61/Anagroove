@@ -4,7 +4,7 @@
  * an artist), then the crossword answer and clue with clue-type and answer-length rotation.
  */
 import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.ts';
-import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type MusicIdentityTrack } from '../../shared/musicIdentity.js';
 import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.js';
 import {
   isAuthenticTrack,
@@ -12,19 +12,28 @@ import {
   isTemporalPermitted,
   isThematicallyPermitted,
   resolveReleaseYear,
-} from '../policy/selectionPolicy.js';
+} from '../policy/selectionPolicy.ts';
+import type { AnswerCandidate, ExtractKeywordOptions, LengthBucket } from '../../shared/musicKeywords.ts';
+import type { BlacklistEntry } from '../db/userStore.ts';
+import type { QueryPlan } from '../services/queryBuilder.ts';
+import type { SongCandidate } from '../types.ts';
 
-const PREFERRED_CLUE_ROTATION = ['title', 'artist', 'title', 'artist', 'keyword'];
-const ANIME_CLUE_ROTATION = ['anime', 'title', 'artist', 'keyword'];
-const LENGTH_BUCKET_ROTATION = ['short', 'medium', 'long', 'medium', 'short', 'long', 'medium'];
+type PreferredType = NonNullable<ExtractKeywordOptions['preferredType']>;
+
+/** A picked song with its crossword answer and clue. */
+export type PickedSong = SongCandidate & { answer: string; clueType: string; clueText: string };
+
+const PREFERRED_CLUE_ROTATION: PreferredType[] = ['title', 'artist', 'title', 'artist', 'keyword'];
+const ANIME_CLUE_ROTATION: PreferredType[] = ['anime', 'title', 'artist', 'keyword'];
+const LENGTH_BUCKET_ROTATION: LengthBucket[] = ['short', 'medium', 'long', 'medium', 'short', 'long', 'medium'];
 const GENERIC_ABBREVIATIONS = ['TV', 'OP', 'ED', 'OST', 'BGM'];
 
 /**
  * How often each candidate appeared in the player's recent history (track ids, legacy
  * `hit-` ids, and recently played artists).
  */
-export function createRecentCounter(recentIds = []) {
-  const frequency = new Map();
+export function createRecentCounter(recentIds: readonly unknown[] = []): (track: SongCandidate) => number {
+  const frequency = new Map<string, number>();
   for (const item of Array.isArray(recentIds) ? recentIds : []) {
     if (!item) continue;
     const key = String(item);
@@ -35,7 +44,7 @@ export function createRecentCounter(recentIds = []) {
     const artistKey = canonicalArtistKey(track.artist);
     let playCount = 0;
     for (const key of [String(track.id), providerTrackId, `deezer:${providerTrackId}`, `itunes:${providerTrackId}`, `hit-${providerTrackId}`]) {
-      if (frequency.has(key)) playCount = Math.max(playCount, frequency.get(key));
+      if (frequency.has(key)) playCount = Math.max(playCount, frequency.get(key)!);
     }
     // Recently played artists count too, which keeps consecutive puzzles varied
     if (frequency.has(artistKey) || frequency.has(`artist:${artistKey}`)) {
@@ -45,17 +54,20 @@ export function createRecentCounter(recentIds = []) {
   };
 }
 
-/**
- * @param {{ count: number, queryPlan: object, prompt?: string, blacklist?: object[],
- *           recentCount: (track: object) => number, animeKeyphrase?: string|null,
- *           isTargetingAnimeKeyphrase?: boolean }} options
- */
-export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [], recentCount, animeKeyphrase = null, isTargetingAnimeKeyphrase = false }) {
-  const songs = [];
-  const seenTracks = new Set();
-  const seenArtists = new Set();
-  const seenTitles = new Set();
-  const seenAnswers = new Set();
+export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [], recentCount, animeKeyphrase = null, isTargetingAnimeKeyphrase = false }: {
+  count: number;
+  queryPlan: QueryPlan;
+  prompt?: string;
+  blacklist?: BlacklistEntry[];
+  recentCount: (track: SongCandidate) => number;
+  animeKeyphrase?: string | null;
+  isTargetingAnimeKeyphrase?: boolean;
+}) {
+  const songs: PickedSong[] = [];
+  const seenTracks = new Set<string>();
+  const seenArtists = new Set<string>();
+  const seenTitles = new Set<string>();
+  const seenAnswers = new Set<string>();
   const clueStats = { title: 0, artist: 0, keyword: 0, anime: 0 };
   const rejections = {
     recent: 0,
@@ -72,7 +84,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
   };
 
   // The prompt's own keyphrase (artist or anime title) must never be a grid answer
-  const banTokens = (text) => text.split(/[^a-zA-Z0-9]+/).forEach(token => {
+  const banTokens = (text: string) => text.split(/[^a-zA-Z0-9]+/).forEach(token => {
     if (token.length >= 3) seenAnswers.add(token.toUpperCase());
   });
   if (queryPlan.artist) banTokens(queryPlan.artist);
@@ -82,8 +94,8 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const targetArtistKey = queryPlan.artist ? canonicalArtistKey(queryPlan.artist) : '';
 
-  function chooseKeyword(track, preferredType, allowArtist, targetLengthBucket) {
-    const base = { allowArtist, animeTitle: track.animeTitle, seenAnswers };
+  function chooseKeyword(track: SongCandidate, preferredType: PreferredType, allowArtist: boolean, targetLengthBucket: LengthBucket): AnswerCandidate | 'generic' | null {
+    const base: ExtractKeywordOptions = { allowArtist, animeTitle: track.animeTitle, seenAnswers };
     let keyword = extractAnswerKeyword(track.title, track.artist, { ...base, preferredType, targetLengthBucket });
 
     // Answer already on the grid: try a co-performer, then the other clue types
@@ -91,7 +103,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
       if (keyword.clueType === 'Artist name') {
         keyword = extractAnswerKeyword(track.title, track.artist, { ...base, preferredType: 'artist', artistIndex: 1, targetLengthBucket });
       }
-      for (const fallbackType of ['anime', 'title', 'keyword']) {
+      for (const fallbackType of ['anime', 'title', 'keyword'] as const) {
         if (!keyword || !seenAnswers.has(keyword.answer)) break;
         keyword = extractAnswerKeyword(track.title, track.artist, { ...base, preferredType: fallbackType, targetLengthBucket });
       }
@@ -112,7 +124,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
   }
 
   /** Adds eligible candidates (played at most `maxPlays` times) until `count` songs are picked. */
-  function pick(candidates, maxPlays) {
+  function pick(candidates: readonly SongCandidate[], maxPlays: number): void {
     for (const track of candidates) {
       if (songs.length >= count) break;
 
@@ -132,7 +144,8 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.duplicateTitle++;
         continue;
       }
-      if (blacklistMatchesTrack(blacklist, track)) {
+      // musicIdentity.d.ts types ids as strings; the matcher compares String(id) (T7 widens the type)
+      if (blacklistMatchesTrack(blacklist, track as MusicIdentityTrack)) {
         rejections.blacklist++;
         continue;
       }
@@ -166,7 +179,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
       }
 
       // A targeted artist never gets artist-name clues; anime themes rotate the anime title in
-      let preferredType;
+      let preferredType: PreferredType;
       if (isTargetingSingleArtist) {
         preferredType = songs.length % 2 === 0 ? 'title' : 'keyword';
       } else if (track.isAnimeOped) {

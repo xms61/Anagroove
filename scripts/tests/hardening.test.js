@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { setMusicProviderForTesting } from '../../server/selection/songPool.js';
+import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.js';
 import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.js';
 import { db } from '../../server/db.ts';
@@ -13,7 +13,7 @@ import {
   previewRefForTrack,
   resolvePreviewRef,
   setPreviewFetchForTesting,
-} from '../../server/services/previewResolver.js';
+} from '../../server/services/previewResolver.ts';
 import { mockJsonResponse, wsTestClient } from './helpers.js';
 
 const nowSec = Math.floor(Date.now() / 1000);

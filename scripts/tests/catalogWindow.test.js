@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createRng, weightedOrder } from '../../server/selection/random.js';
-import { catalogCandidates } from '../../server/selection/candidates.js';
+import { createRng, weightedOrder } from '../../server/selection/random.ts';
+import { catalogCandidates } from '../../server/selection/candidates.ts';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 
 test('the seeded RNG is reproducible and seed-dependent', () => {

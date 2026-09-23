@@ -3,11 +3,65 @@ import { classifyArtistLanguage } from '../db/languageClassifier.js';
 import { ALLOWED_LANGUAGES, baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
 import { MIN_ARTIST_FANS } from '../db/catalogPopularity.js';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
-import { isAuthenticCandidate } from './authenticityFilter.js';
+import { isAuthenticCandidate } from './authenticityFilter.ts';
 import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
-import { STREAMED_ARTIST_NAMES } from './artistBaseline.js';
+import { STREAMED_ARTIST_NAMES } from './artistBaseline.ts';
 import { logger } from '../logger.js';
 import { THEMES, genresForPrompt } from '../../shared/themes.ts';
+import { errorMessage } from '../errors.ts';
+import type { DatabaseSync } from 'node:sqlite';
+import type { DeezerApiTrack } from '../services/deezerMusicProvider.ts';
+
+interface DeezerArtistJson {
+  id?: number;
+  name?: string;
+  nb_fan?: number;
+}
+
+/** Album/artist details a track payload may lack, taken from the page it was found on. */
+export interface CandidateContext {
+  artistName?: string;
+  album?: string;
+  releaseDate?: string | null;
+  artistId?: number;
+  fansCount?: number;
+  genre?: string | null;
+}
+
+export interface HarvestResult {
+  harvested: number;
+  merged: number;
+}
+
+export interface DiscographyResult extends HarvestResult {
+  relatedArtists: { name: string; deezerId?: number }[];
+  skipped?: boolean;
+}
+
+/** The catalog calls the harvester makes (SqliteCatalog). */
+export interface HarvestCatalog {
+  db: DatabaseSync;
+  upsertBatch(batch: object[]): { inserted: number; merged: number };
+  countSummary(): { tracks: number; artists: number };
+  getRejectionStats(): unknown;
+}
+
+type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: unknown }) => Promise<Response>;
+
+export interface HarvestOptions {
+  targetTracks?: number;
+  chartsLimit?: number;
+  playlistsLimit?: number;
+  decadesLimit?: number;
+  cjkLimit?: number;
+  artistsLimit?: number;
+  lexiconLimit?: number;
+  onProgress?: (progress: Record<string, unknown>) => void;
+}
+
+// sqliteCatalog.js and rateLimiter.js are still JavaScript; their inferred types are narrower than the code (T7)
+const defaultCatalog = sqliteCatalog as unknown as HarvestCatalog;
+const defaultFetch = politeFetch as unknown as Fetch;
 
 // High-frequency music words (English, plus romanized Japanese/Korean) for broad search sweeps
 export const MUSIC_LEXICON_SEEDS = [
@@ -134,7 +188,7 @@ export const FOUNDATION_ARTISTS = Array.from(new Set([
 
 
 /** Playlist searches from the theme table. The theme's first genre tags the artists they contain. */
-export const PLAYLIST_SEEDS = THEMES.flatMap(theme => theme.seeds.map(query => ({ query, genre: theme.genres[0] || null })));
+export const PLAYLIST_SEEDS: { query: string; genre: string | null }[] = THEMES.flatMap(theme => theme.seeds.map(query => ({ query, genre: theme.genres[0] || null })));
 
 /** Decade playlist searches ("80s rock"); the genre word tags the artists they contain. */
 const DECADES = ['60s', '70s', '80s', '90s', '2000s', '2010s', '2020s'];
@@ -149,20 +203,16 @@ const ASIAN_MUSIC_CHART_ID = 16;
 
 // Apple Music "most played" charts per storefront: clean, popularity-ranked, original-script titles
 export const APPLE_CHART_STOREFRONTS = ['us', 'gb', 'jp', 'kr'];
-const APPLE_CHART_URL = (storefront, limit) => `https://rss.marketingtools.apple.com/api/v2/${storefront}/music/most-played/${limit}/songs.json`;
+const APPLE_CHART_URL = (storefront: string, limit: number) => `https://rss.marketingtools.apple.com/api/v2/${storefront}/music/most-played/${limit}/songs.json`;
 
-function parseReleaseYear(date) {
+function parseReleaseYear(date: string | null): number | null {
   if (!date) return null;
   const year = parseInt(String(date).slice(0, 4), 10);
   return Number.isInteger(year) ? year : null;
 }
 
-/**
- * Maps a Deezer track object onto an upsertTrack payload.
- * @param {Object} t Deezer track (search, playlist, album or top-tracks payload)
- * @param {Object} [context] Overrides when the payload lacks album/artist details
- */
-export function toCatalogCandidate(t, { artistName, album, releaseDate, artistId, fansCount, genre } = {}) {
+/** Maps a Deezer track (search, playlist, album or top-tracks payload) onto an upsertTrack payload. */
+export function toCatalogCandidate(t: DeezerApiTrack, { artistName, album, releaseDate, artistId, fansCount, genre }: CandidateContext = {}) {
   const date = t.release_date || releaseDate || null;
   const deezerArtistId = t.artist?.id || artistId;
   return {
@@ -195,25 +245,28 @@ export function toCatalogCandidate(t, { artistName, album, releaseDate, artistId
 }
 
 export class MusicHarvester {
-  constructor(catalog = sqliteCatalog, { fetchImpl = politeFetch } = {}) {
+  readonly catalog: HarvestCatalog;
+  readonly fetch: Fetch;
+  abortRequested = false;
+  skippedArtists = 0;
+
+  constructor(catalog: HarvestCatalog = defaultCatalog, { fetchImpl = defaultFetch }: { fetchImpl?: Fetch } = {}) {
     this.catalog = catalog;
     this.fetch = fetchImpl;
-    this.abortRequested = false;
-    this.skippedArtists = 0;
   }
 
-  stop() {
+  stop(): void {
     this.abortRequested = true;
   }
 
-  async _getJson(url, rateLimiter = deezerRateLimiter) {
+  async _getJson<T>(url: string, rateLimiter: unknown = deezerRateLimiter): Promise<T | null> {
     const response = await this.fetch(url, {}, { rateLimiter });
     if (!response.ok) return null;
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
-  _ingest(tracks, context = {}) {
-    const candidates = [];
+  _ingest(tracks: DeezerApiTrack[], context: CandidateContext = {}): { inserted: number; merged: number } {
+    const candidates: ReturnType<typeof toCatalogCandidate>[] = [];
     for (const t of tracks) {
       if (!isAuthenticCandidate(t)) continue;
       candidates.push(toCatalogCandidate(t, context));
@@ -222,12 +275,8 @@ export class MusicHarvester {
     return this.catalog.upsertBatch(candidates);
   }
 
-  /**
-   * Harvests tracks from Deezer search results.
-   * @param {string} query - The search query
-   * @param {number} maxOffsets - Number of 100-track offsets to fetch (e.g. 2 fetches 200 tracks)
-   */
-  async harvestDeezerQuery(query, maxOffsets = 2) {
+  /** Harvests Deezer search results, `maxOffsets` pages of 100 tracks. */
+  async harvestDeezerQuery(query: string, maxOffsets = 2): Promise<HarvestResult> {
     let harvested = 0;
     let merged = 0;
 
@@ -237,7 +286,7 @@ export class MusicHarvester {
       const url = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100&index=${index}`;
 
       try {
-        const data = await this._getJson(url);
+        const data = await this._getJson<{ data?: DeezerApiTrack[] }>(url);
         const tracks = data?.data || [];
         if (tracks.length === 0) break;
 
@@ -247,7 +296,7 @@ export class MusicHarvester {
 
         if (tracks.length < 100) break; // Reached end of results
       } catch (err) {
-        logger.warn('harvester', `Deezer query "${query}" offset ${index} failed: ${err.message}`);
+        logger.warn('harvester', `Deezer query "${query}" offset ${index} failed: ${errorMessage(err)}`);
       }
     }
 
@@ -258,15 +307,19 @@ export class MusicHarvester {
    * Harvests the first `maxPlaylists` Deezer playlists found for a search. With a `genre`, every
    * artist on them gets that genre (their theme), which genre prompts can then match.
    */
-  async harvestPlaylists(query, { genre = null, maxPlaylists = 3, onProgress = () => {} } = {}) {
+  async harvestPlaylists(query: string, { genre = null, maxPlaylists = 3, onProgress = () => {} }: {
+    genre?: string | null;
+    maxPlaylists?: number;
+    onProgress?: (progress: { query: string; playlistTitle?: string; tracksFound: number; harvested: number; merged: number }) => void;
+  } = {}): Promise<HarvestResult> {
     let harvested = 0;
     let merged = 0;
     try {
-      const searchJson = await this._getJson(`https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylists}`);
+      const searchJson = await this._getJson<{ data?: { id?: number; title?: string }[] }>(`https://api.deezer.com/search/playlist?q=${encodeURIComponent(query)}&limit=${maxPlaylists}`);
       for (const playlist of searchJson?.data || []) {
         if (this.abortRequested) break;
         if (!playlist.id) continue;
-        const tracksJson = await this._getJson(`https://api.deezer.com/playlist/${playlist.id}/tracks?limit=100`);
+        const tracksJson = await this._getJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/playlist/${playlist.id}/tracks?limit=100`);
         const tracks = tracksJson?.data || [];
         const res = this._ingest(tracks, { genre });
         harvested += res.inserted;
@@ -274,7 +327,7 @@ export class MusicHarvester {
         onProgress({ query, playlistTitle: playlist.title, tracksFound: tracks.length, harvested, merged });
       }
     } catch (err) {
-      logger.warn('harvester', `Playlist harvest for "${query}" failed: ${err.message}`);
+      logger.warn('harvester', `Playlist harvest for "${query}" failed: ${errorMessage(err)}`);
     }
     return { harvested, merged };
   }
@@ -286,20 +339,26 @@ export class MusicHarvester {
    * MIN_ARTIST_FANS (the cleanup would drop most of their tracks) and artists whose top tracks
    * vote a language outside `languages`.
    */
-  async harvestArtistDiscography(artistName, {
+  async harvestArtistDiscography(artistName: string, {
     deezerId = null,
     maxAlbums = 8,
     includeRelated = true,
     relatedMinFans = 100000,
     languages = ALLOWED_LANGUAGES,
-  } = {}) {
-    const empty = { harvested: 0, merged: 0, relatedArtists: [] };
+  }: {
+    deezerId?: number | null;
+    maxAlbums?: number;
+    includeRelated?: boolean;
+    relatedMinFans?: number;
+    languages?: readonly string[];
+  } = {}): Promise<DiscographyResult> {
+    const empty: DiscographyResult = { harvested: 0, merged: 0, relatedArtists: [] };
     if (this.abortRequested) return empty;
 
     let harvested = 0;
     let merged = 0;
-    const relatedArtists = [];
-    const skip = (reason) => {
+    const relatedArtists: DiscographyResult['relatedArtists'] = [];
+    const skip = (reason: string): DiscographyResult => {
       this.skippedArtists++;
       logger.info('harvester', `Skipping ${artistName}: ${reason}`);
       return { ...empty, skipped: true };
@@ -307,7 +366,7 @@ export class MusicHarvester {
 
     try {
       const artistData = deezerId
-        ? await this._getJson(`https://api.deezer.com/artist/${deezerId}`)
+        ? await this._getJson<DeezerArtistJson>(`https://api.deezer.com/artist/${deezerId}`)
         : await this._findArtist(artistName);
       if (!artistData?.id) return empty;
       if ((artistData.nb_fan || 0) < MIN_ARTIST_FANS) return skip(`${artistData.nb_fan || 0} fans`);
@@ -315,10 +374,10 @@ export class MusicHarvester {
       const artistId = artistData.id;
       const artistContext = { artistName: artistData.name || artistName, artistId, fansCount: artistData.nb_fan };
 
-      const topTracks = (await this._getJson(`https://api.deezer.com/artist/${artistId}/top?limit=50`))?.data || [];
+      const topTracks = (await this._getJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/artist/${artistId}/top?limit=50`))?.data || [];
       const { language } = classifyArtistLanguage({
-        titles: topTracks.map(t => t.title),
-        isrcs: topTracks.map(t => t.isrc).filter(Boolean),
+        titles: topTracks.map(t => t.title ?? ''),
+        isrcs: topTracks.map(t => t.isrc).filter((isrc): isrc is string => Boolean(isrc)),
         name: artistContext.artistName,
       });
       if (language && !languages.includes(language)) return skip(`catalog language "${language}"`);
@@ -327,73 +386,73 @@ export class MusicHarvester {
       harvested += topRes.inserted;
       merged += topRes.merged;
 
-      const albums = (await this._getJson(`https://api.deezer.com/artist/${artistId}/albums?limit=25`))?.data || [];
+      const albums = (await this._getJson<{ data?: { id?: number; title?: string; release_date?: string }[] }>(`https://api.deezer.com/artist/${artistId}/albums?limit=25`))?.data || [];
       let albumCount = 0;
       for (const album of albums) {
         if (this.abortRequested || albumCount >= maxAlbums) break;
         // Skip compilation, tribute and live albums
         if (!album.id || /tribute|karaoke|live|cover/i.test(album.title || '')) continue;
         albumCount++;
-        const albumTracks = (await this._getJson(`https://api.deezer.com/album/${album.id}/tracks?limit=50`))?.data || [];
+        const albumTracks = (await this._getJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/album/${album.id}/tracks?limit=50`))?.data || [];
         const res = this._ingest(albumTracks, { ...artistContext, album: album.title || '', releaseDate: album.release_date || null });
         harvested += res.inserted;
         merged += res.merged;
       }
 
       if (includeRelated) {
-        const related = (await this._getJson(`https://api.deezer.com/artist/${artistId}/related?limit=8`))?.data || [];
+        const related = (await this._getJson<{ data?: DeezerArtistJson[] }>(`https://api.deezer.com/artist/${artistId}/related?limit=8`))?.data || [];
         for (const rel of related) {
           if (rel.name && (rel.nb_fan || 0) >= relatedMinFans) relatedArtists.push({ name: rel.name, deezerId: rel.id });
         }
       }
     } catch (err) {
-      logger.warn('harvester', `Failed discography crawl for ${artistName}: ${err.message}`);
+      logger.warn('harvester', `Failed discography crawl for ${artistName}: ${errorMessage(err)}`);
     }
 
     return { harvested, merged, relatedArtists };
   }
 
   /** The Deezer artist for a name: an exact name match with the most fans, else the most fans. */
-  async _findArtist(artistName) {
-    const found = (await this._getJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`))?.data || [];
+  async _findArtist(artistName: string): Promise<DeezerArtistJson | null> {
+    const found = (await this._getJson<{ data?: DeezerArtistJson[] }>(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=10`))?.data || [];
     const byFans = [...found].sort((a, b) => (b.nb_fan || 0) - (a.nb_fan || 0));
     const wanted = artistName.toLowerCase().trim();
-    return byFans.find(a => a.name.toLowerCase().trim() === wanted) || byFans[0] || null;
+    return byFans.find(a => (a.name || '').toLowerCase().trim() === wanted) || byFans[0] || null;
   }
 
   /** Harvests a Deezer genre chart (`/chart/{genreId}/tracks`). */
-  async harvestDeezerChart(genreId, limit = 100) {
-    const tracks = (await this._getJson(`https://api.deezer.com/chart/${genreId}/tracks?limit=${limit}`))?.data || [];
+  async harvestDeezerChart(genreId: number, limit = 100): Promise<HarvestResult> {
+    const tracks = (await this._getJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/chart/${genreId}/tracks?limit=${limit}`))?.data || [];
     const res = this._ingest(tracks);
     return { harvested: res.inserted, merged: res.merged };
   }
 
   /** Japanese and Korean catalog artists with a Deezer id, most fans first: seeds of the ja/ko vector. */
-  _cjkCatalogArtists() {
+  _cjkCatalogArtists(): { name: string; deezerId: number }[] {
     return this.catalog.db.prepare(`
       SELECT display_name AS name, deezer_id AS deezerId FROM artists
       WHERE primary_language IN ('ja', 'ko') AND deezer_id IS NOT NULL
       ORDER BY fans_count DESC, id
-    `).all();
+    `).all() as { name: string; deezerId: number }[];
   }
 
   /**
    * Ingests Apple Music "most played" charts. Each chart entry is matched to its Deezer
    * track (same artist + same base title) so the catalog gets a Deezer id, rank and preview.
    */
-  async harvestAppleCharts({ storefronts = APPLE_CHART_STOREFRONTS, limit = 100 } = {}) {
+  async harvestAppleCharts({ storefronts = APPLE_CHART_STOREFRONTS, limit = 100 }: { storefronts?: string[]; limit?: number } = {}): Promise<HarvestResult & { unmatched: number }> {
     let harvested = 0;
     let merged = 0;
     let unmatched = 0;
 
     for (const storefront of storefronts) {
       if (this.abortRequested) break;
-      let entries;
+      let entries: { artistName?: string; name?: string }[];
       try {
-        const feed = await this._getJson(APPLE_CHART_URL(storefront, limit), itunesRateLimiter);
+        const feed = await this._getJson<{ feed?: { results?: { artistName?: string; name?: string }[] } }>(APPLE_CHART_URL(storefront, limit), itunesRateLimiter);
         entries = feed?.feed?.results || [];
       } catch (err) {
-        logger.warn('harvester', `Apple chart ${storefront} failed: ${err.message}`);
+        logger.warn('harvester', `Apple chart ${storefront} failed: ${errorMessage(err)}`);
         continue;
       }
 
@@ -414,13 +473,13 @@ export class MusicHarvester {
   }
 
   /** Deezer track whose artist and base title both match exactly, or null. */
-  async _findDeezerTrack(artistName, title) {
+  async _findDeezerTrack(artistName: string | undefined, title: string | undefined): Promise<DeezerApiTrack | null> {
     if (!artistName || !title) return null;
     const primaryArtist = splitPrimaryArtist(artistName);
     // Plain query: Deezer's advanced artist:"…" filter currently returns unrelated or no results
     const query = `${primaryArtist} ${stripVersionTags(title)}`.replace(/"/g, '');
     try {
-      const data = await this._getJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=25`);
+      const data = await this._getJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=25`);
       // Bands with "&" in the name ("Mumford & Sons") match on the full credit, duets on the primary artist
       const wantedArtists = new Set([canonicalArtistKey(artistName), canonicalArtistKey(primaryArtist)]);
       const wantedTitle = baseTitleKey(title);
@@ -428,7 +487,7 @@ export class MusicHarvester {
         wantedArtists.has(canonicalArtistKey(t.artist?.name || '')) && baseTitleKey(t.title || '') === wantedTitle
       ) || null;
     } catch (err) {
-      logger.warn('harvester', `Deezer match failed for ${artistName} - ${title}: ${err.message}`);
+      logger.warn('harvester', `Deezer match failed for ${artistName} - ${title}: ${errorMessage(err)}`);
       return null;
     }
   }
@@ -453,7 +512,7 @@ export class MusicHarvester {
     artistsLimit = 0,
     lexiconLimit = 0,
     onProgress = () => {},
-  } = {}) {
+  }: HarvestOptions = {}) {
     logger.info('harvester', `Starting catalog harvest, target ${targetTracks.toLocaleString()} tracks...`);
 
     const stats = {
@@ -469,19 +528,20 @@ export class MusicHarvester {
     };
     // COUNT(*) only: getStats() aggregates provider links and is too heavy to call per query
     const shouldStop = () => this.abortRequested || this.catalog.countSummary().tracks >= targetTracks;
-    const report = (currentAction) => onProgress({
+    type Counter = Exclude<keyof typeof stats, 'totalInserted' | 'totalMerged'>;
+    const report = (currentAction: string) => onProgress({
       ...stats,
       artistsSkipped: this.skippedArtists,
       currentAction,
       currentStats: { ...this.catalog.countSummary(), rejections: this.catalog.getRejectionStats() },
     });
-    const add = (res) => {
+    const add = (res: HarvestResult) => {
       stats.totalInserted += res.harvested;
       stats.totalMerged += res.merged;
     };
 
     /** One harvest per item until the list, or the target, is done. */
-    const sweep = async (items, statKey, harvest, label) => {
+    const sweep = async <T>(items: readonly T[], statKey: Counter, harvest: (item: T) => Promise<HarvestResult>, label: (item: T) => string) => {
       for (const item of items) {
         if (shouldStop()) break;
         add(await harvest(item));
@@ -491,11 +551,16 @@ export class MusicHarvester {
     };
 
     /** Discographies breadth-first from the seed artists, at most `limit` in total (related included). */
-    const spider = async (seedArtists, limit, statKey, options) => {
+    const spider = async (
+      seedArtists: { name: string; deezerId?: number }[],
+      limit: number,
+      statKey: Counter,
+      options: Parameters<MusicHarvester['harvestArtistDiscography']>[1],
+    ) => {
       const queue = [...seedArtists];
       const seen = new Set(queue.map(a => a.name.toLowerCase()));
       for (let crawled = 0; crawled < limit && queue.length > 0 && !shouldStop(); crawled++) {
-        const artist = queue.shift();
+        const artist = queue.shift()!;
         const res = await this.harvestArtistDiscography(artist.name, { deezerId: artist.deezerId, ...options });
         add(res);
         stats[statKey]++;
@@ -514,7 +579,7 @@ export class MusicHarvester {
       add(res);
       report(`Apple charts: ${res.harvested} new, ${res.merged} merged, ${res.unmatched} unmatched`);
     }
-    const harvestPlaylistSeed = (seed) => this.harvestPlaylists(seed.query, { genre: seed.genre });
+    const harvestPlaylistSeed = (seed: { query: string; genre: string | null }) => this.harvestPlaylists(seed.query, { genre: seed.genre });
     await sweep(PLAYLIST_SEEDS.slice(0, playlistsLimit), 'playlistsCrawled', harvestPlaylistSeed, seed => `Playlist: ${seed.query}`);
     await sweep(DECADE_PLAYLIST_SEEDS.slice(0, decadesLimit), 'decadePlaylistsCrawled', harvestPlaylistSeed, seed => `Decade playlist: ${seed.query}`);
     if (cjkLimit > 0 && !shouldStop()) {
@@ -531,7 +596,7 @@ export class MusicHarvester {
 }
 
 /** First credited artist of an Apple chart entry ("A & B", "A, B", "A feat. B" -> "A"). */
-function splitPrimaryArtist(name) {
+function splitPrimaryArtist(name: string): string {
   return String(name).split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\bx\b|\bwith\b)\s*/i)[0].trim() || String(name).trim();
 }
 

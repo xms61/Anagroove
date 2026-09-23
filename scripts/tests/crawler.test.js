@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { canonicalArtistKey } from '../../shared/musicIdentity.js';
-import { isAuthenticTrack } from '../../server/policy/selectionPolicy.js';
+import { isAuthenticTrack } from '../../server/policy/selectionPolicy.ts';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 import { baseTitleKey, PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
 import { runCatalogMigrations } from '../../server/db/catalogMigrations.js';
 import { recomputeCatalogLanguages } from '../../server/db/catalogLanguages.js';
 import { checkAuthenticity } from '../../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../../server/crawler/enricher.js';
-import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.js';
-import { DECADE_PLAYLIST_SEEDS, FOUNDATION_ARTISTS, MusicHarvester, PLAYLIST_SEEDS, toCatalogCandidate } from '../../server/crawler/harvester.js';
+import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.ts';
+import { DECADE_PLAYLIST_SEEDS, FOUNDATION_ARTISTS, MusicHarvester, PLAYLIST_SEEDS, toCatalogCandidate } from '../../server/crawler/harvester.ts';
 import { routedFetch } from './helpers.js';
 
 test('identity keys keep kana dakuten and composed hangul, and fold Latin accents', () => {

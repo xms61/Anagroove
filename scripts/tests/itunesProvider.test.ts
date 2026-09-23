@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mapItunesTrack, detectStorefront } from '../../server/services/itunesMusicProvider.js';
+import { mapItunesTrack, detectStorefront } from '../../server/services/itunesMusicProvider.ts';
 
 test('an iTunes result maps to a track with 600px artwork; one without a preview is dropped', () => {
   const track = mapItunesTrack({

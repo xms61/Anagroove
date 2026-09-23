@@ -6,8 +6,8 @@ import {
   formatCrosswordClue,
   containsAnswerLeak,
 } from '../../shared/musicKeywords.ts';
-import { buildQueryPlan, extractAnimeKeyphrase } from '../../server/services/queryBuilder.js';
-import { resolveAnimeCoverImages } from '../../server/services/animeImageService.js';
+import { buildQueryPlan, extractAnimeKeyphrase } from '../../server/services/queryBuilder.ts';
+import { resolveAnimeCoverImages } from '../../server/services/animeImageService.ts';
 import { AnimeCatalog } from '../../server/db/animeCatalog.ts';
 
 const KEYPHRASES = [
@@ -119,8 +119,8 @@ test('cover art is stored per track and per series and served with the track', (
 test('resolveAnimeCoverImages keeps artwork a track already has', async () => {
   const { db } = gundamCatalog();
   const [resolved] = await resolveAnimeCoverImages([
-    { id: 'anime_1', animeTitle: 'Mobile Suit Gundam Wing', albumArt: 'https://s4.anilist.co/existing.jpg', isAnimeOped: true },
-  ], { animeDb: db });
+    { id: 'anime_1', title: 'Just Communication', artist: 'TWO-MIX', animeTitle: 'Mobile Suit Gundam Wing', albumArt: 'https://s4.anilist.co/existing.jpg', isAnimeOped: true },
+  ], null);
   assert.equal(resolved.albumArt, 'https://s4.anilist.co/existing.jpg');
   db.close();
 });
