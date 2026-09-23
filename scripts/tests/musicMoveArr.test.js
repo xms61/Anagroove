@@ -10,94 +10,79 @@ import {
 } from '../../server/services/previewResolver.js';
 import { parseDelimitedLine, mapRowToCandidate, parseSqlInsertTuple } from '../ingest_musicmovearr.js';
 
-test('MusicMoveArr Streaming Ingestor & Lazy Preview Hydration', async () => {
-  // 1. Delimited line parsing (CSV & TSV)
-  const csvRow = parseDelimitedLine('"101","Discovery, Vol. 1","Daft Punk"', ',');
-  assert(csvRow.length === 3 && csvRow[1] === 'Discovery, Vol. 1', 'Parses quoted CSV fields containing delimiters');
+test('delimited lines keep quoted delimiters (CSV) and split on tabs (TSV)', () => {
+  assert.deepEqual(parseDelimitedLine('"101","Discovery, Vol. 1","Daft Punk"', ','), ['101', 'Discovery, Vol. 1', 'Daft Punk']);
+  assert.deepEqual(parseDelimitedLine('202\tInstant Crush\tJulian Casablancas', '\t'), ['202', 'Instant Crush', 'Julian Casablancas']);
+});
 
-  const tsvRow = parseDelimitedLine('202\tInstant Crush\tJulian Casablancas', '\t');
-  assert(tsvRow.length === 3 && tsvRow[1] === 'Instant Crush', 'Parses TSV records cleanly');
-
-  // 2. MusicMoveArr row mapping to candidate
+test('a dump row maps to an upsert candidate without a preview URL', () => {
   const headers = ['id', 'title', 'artist', 'album', 'duration', 'rank', 'isrc', 'release_date'];
-  const rowData = ['3135556', 'One More Time', 'Daft Punk', 'Discovery', '320', '850000', 'USVI20000001', '2001-03-12'];
-  const candidate = mapRowToCandidate(rowData, headers, 'deezer');
+  const row = ['3135556', 'One More Time', 'Daft Punk', 'Discovery', '320', '850000', 'USVI20000001', '2001-03-12'];
+  const candidate = mapRowToCandidate(row, headers, 'deezer');
+  assert.ok(candidate);
+  assert.equal(candidate.providerTrackId, '3135556');
+  assert.equal(candidate.title, 'One More Time');
+  assert.equal(candidate.artist, 'Daft Punk');
+  assert.equal(candidate.durationMs, 320000, 'seconds become milliseconds');
+  assert.equal(candidate.deezerRank, 850000);
+  assert.equal(candidate.popularity, deezerRankToScore(850000));
+  assert.equal(candidate.countryCode, 'US');
+  assert.equal(candidate.language, 'en');
+  assert.equal(candidate.sampleUrl, null, 'previews are resolved lazily');
+});
 
-  assert(candidate !== null, 'Candidate object generated from row data');
-  assert(candidate.providerTrackId === '3135556', 'Extracts provider track ID');
-  assert(candidate.title === 'One More Time', 'Extracts track title');
-  assert(candidate.artist === 'Daft Punk', 'Extracts artist name');
-  assert(candidate.durationMs === 320000, 'Normalizes duration from seconds to milliseconds');
-  assert(candidate.deezerRank === 850000 && candidate.popularity === deezerRankToScore(850000), 'Keeps the raw Deezer rank and maps it to the calibrated 0-100 score');
-  assert(candidate.countryCode === 'US', 'Extracts country code US from ISRC');
-  assert(candidate.language === 'en', 'Detects English language');
-  assert(candidate.sampleUrl === null, 'Leaves sampleUrl null for on-the-fly lazy hydration');
+test('SQL INSERT tuples parse strings without quotes and NULL as null', () => {
+  const values = parseSqlInsertTuple("(1001, 'Get Lucky', 'Pharrell Williams', 248000, 92, NULL)");
+  assert.equal(values.length, 6);
+  assert.equal(values[1], 'Get Lucky');
+  assert.equal(values[5], null);
+});
 
-  // 3. SQL INSERT tuple parser
-  const sqlTuple = parseSqlInsertTuple("(1001, 'Get Lucky', 'Pharrell Williams', 248000, 92, NULL)");
-  assert(sqlTuple.length === 6, 'Parses 6 values from SQL tuple');
-  assert(sqlTuple[1] === 'Get Lucky', 'Extracts string value without quotes');
-  assert(sqlTuple[5] === null, 'Maps SQL NULL to JavaScript null');
+const CATALOG_IDS = [
+  [{ id: 'deezer:104' }, null],
+  [{ id: 'sqlite:42' }, 42],
+  [{ catalogTrackId: 99 }, 99],
+  [{ id: 105 }, 105],
+];
+for (const [track, expected] of CATALOG_IDS) {
+  test(`extractNumericCatalogTrackId(${JSON.stringify(track)}) is ${expected}`, () => {
+    assert.equal(extractNumericCatalogTrackId(track), expected);
+  });
+}
 
-  // 4. Numeric Catalog Track ID extraction
-  assert(extractNumericCatalogTrackId({ id: 'deezer:104' }) === null, 'Rejects provider prefix ID from numeric catalog ID');
-  assert(extractNumericCatalogTrackId({ id: 'sqlite:42' }) === 42, 'Extracts numeric ID from sqlite:42');
-  assert(extractNumericCatalogTrackId({ catalogTrackId: 99 }) === 99, 'Extracts catalogTrackId property');
-  assert(extractNumericCatalogTrackId({ id: 105 }) === 105, 'Accepts direct positive integer ID');
-
-  // 5. In-Memory Preview Resolver & Cache
+test('a track with a stored sample resolves to it without a lookup', async () => {
   clearPreviewCacheForTesting();
-  const existingSampleTrack = {
-    id: 'sqlite:1',
-    title: 'Around The World',
-    artist: 'Daft Punk',
-    sample_url: 'https://cdnt-preview.dzcdn.net/around.mp3',
-  };
-  const resolvedDirect = await resolveTrackPreview(existingSampleTrack);
-  assert(resolvedDirect && resolvedDirect.source === 'existing', 'Returns existing sample immediately');
-  assert(resolvedDirect.url === 'https://cdnt-preview.dzcdn.net/around.mp3', 'Preserves valid sample URL');
+  const resolved = await resolveTrackPreview({ id: 'sqlite:1', title: 'Around The World', artist: 'Daft Punk', sample_url: 'https://cdnt-preview.dzcdn.net/around.mp3' });
+  assert.equal(resolved?.source, 'existing');
+  assert.equal(resolved.url, 'https://cdnt-preview.dzcdn.net/around.mp3');
+});
 
-  // 6. Batch Preview Resolver
-  const batchInput = [
+test('batch resolution keeps tracks that already carry a preview', async () => {
+  const result = await batchResolvePreviews([
     { id: 'track-1', sample_url: 'https://cdnt-preview.dzcdn.net/1.mp3' },
     { id: 'track-2', audioUrl: 'https://cdnt-preview.dzcdn.net/2.mp3' },
-  ];
-  const batchRes = await batchResolvePreviews(batchInput);
-  assert(batchRes.resolvedTracks.length === 2, 'Batch resolves all tracks with verified preview URLs');
-  assert(batchRes.failedTracks.length === 0, 'Zero failed tracks when samples exist');
+  ]);
+  assert.equal(result.resolvedTracks.length, 2);
+  assert.equal(result.failedTracks.length, 0);
+});
 
-  // 7. SQLite catalog: sampleless rows and lazy preview hydration
-  const memCatalog = new SqliteCatalog(':memory:');
-  const insertRes = memCatalog.upsertTrack({
-    title: 'Lazy Sampleless Song',
-    artist: 'Lazy Band',
-    album: 'Lazy Album',
-    durationMs: 210000,
-    releaseYear: 2024,
-    popularity: 75,
-    provider: 'deezer',
-    providerTrackId: '999888',
-    sampleUrl: null, // Initial Scenario C state: no sample
+test('a sampleless row is served with its Deezer id, and a lazily resolved preview is stored', () => {
+  const catalog = new SqliteCatalog(':memory:');
+  const inserted = catalog.upsertTrack({
+    title: 'Lazy Sampleless Song', artist: 'Lazy Band', album: 'Lazy Album', durationMs: 210000, releaseYear: 2024,
+    provider: 'deezer', providerTrackId: '999888', sampleUrl: null,
   });
-  assert(insertRes.isNew === true, 'Inserts sampleless candidate track');
+  assert.equal(inserted.isNew, true);
 
-  // The selection window returns sampleless rows; previews are resolved from the Deezer id
-  const [lazy] = memCatalog.sampleCatalogTracks({ start: 0 });
-  assert.equal(lazy.title, 'Lazy Sampleless Song');
+  const [lazy] = catalog.sampleCatalogTracks({ start: 0 });
   assert.equal(lazy.deezer_id, '999888');
   assert.equal(lazy.sample_url, null);
 
-  // A lazily resolved preview is stored and served on the next read
-  const sampleSaved = memCatalog.insertSample(lazy.id, {
-    provider: 'deezer',
-    providerTrackId: '999888',
-    sampleUrl: 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3',
-    audioCodec: 'mp3',
-    sampleDurationSec: 30,
-    httpStatus: 200,
+  const stored = catalog.insertSample(lazy.id, {
+    provider: 'deezer', providerTrackId: '999888', sampleUrl: 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3',
+    audioCodec: 'mp3', sampleDurationSec: 30, httpStatus: 200,
   });
-  assert.equal(sampleSaved, true);
-  assert.equal(memCatalog.sampleCatalogTracks({ start: 0 })[0].sample_url, 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3');
-
-  memCatalog.close();
+  assert.equal(stored, true);
+  assert.equal(catalog.sampleCatalogTracks({ start: 0 })[0].sample_url, 'https://cdnt-preview.dzcdn.net/lazy-hydrated.mp3');
+  catalog.close();
 });

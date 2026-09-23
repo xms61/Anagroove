@@ -1,446 +1,235 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import WebSocket from 'ws';
+import { after, afterEach, before, describe, test } from 'node:test';
 import { blacklistMatchesTrack } from '../../shared/musicIdentity.js';
 import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.js';
 import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.js';
 import { server } from '../../server/server.js';
 import { db } from '../../server/db.js';
+import { wsTestClient } from './helpers.js';
 
-test('Integration Tests with Ephemeral Server', async () => {
-  // Start ephemeral server on random available port
-  const testServer = await new Promise((resolve) => {
-    const s = server.listen(0, '127.0.0.1', () => {
-      resolve(s);
-    });
+const MOCK_TRACKS = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({
+  id: `deezer:${index}`,
+  provider: 'deezer',
+  providerTrackId: String(index),
+  providerArtistId: String(index),
+  title,
+  artist: index === 0 ? '21 pilots' : `Artist ${index}`,
+  album: 'Mock Album',
+  albumArt: '',
+  audioUrl: `https://cdn.example.test/${index}.mp3`,
+  providerUrl: `https://www.deezer.com/track/${index}`,
+  rank: 500000,
+  fans: 900000,
+  selection: { source: 'deezer', rank: 500000, artistFans: 900000 },
+}));
+
+const useProvider = (tracks) => setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => tracks });
+const byArtist = (artist, titles) => titles.map((title, i) => ({ id: `deezer:${artist}-${i}`, providerTrackId: `${artist}-${i}`, title, artist, fans: 500000, rank: 500000 }));
+
+describe('song pool (stubbed provider, catalog bypassed)', () => {
+  afterEach(() => setMusicProviderForTesting());
+
+  test('recent Deezer ids, legacy hit- ids and blacklisted artists are left out', async () => {
+    useProvider(MOCK_TRACKS);
+    const pool = await getRandomSongPool({ count: 5, blacklist: [{ type: 'artist', name: 'artist 1' }], recentIds: ['deezer:2', 'hit-3'] });
+    assert.equal(pool.length, 5);
+    assert.ok(pool.every(song => !['deezer:2', 'deezer:3'].includes(song.id) && song.providerArtistId !== '1'));
+    assert.ok(pool.some(song => song.artist === '21 pilots'), 'artist display names are unchanged');
   });
 
-  const address = testServer.address();
-  const port = address.port;
-  const baseUrl = `http://127.0.0.1:${port}`;
-  const wsUrl = `ws://127.0.0.1:${port}/ws`;
+  test('recency tiers fill fresh songs first, then once-played, then twice-played', async () => {
+    useProvider(MOCK_TRACKS);
+    const pool = await getRandomSongPool({ count: 7, blacklist: [{ type: 'artist', name: 'artist 1' }], recentIds: ['deezer:2', 'hit-3', 'hit-3'] });
+    const ids = pool.map(song => song.id);
+    assert.equal(ids.length, 7);
+    assert.equal(ids.indexOf('deezer:2'), 5);
+    assert.equal(ids.indexOf('deezer:3'), 6);
+  });
 
-  try {
-    // Health Check
-    const healthRes = await fetch(`${baseUrl}/api/health`);
-    const healthData = await healthRes.json();
-    assert(healthRes.status === 200 && healthData.status === 'ok', 'GET /api/health responds with 200 ok');
-
-    // Missing X-User-Id rejection
-    const unauthRes = await fetch(`${baseUrl}/api/progress`);
-    assert(unauthRes.status === 400, 'GET /api/progress without X-User-Id rejected with 400');
-
-    // Invalid X-User-Id format rejection
-    const malformedRes = await fetch(`${baseUrl}/api/progress`, {
-      headers: { 'X-User-Id': 'invalid ID with spaces!' }
-    });
-    assert(malformedRes.status === 400, 'GET /api/progress with malformed X-User-Id rejected with 400');
-
-    // Valid progress save & retrieve
-    const testUserId = `test_user_${Date.now()}`;
-    const saveRes = await fetch(`${baseUrl}/api/progress`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({
-        puzzleId: 'test-puz-1',
-        themeId: 'rock',
-        userLetters: [['T', 'E'], ['S', 'T']],
-        validity: [['correct', 'correct'], ['correct', 'correct']]
-      })
-    });
-    const saveData = await saveRes.json();
-    assert(saveRes.status === 200 && saveData.success === true, 'POST /api/progress saves state with 200 ok');
-
-    const getRes = await fetch(`${baseUrl}/api/progress`, {
-      headers: { 'X-User-Id': testUserId }
-    });
-    const getData = await getRes.json();
-    assert(getData.progress?.puzzleId === 'test-puz-1', 'GET /api/progress retrieves persisted state');
-
-    // Blacklist persistence
-    const blPost = await fetch(`${baseUrl}/api/blacklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ name: 'The Beatles', type: 'artist' })
-    });
-    assert(blPost.status === 200, 'POST /api/blacklist adds item');
-
-    const blGet = await fetch(`${baseUrl}/api/blacklist`, {
-      headers: { 'X-User-Id': testUserId }
-    });
-    const blData = await blGet.json();
-    assert(blData.blacklist.some(b => b.name === 'The Beatles'), 'GET /api/blacklist contains added item');
-
-    const beyonceBlacklist = await fetch(`${baseUrl}/api/blacklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ name: 'Beyoncé', type: 'artist', provider: 'deezer', providerArtistId: '42' })
-    });
-    const beyonceGeneric = await fetch(`${baseUrl}/api/blacklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ name: 'beyonce', type: 'artist' })
-    });
-    const beyonceSecondScoped = await fetch(`${baseUrl}/api/blacklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ name: 'BEYONCE', type: 'artist', provider: 'deezer', providerArtistId: '43' })
-    });
-    const beyonceGenericVariant = await fetch(`${baseUrl}/api/blacklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ name: 'BEYONCÉ', type: 'artist' })
-    });
-    const beyonceData = await beyonceGenericVariant.json();
-    const beyonceEntries = beyonceData.blacklist.filter(item => item.canonicalKey === 'beyonce');
-    const genericBeyonce = beyonceEntries.find(item => !item.provider);
-    const scopedBeyonce = beyonceEntries.find(item =>
-      item.provider === 'deezer' && item.providerArtistId === '42'
-    );
-    assert(
-      beyonceBlacklist.status === 200 && beyonceGeneric.status === 200 && beyonceSecondScoped.status === 200 &&
-      beyonceEntries.length === 3 && genericBeyonce && scopedBeyonce &&
-      beyonceEntries.some(item => item.provider === 'deezer' && item.providerArtistId === '43'),
-      'Generic and distinct provider-scoped artist blacklist entries coexist'
-    );
-
-    const mapped = mapDeezerTrack({
-      id: 99,
-      title: 'Test Track',
-      preview: 'https://cdn.example.test/preview.mp3',
-      link: 'https://www.deezer.com/track/99',
-      rank: 500000,
-      artist: { id: 42, name: 'Beyoncé' },
-      album: { title: 'Test Album', cover_medium: 'https://cdn.example.test/cover.jpg' }
-    }, { nb_fan: 900000 });
-    assert(
-      mapped?.artist === 'Beyoncé' && mapped.provider === 'deezer' && mapped.providerTrackId === '99' && mapped.providerArtistId === '42',
-      'Deezer mapping preserves display names and provider IDs'
-    );
-    assert(
-      blacklistMatchesTrack([genericBeyonce], { ...mapped, artist: 'BEYONCE', providerArtistId: '43' }) &&
-      blacklistMatchesTrack([scopedBeyonce], { ...mapped, artist: 'BEYONCE' }) &&
-      !blacklistMatchesTrack([scopedBeyonce], { ...mapped, artist: 'BEYONCE', providerArtistId: '43' }) &&
-      !blacklistMatchesTrack([scopedBeyonce], { ...mapped, provider: 'other', artist: 'BEYONCE' }),
-      'Generic artists match canonically while scoped artists match exact provider IDs'
-    );
-    assert(
-      !blacklistMatchesTrack(
-        [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '1' }],
-        { provider: 'deezer', providerTrackId: '2', title: 'Hello', artist: 'Different Artist' }
-      ),
-      'Provider-specific blacklist IDs do not block homonyms'
-    );
-
-    const [firstSameTitleSong, secondSameTitleSong, genericSong, genericSongVariant] = await Promise.all([
-      fetch(`${baseUrl}/api/blacklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-        body: JSON.stringify({ name: 'Same Title', type: 'song', provider: 'deezer', providerTrackId: '101' })
-      }),
-      fetch(`${baseUrl}/api/blacklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-        body: JSON.stringify({ name: 'same-title', type: 'song', provider: 'deezer', providerTrackId: '202' })
-      }),
-      fetch(`${baseUrl}/api/blacklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-        body: JSON.stringify({ name: 'same-title', type: 'song' })
-      }),
-      fetch(`${baseUrl}/api/blacklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-        body: JSON.stringify({ name: 'Same Title', type: 'song' })
-      }),
+  test('a track whose answer is already on the grid is skipped', async () => {
+    useProvider([
+      { ...MOCK_TRACKS[0], id: 'deezer:duplicate-1', providerTrackId: 'duplicate-1', title: 'Neon', artist: 'Artist One' },
+      { ...MOCK_TRACKS[1], id: 'deezer:duplicate-2', providerTrackId: 'duplicate-2', title: 'Neon', artist: 'Artist Two' },
     ]);
-    const songBlacklist = db.getBlacklist(testUserId);
-    const sameTitleEntries = songBlacklist.filter(item => item.canonicalKey === 'same title');
-    const genericSameTitle = sameTitleEntries.find(item => !item.provider);
-    const scopedSameTitle = sameTitleEntries.find(item =>
-      item.provider === 'deezer' && item.providerTrackId === '101'
-    );
-    assert(
-      [firstSameTitleSong, secondSameTitleSong, genericSong, genericSongVariant].every(response => response.status === 200) &&
-      songBlacklist.filter(item => item.provider === 'deezer' &&
-        ['101', '202'].includes(item.providerTrackId)).length === 2 &&
-      sameTitleEntries.length === 3 && genericSameTitle && scopedSameTitle &&
-      blacklistMatchesTrack([genericSameTitle], {
-        provider: 'deezer', providerTrackId: '303', title: 'Same Title', artist: 'Artist Three'
-      }) &&
-      blacklistMatchesTrack([scopedSameTitle], {
-        provider: 'deezer', providerTrackId: '101', title: 'Same Title', artist: 'Artist One'
-      }) &&
-      !blacklistMatchesTrack([scopedSameTitle], {
-        provider: 'deezer', providerTrackId: '202', title: 'Same Title', artist: 'Artist Two'
-      }),
-      'Generic and provider-scoped songs coexist with exact scoped matching'
-    );
+    const pool = await getRandomSongPool({ count: 2 });
+    assert.deepEqual(pool.map(song => song.answer), ['NEON']);
+  });
 
-    const mockTracks = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({
-      id: `deezer:${index}`,
-      provider: 'deezer',
-      providerTrackId: String(index),
-      providerArtistId: String(index),
-      title,
-      artist: index === 0 ? '21 pilots' : `Artist ${index}`,
-      album: 'Mock Album',
-      albumArt: '',
-      audioUrl: `https://cdn.example.test/${index}.mp3`,
-      providerUrl: `https://www.deezer.com/track/${index}`,
-      rank: 500000,
-      fans: 900000,
-      selection: { source: 'deezer', rank: 500000, artistFans: 900000 },
-    }));
-    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
-    const filteredPool = await getRandomSongPool({
-      count: 5,
-      blacklist: [{ type: 'artist', name: 'artist 1' }],
-      recentIds: ['deezer:2', 'hit-3']
+  test('the same seed gives the same songs in the same order, one per artist', async () => {
+    useProvider([...byArtist('Band A', ['Solar', 'Cosmic']), ...byArtist('Band B', ['Lunar']), ...byArtist('Band C', ['Astral'])]);
+    const first = await getRandomSongPool({ seed: 'test-seed-xyz', count: 4 });
+    const second = await getRandomSongPool({ seed: 'test-seed-xyz', count: 4 });
+    assert.deepEqual(first.map(t => t.id), second.map(t => t.id));
+    assert.equal(first.filter(t => t.artist === 'Band A').length, 1);
+  });
+
+  test('a steered artist may appear several times', async () => {
+    useProvider([...byArtist('Band A', ['Solar', 'Cosmic']), ...byArtist('Band B', ['Lunar'])]);
+    const pool = await getRandomSongPool({ artist: 'Band A', count: 4 });
+    assert.equal(pool.filter(t => t.artist === 'Band A').length, 2);
+  });
+
+  test('"songs by Daft Punk" picks only Daft Punk and never uses artist-name clues', async () => {
+    useProvider(byArtist('Daft Punk', ['One More Time', 'Harder Better Faster', 'Get Lucky', 'Around The World']));
+    const pool = await getRandomSongPool({ prompt: 'songs by Daft Punk', count: 4 });
+    assert.equal(pool.length, 4);
+    assert.ok(pool.every(t => t.artist === 'Daft Punk'));
+    assert.ok(pool.every(t => t.clueType === 'Song title' || t.clueType === 'Song title keyword'));
+  });
+
+  test('a mixed pool rotates clue types', async () => {
+    useProvider(MOCK_TRACKS);
+    const pool = await getRandomSongPool({ count: 6 });
+    assert.ok(new Set(pool.map(s => s.clueType)).size > 1);
+  });
+});
+
+test('generic blacklist entries match canonically; provider-scoped ones match the exact id', () => {
+  const track = mapDeezerTrack({
+    id: 99, title: 'Test Track', preview: 'https://cdn.example.test/preview.mp3', link: 'https://www.deezer.com/track/99', rank: 500000,
+    artist: { id: 42, name: 'Beyoncé' }, album: { title: 'Test Album', cover_medium: 'https://cdn.example.test/cover.jpg' },
+  }, { nb_fan: 900000 });
+  assert.equal(track?.artist, 'Beyoncé');
+  assert.equal(track.providerTrackId, '99');
+  assert.equal(track.providerArtistId, '42');
+
+  const generic = { type: 'artist', name: 'beyonce', canonicalKey: 'beyonce' };
+  const scoped = { type: 'artist', name: 'Beyoncé', canonicalKey: 'beyonce', provider: 'deezer', providerArtistId: '42' };
+  assert.ok(blacklistMatchesTrack([generic], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
+  assert.ok(blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE' }));
+  assert.ok(!blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
+  assert.ok(!blacklistMatchesTrack([scoped], { ...track, provider: 'other', artist: 'BEYONCE' }));
+  assert.ok(!blacklistMatchesTrack(
+    [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '1' }],
+    { provider: 'deezer', providerTrackId: '2', title: 'Hello', artist: 'Different Artist' }
+  ), 'a scoped song does not block a homonym');
+});
+
+describe('REST API and WebSocket rooms', () => {
+  let testServer;
+  let baseUrl;
+  let wsUrl;
+  const userId = `test_user_${Date.now()}`;
+  const clients = [];
+  const post = (path, body, headers = {}) => fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-User-Id': userId, ...headers },
+    body: JSON.stringify(body),
+  });
+
+  before(async () => {
+    testServer = await new Promise((resolve) => {
+      const s = server.listen(0, '127.0.0.1', () => resolve(s));
     });
-    assert(
-      filteredPool.length === 5 &&
-      filteredPool.every(song => song.id !== 'deezer:2' && song.id !== 'deezer:3' && song.providerArtistId !== '1') &&
-      filteredPool.some(song => song.artist === '21 pilots'),
-      'Provider pool honors recent Deezer and legacy hit IDs without changing artist displays'
-    );
-    const tierPool = await getRandomSongPool({ count: 7, blacklist: [{ type: 'artist', name: 'artist 1' }], recentIds: ['deezer:2', 'hit-3', 'hit-3'] });
-    const tierIds = tierPool.map(song => song.id);
-    assert(
-      tierPool.length === 7 && tierIds.indexOf('deezer:2') === 5 && tierIds.indexOf('deezer:3') === 6,
-      'Recency tiers fill in order: fresh songs first, then once-played, then twice-played, until the pool is full'
-    );
+    baseUrl = `http://127.0.0.1:${testServer.address().port}`;
+    wsUrl = `ws://127.0.0.1:${testServer.address().port}/ws`;
+  });
 
-    const duplicateAnswerTracks = [
-      { ...mockTracks[0], id: 'deezer:duplicate-1', providerTrackId: 'duplicate-1', title: 'Neon', artist: 'Artist One' },
-      { ...mockTracks[1], id: 'deezer:duplicate-2', providerTrackId: 'duplicate-2', title: 'Neon', artist: 'Artist Two' },
-    ];
-    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => duplicateAnswerTracks });
-    const uniqueAnswerPool = await getRandomSongPool({ count: 2 });
-    assert(
-      uniqueAnswerPool.length === 1 && uniqueAnswerPool[0].answer === 'NEON',
-      'Provider pool excludes tracks that would duplicate a crossword answer'
-    );
+  after(async () => {
+    for (const client of clients) client.close();
+    setMusicProviderForTesting();
+    db.flushSync();
+    await new Promise(resolve => testServer.close(resolve));
+  });
 
-    // Test deterministic seed hashing & variety mode
-    const determinismCatalog = [
-      { id: 'deezer:101', providerTrackId: '101', title: 'Solar', artist: 'Band A', fans: 500000, rank: 500000 },
-      { id: 'deezer:102', providerTrackId: '102', title: 'Lunar', artist: 'Band B', fans: 500000, rank: 500000 },
-      { id: 'deezer:103', providerTrackId: '103', title: 'Cosmic', artist: 'Band A', fans: 500000, rank: 500000 },
-      { id: 'deezer:104', providerTrackId: '104', title: 'Astral', artist: 'Band C', fans: 500000, rank: 500000 },
-    ];
-    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => determinismCatalog });
-    const seedRun1 = await getRandomSongPool({ seed: 'test-seed-xyz', count: 4 });
-    const seedRun2 = await getRandomSongPool({ seed: 'test-seed-xyz', count: 4 });
-    assert(
-      seedRun1.length === seedRun2.length &&
-      seedRun1.every((t, i) => t.id === seedRun2[i].id),
-      'Deterministic seed produces identical song selection and ordering'
-    );
+  test('GET /api/health is ok', async () => {
+    const response = await fetch(`${baseUrl}/api/health`);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).status, 'ok');
+  });
 
-    // Variety mode check: Band A has 2 songs (Solar, Cosmic), only 1 should be selected
-    const bandACount = seedRun1.filter(t => t.artist === 'Band A').length;
-    assert(bandACount === 1, 'Variety mode enforces max 1 track per artist by default');
+  test('a missing or malformed X-User-Id is rejected with 400', async () => {
+    assert.equal((await fetch(`${baseUrl}/api/progress`)).status, 400);
+    assert.equal((await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': 'invalid ID with spaces!' } })).status, 400);
+  });
 
-    // Steered artist check: when artist is steered, multiple tracks by that artist are permitted
-    const steeredBandARun = await getRandomSongPool({ artist: 'Band A', count: 4 });
-    assert(steeredBandARun.filter(t => t.artist === 'Band A').length === 2, 'Steering single artist permits multiple tracks by that artist');
-
-    // Single artist prompt check: verify prompt parsing, multi-track allowance, and 0% artist clue policy
-    const singleArtistCatalog = [
-      { id: 'deezer:201', providerTrackId: '201', title: 'One More Time', artist: 'Daft Punk', fans: 500000, rank: 500000 },
-      { id: 'deezer:202', providerTrackId: '202', title: 'Harder Better Faster', artist: 'Daft Punk', fans: 500000, rank: 500000 },
-      { id: 'deezer:203', providerTrackId: '203', title: 'Get Lucky', artist: 'Daft Punk', fans: 500000, rank: 500000 },
-      { id: 'deezer:204', providerTrackId: '204', title: 'Around The World', artist: 'Daft Punk', fans: 500000, rank: 500000 },
-    ];
-    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => singleArtistCatalog });
-    const singleArtistPool = await getRandomSongPool({ prompt: 'songs by Daft Punk', count: 4 });
-    assert(
-      singleArtistPool.length === 4 &&
-      singleArtistPool.every(t => t.artist === 'Daft Punk'),
-      'Single artist prompt "songs by Daft Punk" selects multiple tracks by target artist'
-    );
-    assert(
-      singleArtistPool.every(t => t.clueType !== 'Artist name'),
-      'Single artist crossword enforces 0% "Artist name" clues'
-    );
-    assert(
-      singleArtistPool.every(t => t.clueType === 'Song title' || t.clueType === 'Song title keyword'),
-      'Single artist crossword produces 100% Song title or Keyword clues'
-    );
-
-    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
-
-    // Clue variance check: ensure the pool produces diverse clue types across questions
-    const diversePool = await getRandomSongPool({ count: 6 });
-    const clueTypes = new Set(diversePool.map(s => s.clueType));
-    assert(clueTypes.size > 1, 'Song pool yields diverse clue types across questions');
-
-    const invalidLive = await fetch(`${baseUrl}/api/puzzles/live`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ targetWords: 'not-a-number' })
+  test('progress is saved and read back', async () => {
+    const saved = await post('/api/progress', {
+      puzzleId: 'test-puz-1', themeId: 'rock', userLetters: [['T', 'E'], ['S', 'T']], validity: [['correct', 'correct'], ['correct', 'correct']],
     });
-    assert(invalidLive.status === 400, 'POST /api/puzzles/live validates request data');
+    assert.equal(saved.status, 200);
+    assert.equal((await saved.json()).success, true);
+    const read = await (await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } })).json();
+    assert.equal(read.progress?.puzzleId, 'test-puz-1');
+  });
 
-    const livePuzzle = await fetch(`${baseUrl}/api/puzzles/live`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ genre: 'all', targetWords: 6, recentIds: [] })
-    });
-    const livePuzzleData = await livePuzzle.json();
-    assert(
-      livePuzzle.status === 200 && livePuzzleData.selection?.provider === 'deezer' &&
-      typeof livePuzzleData.livePuzzleToken === 'string' &&
-      livePuzzleData.puzzle?.clues?.every(clue => clue.song.provider === 'deezer' && clue.song.selection?.source === 'deezer'),
-      'POST /api/puzzles/live returns a complete Deezer puzzle payload'
-    );
+  test('a generic artist entry and distinct provider-scoped entries coexist', async () => {
+    assert.equal((await post('/api/blacklist', { name: 'The Beatles', type: 'artist' })).status, 200);
+    const listed = await (await fetch(`${baseUrl}/api/blacklist`, { headers: { 'X-User-Id': userId } })).json();
+    assert.ok(listed.blacklist.some(b => b.name === 'The Beatles'));
+
+    for (const body of [
+      { name: 'Beyoncé', type: 'artist', provider: 'deezer', providerArtistId: '42' },
+      { name: 'beyonce', type: 'artist' },
+      { name: 'BEYONCE', type: 'artist', provider: 'deezer', providerArtistId: '43' },
+    ]) assert.equal((await post('/api/blacklist', body)).status, 200);
+    const last = await (await post('/api/blacklist', { name: 'BEYONCÉ', type: 'artist' })).json();
+    const entries = last.blacklist.filter(item => item.canonicalKey === 'beyonce');
+    assert.equal(entries.length, 3, 'the second generic spelling is a duplicate');
+    assert.deepEqual(entries.map(item => item.providerArtistId ?? null).sort(), ['42', '43', null].sort());
+  });
+
+  test('generic and provider-scoped song entries coexist, and scoped ones match only their id', async () => {
+    const responses = await Promise.all([
+      post('/api/blacklist', { name: 'Same Title', type: 'song', provider: 'deezer', providerTrackId: '101' }),
+      post('/api/blacklist', { name: 'same-title', type: 'song', provider: 'deezer', providerTrackId: '202' }),
+      post('/api/blacklist', { name: 'same-title', type: 'song' }),
+      post('/api/blacklist', { name: 'Same Title', type: 'song' }),
+    ]);
+    assert.ok(responses.every(response => response.status === 200));
+
+    const entries = db.getBlacklist(userId).filter(item => item.canonicalKey === 'same title');
+    assert.equal(entries.length, 3);
+    const generic = entries.find(item => !item.provider);
+    const scoped = entries.find(item => item.providerTrackId === '101');
+    assert.ok(blacklistMatchesTrack([generic], { provider: 'deezer', providerTrackId: '303', title: 'Same Title', artist: 'Artist Three' }));
+    assert.ok(blacklistMatchesTrack([scoped], { provider: 'deezer', providerTrackId: '101', title: 'Same Title', artist: 'Artist One' }));
+    assert.ok(!blacklistMatchesTrack([scoped], { provider: 'deezer', providerTrackId: '202', title: 'Same Title', artist: 'Artist Two' }));
+  });
+
+  test('POST /api/puzzles/live: 400 on bad input, a full puzzle, 503 when the provider is down', async () => {
+    assert.equal((await post('/api/puzzles/live', { targetWords: 'not-a-number' })).status, 400);
+
+    useProvider(MOCK_TRACKS);
+    const response = await post('/api/puzzles/live', { genre: 'all', targetWords: 6, recentIds: [] });
+    const live = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(live.selection?.provider, 'deezer');
+    assert.equal(typeof live.livePuzzleToken, 'string');
+    assert.ok(live.puzzle?.clues?.every(clue => clue.song.provider === 'deezer' && clue.song.selection?.source === 'deezer'));
 
     setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => { throw new Error('provider offline'); } });
-    const unavailableLive = await fetch(`${baseUrl}/api/puzzles/live`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': testUserId },
-      body: JSON.stringify({ genre: 'all', targetWords: 6 })
-    });
-    assert(unavailableLive.status === 503, 'Live provider failure returns an error without static fallback');
+    assert.equal((await post('/api/puzzles/live', { genre: 'all', targetWords: 6 })).status, 503);
+    setMusicProviderForTesting();
+  });
+
+  test('a co-op room syncs the start, cell updates and race progress between two players', async () => {
+    useProvider(MOCK_TRACKS);
+    const live = await (await post('/api/puzzles/live', { genre: 'all', targetWords: 6 })).json();
     setMusicProviderForTesting();
 
-    // WebSocket Room Creation & Messaging
-    await new Promise((resolve, reject) => {
-      const hostWs = new WebSocket(wsUrl);
-      let guestWs = null;
-      let roomCode = null;
-      let hostGotStart = false;
-      let guestGotStart = false;
-      let guestGotCellUpdate = false;
-      let hostGotRaceProgress = false;
+    const connect = async () => {
+      const client = wsTestClient(wsUrl);
+      clients.push(client);
+      await client.open;
+      return client;
+    };
+    const host = await connect();
+    host.send({ action: 'create_room', playerId: userId, playerName: 'HostTester', mode: 'coop', livePuzzleToken: live.livePuzzleToken });
+    const roomCode = (await host.next(m => m.type === 'room_created')).room.code;
 
-      const timeout = setTimeout(() => {
-        hostWs.close();
-        if (guestWs) guestWs.close();
-        reject(new Error('WebSocket connection timed out'));
-      }, 7000);
+    const guest = await connect();
+    guest.send({ action: 'join_room', roomCode, playerId: `${userId}_guest`, playerName: 'GuestTester' });
+    assert.equal((await guest.next(m => m.type === 'room_joined')).room.players.length, 2);
 
-      hostWs.on('open', () => {
-        hostWs.send(JSON.stringify({
-          action: 'create_room',
-          playerId: testUserId,
-          playerName: 'HostTester',
-          mode: 'coop',
-          livePuzzleToken: livePuzzleData.livePuzzleToken
-        }));
-      });
+    host.send({ action: 'start_game', roomCode, playerId: userId });
+    await Promise.all([host.next(m => m.type === 'game_started'), guest.next(m => m.type === 'game_started')]);
 
-      hostWs.on('message', (raw) => {
-        try {
-          const msg = JSON.parse(raw.toString());
-          if (msg.type === 'room_created') {
-            assert(msg.room && msg.room.code, 'WebSocket creates room with code');
-            roomCode = msg.room.code;
+    host.send({ action: 'coop_cell_update', roomCode, row: 1, col: 2, char: 'Z', playerId: userId });
+    const cell = await guest.next(m => m.type === 'coop_cell_update');
+    assert.deepEqual([cell.row, cell.col, cell.char], [1, 2, 'Z']);
 
-            // Connect second player (Guest)
-            guestWs = new WebSocket(wsUrl);
-            guestWs.on('open', () => {
-              guestWs.send(JSON.stringify({
-                action: 'join_room',
-                roomCode,
-                playerId: `${testUserId}_guest`,
-                playerName: 'GuestTester'
-              }));
-            });
-
-            guestWs.on('message', (rawGuest) => {
-              const guestMsg = JSON.parse(rawGuest.toString());
-              if (guestMsg.type === 'room_joined') {
-                assert(guestMsg.room && guestMsg.room.players?.length === 2, 'Player 2 successfully joins room');
-                // Host starts the game (must send playerId to prove they are the room host)
-                hostWs.send(JSON.stringify({
-                  action: 'start_game',
-                  roomCode,
-                  playerId: testUserId
-                }));
-              }
-
-              if (guestMsg.type === 'game_started') {
-                guestGotStart = true;
-                if (hostGotStart) checkSyncAfterStart();
-              }
-
-              if (guestMsg.type === 'coop_cell_update') {
-                if (guestMsg.row === 1 && guestMsg.col === 2 && (guestMsg.char === 'Z' || guestMsg.value === 'Z')) {
-                  guestGotCellUpdate = true;
-                  assert(true, 'Player 2 receives real-time coop cell update from Player 1');
-                  // Guest sends race progress update back to Host
-                  guestWs.send(JSON.stringify({
-                    action: 'race_progress_update',
-                    roomCode,
-                    progress: 80,
-                    playerId: `${testUserId}_guest`
-                  }));
-                }
-              }
-            });
-
-            guestWs.on('error', (err) => {
-              clearTimeout(timeout);
-              reject(err);
-            });
-          }
-
-          if (msg.type === 'game_started') {
-            hostGotStart = true;
-            assert(true, 'Host receives game_started event');
-            if (guestGotStart) checkSyncAfterStart();
-          }
-
-          if (msg.type === 'race_progress_update') {
-            if (msg.progress === 80) {
-              hostGotRaceProgress = true;
-              assert(true, 'Host receives real-time race progress update from Player 2');
-              finishWsTest();
-            }
-          }
-        } catch (e) {
-          clearTimeout(timeout);
-          hostWs.close();
-          if (guestWs) guestWs.close();
-          reject(e);
-        }
-      });
-
-      function checkSyncAfterStart() {
-        assert(true, 'Both players receive synchronized game_started event');
-        // Host sends cell update
-        hostWs.send(JSON.stringify({
-          action: 'coop_cell_update',
-          roomCode,
-          row: 1,
-          col: 2,
-          char: 'Z',
-          value: 'Z',
-          playerId: testUserId,
-          senderId: testUserId
-        }));
-      }
-
-      function finishWsTest() {
-        if (guestGotCellUpdate && hostGotRaceProgress) {
-          clearTimeout(timeout);
-          hostWs.close();
-          if (guestWs) guestWs.close();
-          resolve();
-        }
-      }
-
-      hostWs.on('error', (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-    });
-
-  } finally {
-    // Flush DB and close server
-    db.flushSync();
-    await new Promise((resolve) => testServer.close(resolve));
-  }
+    guest.send({ action: 'race_progress_update', roomCode, progress: 80, playerId: `${userId}_guest` });
+    assert.equal((await host.next(m => m.type === 'race_progress_update')).progress, 80);
+  });
 });

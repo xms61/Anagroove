@@ -28,11 +28,14 @@
 | File | Covers |
 | :-- | :-- |
 | `crosswordEngine`, `musicKeywords`, `clueSystem`, `animeArt` | grid placement, answer extraction, zero-spoiler clues |
-| `queryBuilder`, `selectionPolicy`, `deezerProvider` | prompt parsing, query plans, language/year rules, provider caching |
-| `validators`, `apiIntegration`, `hardening` | input validation, REST + WS flows, preview 302, CORS/CSP, WS authz and resume |
-| `sqliteCatalog`, `unicodeDedupe`, `popularity`, `languageCorpus` | schema, admission policy, CJK dedupe, 0-100 calibration, classifier corpus |
-| `catalogValidator`, `catalogCleanup`, `crawler`, `musicMoveArr`, `animeCatalog` | validator, cleanup idempotence, gate, enrichment, ingest |
+| `queryBuilder`, `selectionPolicy`, `trackPicker`, `catalogWindow` | prompt parsing, query plans, language/theme/year/authenticity rules, picker, RNG and the SQL window |
+| `deezerProvider`, `itunesProvider` | live provider caching, retries, mapping |
+| `validators`, `apiIntegration`, `hardening`, `userStore` | input validation, REST + WS flows, preview 302, CORS/CSP, WS authz and resume, user store |
+| `sqliteCatalog`, `trackNormalization`, `unicodeDedupe`, `popularity`, `languageCorpus`, `authenticity` | schema, admission policy, keys, CJK dedupe, popularity, classifier corpus, authenticity corpus |
+| `catalogValidator`, `catalogCleanup`, `crawler`, `musicMoveArr`, `animeCatalog` | validator, cleanup idempotence, gate, harvester, enrichment, ingest |
 | `blacklist`, `offline`, `fixtureCatalog`, `cli` | blacklist matching, offline mode, CI fixture, script flag parsing |
+
+**Writing tests:** one `test()` per behaviour, named after it. Put rule corpora in a table and loop over it (`languageCorpus`, `selectionPolicy`). Use `assert.equal`/`deepEqual` so a failure shows both values. Build shared fixtures with a small function per test (`legacyCatalog()`, `enrichmentFixture()`) instead of state carried from one test to the next. Don't assert on the size of constant lists or on `typeof x === 'function'`.
 
 ## Frontend tests (Vitest)
 - `vitest.config.ts` extends `vite.config.ts` with jsdom. Test files sit next to the code (`useCrosswordGame.test.ts`). Shared fixtures are in `src/test/`.

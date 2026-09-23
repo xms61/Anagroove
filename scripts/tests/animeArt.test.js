@@ -10,92 +10,86 @@ import { buildQueryPlan, extractAnimeKeyphrase } from '../../server/services/que
 import { resolveAnimeCoverImages } from '../../server/services/animeImageService.js';
 import { AnimeCatalog } from '../../server/db/animeCatalog.js';
 
-test('Anime Art Resolution, Keyphrase Duplication & Clue Discipline', async () => {
-  // 1. Anime Keyphrase Extraction
-  assert(extractAnimeKeyphrase('anime gundam') === 'gundam', 'extractAnimeKeyphrase extracts "gundam" from "anime gundam"');
-  assert(extractAnimeKeyphrase('anime openings naruto') === 'naruto', 'extractAnimeKeyphrase extracts "naruto" from "anime openings naruto"');
-  assert(extractAnimeKeyphrase('bleach anime ost') === 'bleach', 'extractAnimeKeyphrase extracts "bleach" from "bleach anime ost"');
-  assert(extractAnimeKeyphrase('anime') === '', 'extractAnimeKeyphrase returns empty string for generic "anime"');
-  assert(extractAnimeKeyphrase('anime from the 90s') === '', 'extractAnimeKeyphrase returns empty string for temporal "anime from the 90s"');
-
-  // 2. Query Plan carries targetAnimeKeyphrase
-  const gundamPlan = buildQueryPlan({ prompt: 'anime gundam' });
-  assert(gundamPlan.targetAnimeKeyphrase === 'gundam', 'buildQueryPlan attaches targetAnimeKeyphrase="gundam"');
-  const genericPlan = buildQueryPlan({ prompt: 'anime' });
-  assert(genericPlan.targetAnimeKeyphrase === null, 'buildQueryPlan leaves targetAnimeKeyphrase null for generic prompt');
-
-  // 3. Clue & Answer Discipline: Target Keyphrases blocked from grid solutions
-  const seenGundamAnswers = new Set();
-  const animeKeyphrase = 'gundam';
-  animeKeyphrase.split(/[^a-zA-Z0-9]+/).forEach(tok => {
-    if (tok.length >= 3) seenGundamAnswers.add(tok.toUpperCase());
+const KEYPHRASES = [
+  ['anime gundam', 'gundam'],
+  ['anime openings naruto', 'naruto'],
+  ['bleach anime ost', 'bleach'],
+  ['anime', ''],
+  ['anime from the 90s', ''],
+];
+for (const [prompt, expected] of KEYPHRASES) {
+  test(`extractAnimeKeyphrase("${prompt}") is "${expected}"`, () => {
+    assert.equal(extractAnimeKeyphrase(prompt), expected);
   });
-  assert(seenGundamAnswers.has('GUNDAM'), 'seenAnswers blacklists target anime keyphrase GUNDAM from grid solution');
+}
 
-  const seenArtistAnswers = new Set();
-  const targetArtist = 'Dolly Parton';
-  targetArtist.split(/[^a-zA-Z0-9]+/).forEach(tok => {
-    if (tok.length >= 3) seenArtistAnswers.add(tok.toUpperCase());
-  });
-  assert(seenArtistAnswers.has('DOLLY'), 'seenAnswers blacklists first artist name token DOLLY');
-  assert(seenArtistAnswers.has('PARTON'), 'seenAnswers blacklists second artist name token PARTON');
+test('the query plan carries the anime keyphrase, or null for a generic prompt', () => {
+  assert.equal(buildQueryPlan({ prompt: 'anime gundam' }).targetAnimeKeyphrase, 'gundam');
+  assert.equal(buildQueryPlan({ prompt: 'anime' }).targetAnimeKeyphrase, null);
+});
 
-  // 4. Anime Crossword 3-Way Entity Variation & Zero-Leak Discipline
-  const solaTrack = {
-    title: 'Colorless wind',
-    song_title: 'Colorless wind',
-    artist: 'Aira Yuuki',
-    artist_name: 'Aira Yuuki',
-    animeTitle: 'Sola',
-    themeType: 'OP',
-    themeSlug: 'OP2',
-    releaseYear: 2007,
-    isAnimeOped: true,
-  };
+const SOLA = {
+  title: 'Colorless wind',
+  song_title: 'Colorless wind',
+  artist: 'Aira Yuuki',
+  artist_name: 'Aira Yuuki',
+  animeTitle: 'Sola',
+  themeType: 'OP',
+  themeSlug: 'OP2',
+  releaseYear: 2007,
+  isAnimeOped: true,
+};
 
-  // 4a. Candidate extraction supports Anime title, Song title, and Artist name
-  const solaCandidates = extractAllAnswerCandidates(solaTrack.title, solaTrack.artist, { animeTitle: solaTrack.animeTitle });
-  assert(solaCandidates.anime?.answer === 'SOLA', 'extractAllAnswerCandidates extracts anime answer SOLA');
-  assert(solaCandidates.title?.answer === 'COLORLESSWIND', 'extractAllAnswerCandidates extracts title COLORLESSWIND');
-  assert(solaCandidates.artist?.answer === 'AIRAYUUKI', 'extractAllAnswerCandidates extracts artist AIRAYUUKI');
+/** Keyword and clue for the requested clue type. */
+function clueFor(preferredType, extra = {}) {
+  const keyword = extractAnswerKeyword(SOLA.title, SOLA.artist, { preferredType, animeTitle: SOLA.animeTitle, ...extra });
+  const clue = formatCrosswordClue(SOLA, keyword);
+  return { keyword, clue, lower: clue.toLowerCase() };
+}
 
-  // 4b. When asking for Anime title: Anime title is strictly NOT in the clue
-  const animeKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'anime', animeTitle: solaTrack.animeTitle });
-  assert(animeKw.clueType === 'Anime title', 'Anime preferred type returns Anime title clue');
-  assert(animeKw.answer === 'SOLA', 'Anime answer is SOLA');
-  const animeClue = formatCrosswordClue(solaTrack, animeKw);
-  assert(!animeClue.toLowerCase().includes('sola'), 'Anime title clue NEVER mentions anime title "Sola"');
-  assert(!containsAnswerLeak(animeClue, animeKw.answer), 'containsAnswerLeak confirms 0 leak for Anime title clue');
+test('an anime theme offers the anime title, song title and artist as answers', () => {
+  const candidates = extractAllAnswerCandidates(SOLA.title, SOLA.artist, { animeTitle: SOLA.animeTitle });
+  assert.equal(candidates.anime?.answer, 'SOLA');
+  assert.equal(candidates.title?.answer, 'COLORLESSWIND');
+  assert.equal(candidates.artist?.answer, 'AIRAYUUKI');
+});
 
-  // 4c. When asking for Artist name: Artist name is strictly NOT in the clue
-  const artistKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'artist', animeTitle: solaTrack.animeTitle, allowArtist: true });
-  assert(artistKw.clueType === 'Artist name', 'Artist preferred type returns Artist name clue');
-  assert(artistKw.answer === 'AIRAYUUKI', 'Artist answer is AIRAYUUKI');
-  const artistClue = formatCrosswordClue(solaTrack, artistKw);
-  assert(!artistClue.toLowerCase().includes('aira') && !artistClue.toLowerCase().includes('yuuki'), 'Artist clue NEVER mentions artist "Aira Yuuki"');
-  assert(artistClue.includes('Sola'), 'Artist clue mentions anime title context');
-  assert(!containsAnswerLeak(artistClue, artistKw.answer), 'containsAnswerLeak confirms 0 leak for Artist clue');
+test('an anime-title clue never names the anime', () => {
+  const { keyword, clue, lower } = clueFor('anime');
+  assert.equal(keyword.clueType, 'Anime title');
+  assert.equal(keyword.answer, 'SOLA');
+  assert.ok(!lower.includes('sola'));
+  assert.ok(!containsAnswerLeak(clue, keyword.answer));
+});
 
-  // 4d. When asking for Song title: Song title is NOT in the clue, and NO gratuitous artist inclusion
-  const titleKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'title', animeTitle: solaTrack.animeTitle });
-  assert(titleKw.clueType === 'Song title', 'Title preferred type returns Song title clue');
-  const titleClue = formatCrosswordClue(solaTrack, titleKw);
-  assert(!titleClue.toLowerCase().includes('colorless') && !titleClue.toLowerCase().includes('wind'), 'Title clue NEVER mentions song title');
-  assert(!titleClue.toLowerCase().includes('aira yuuki'), 'Title clue does NOT involve artist name');
-  assert(!containsAnswerLeak(titleClue, titleKw.answer), 'containsAnswerLeak confirms 0 leak for Title clue');
+test('an artist clue never names the artist and gives the anime as context', () => {
+  const { keyword, clue, lower } = clueFor('artist', { allowArtist: true });
+  assert.equal(keyword.clueType, 'Artist name');
+  assert.equal(keyword.answer, 'AIRAYUUKI');
+  assert.ok(!lower.includes('aira') && !lower.includes('yuuki'));
+  assert.ok(clue.includes('Sola'));
+  assert.ok(!containsAnswerLeak(clue, keyword.answer));
+});
 
-  // 4e. When asking for Song title keyword: Keyword is NOT in the clue, and NO artist inclusion
-  const kwKw = extractAnswerKeyword(solaTrack.title, solaTrack.artist, { preferredType: 'keyword', animeTitle: solaTrack.animeTitle });
-  assert(kwKw.clueType === 'Song title keyword', 'Keyword preferred type returns Song title keyword clue');
-  const keywordClue = formatCrosswordClue(solaTrack, kwKw);
-  assert(!keywordClue.toLowerCase().includes(kwKw.answer.toLowerCase()), 'Keyword clue NEVER mentions keyword answer');
-  assert(!keywordClue.toLowerCase().includes('aira yuuki'), 'Keyword clue does NOT involve artist name');
-  assert(!containsAnswerLeak(keywordClue, kwKw.answer), 'containsAnswerLeak confirms 0 leak for Keyword clue');
+test('a song-title clue names neither the title nor the artist', () => {
+  const { keyword, clue, lower } = clueFor('title');
+  assert.equal(keyword.clueType, 'Song title');
+  assert.ok(!lower.includes('colorless') && !lower.includes('wind'));
+  assert.ok(!lower.includes('aira yuuki'));
+  assert.ok(!containsAnswerLeak(clue, keyword.answer));
+});
 
-  // 5. Victory Screen Image Persistence & Caching
-  const testAnimeDb = new AnimeCatalog(':memory:');
+test('a keyword clue names neither the keyword nor the artist', () => {
+  const { keyword, clue, lower } = clueFor('keyword');
+  assert.equal(keyword.clueType, 'Song title keyword');
+  assert.ok(!lower.includes(keyword.answer.toLowerCase()));
+  assert.ok(!lower.includes('aira yuuki'));
+  assert.ok(!containsAnswerLeak(clue, keyword.answer));
+});
 
-  const trackId = testAnimeDb.upsertAnimeTrack({
+function gundamCatalog() {
+  const db = new AnimeCatalog(':memory:');
+  const trackId = db.upsertAnimeTrack({
     animeTitle: 'Mobile Suit Gundam Wing',
     songTitle: 'Just Communication',
     artistName: 'TWO-MIX',
@@ -104,42 +98,29 @@ test('Anime Art Resolution, Keyphrase Duplication & Clue Discipline', async () =
     year: 1995,
     originalFilePath: '/test/gundam_op1.webm',
   });
+  db.insertSample({ animeTrackId: trackId, sampleIndex: 1, samplePath: '/test/samples/gundam_1.mp3', sampleUrl: '/audio/anime/gundam_1.mp3', offsetSeconds: 10 });
+  return { db, trackId };
+}
 
-  testAnimeDb.insertSample({
-    animeTrackId: trackId,
-    sampleIndex: 1,
-    samplePath: '/test/samples/gundam_1.mp3',
-    sampleUrl: '/audio/anime/gundam_1.mp3',
-    offsetSeconds: 10,
-  });
+test('cover art is stored per track and per series and served with the track', () => {
+  const { db, trackId } = gundamCatalog();
+  const first = () => db.getRandomAnimeTracks({ count: 5 })[0];
+  assert.equal(first().albumArt, '');
 
-  // Initially has no image
-  const initialTracks = testAnimeDb.getRandomAnimeTracks({ count: 5 });
-  assert(initialTracks.length === 1, 'Returns upserted test track');
-  assert(initialTracks[0].albumArt === '', 'Track initially has empty albumArt');
+  assert.equal(db.updateTrackImageUrl(trackId, 'https://s4.anilist.co/file/gundam_wing.jpg'), true);
+  assert.equal(first().albumArt, 'https://s4.anilist.co/file/gundam_wing.jpg');
+  assert.equal(first().imageUrl, 'https://s4.anilist.co/file/gundam_wing.jpg');
 
-  // Update track image directly
-  const updateSuccess = testAnimeDb.updateTrackImageUrl(trackId, 'https://s4.anilist.co/file/gundam_wing.jpg');
-  assert(updateSuccess === true, 'updateTrackImageUrl returns true on success');
+  assert.equal(db.updateAnimeCoverByTitle('Mobile Suit Gundam Wing', 'https://s4.anilist.co/file/gundam_series.jpg'), 1);
+  assert.equal(first().albumArt, 'https://s4.anilist.co/file/gundam_series.jpg');
+  db.close();
+});
 
-  const hydratedTracks = testAnimeDb.getRandomAnimeTracks({ count: 5 });
-  assert(hydratedTracks[0].albumArt === 'https://s4.anilist.co/file/gundam_wing.jpg', 'getRandomAnimeTracks returns updated albumArt');
-  assert(hydratedTracks[0].imageUrl === 'https://s4.anilist.co/file/gundam_wing.jpg', 'getRandomAnimeTracks returns updated imageUrl');
-
-  // Update by series title
-  const bulkUpdated = testAnimeDb.updateAnimeCoverByTitle('Mobile Suit Gundam Wing', 'https://s4.anilist.co/file/gundam_series.jpg');
-  assert(bulkUpdated === 1, 'updateAnimeCoverByTitle updates 1 track matching series');
-
-  const seriesHydrated = testAnimeDb.getRandomAnimeTracks({ count: 5 });
-  assert(seriesHydrated[0].albumArt === 'https://s4.anilist.co/file/gundam_series.jpg', 'Bulk series update populates albumArt');
-
-  // 6. resolveAnimeCoverImages service handles existing albumArt gracefully
-  const mockAnimeTracks = [
+test('resolveAnimeCoverImages keeps artwork a track already has', async () => {
+  const { db } = gundamCatalog();
+  const [resolved] = await resolveAnimeCoverImages([
     { id: 'anime_1', animeTitle: 'Mobile Suit Gundam Wing', albumArt: 'https://s4.anilist.co/existing.jpg', isAnimeOped: true },
-    { id: 'anime_2', animeTitle: 'Non-anime', albumArt: 'https://example.com/cover.jpg', isAnimeOped: false },
-  ];
-  const resolvedResult = await resolveAnimeCoverImages(mockAnimeTracks, { animeDb: testAnimeDb });
-  assert(resolvedResult[0].albumArt === 'https://s4.anilist.co/existing.jpg', 'resolveAnimeCoverImages preserves pre-existing artwork');
-
-  testAnimeDb.close();
+  ], { animeDb: db });
+  assert.equal(resolved.albumArt, 'https://s4.anilist.co/existing.jpg');
+  db.close();
 });

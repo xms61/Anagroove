@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.20.1] - 2026-09-23
+
+### Changed
+- **Server tests are split into one test per behaviour: 429 named tests, up from 56.** Before, 15 of 23 files were a single `test()` with 8–116 unrelated asserts, so the first failure hid the rest and the test name said nothing. Rule corpora are tables (`languageCorpus`, `selectionPolicy`, `musicKeywords`, `validators`). Shared state between steps became small fixture builders.
+- `assert(a === b, msg)` → `assert.equal(a, b)` (a codemod over 471 asserts), so a failure shows the actual and expected values.
+- Tests moved to the module they cover:
+  - `trackNormalization.test.js`: version classes, keys, ISRC, years, display text.
+  - `authenticity.test.js`: the crawler filter corpus.
+  - `userStore.test.js` and `catalogWindow.test.js`: RNG, weighted order, the SQL window.
+  - `itunesProvider.test.js`.
+  - `languageCorpus.test.js` now holds every track-language, artist-vote and script case (they were in three files).
+- `hardening` and `apiIntegration` share one server per `describe` block. The nested WebSocket callbacks became linear `await`s.
+- `scripts/tests/TESTING.md` gained a short "Writing tests" rule set.
+
+### Added
+- `trackPicker.test.js`: a named artist is never an answer and never gets artist clues; an anime keyphrase is banned; one song per artist; recency tiers. The old anime-art check only split a string inside the test itself.
+
+### Removed
+- Tests that checked nothing: `assert(true)` after a timing-based rate-limiter check, `typeof harvester.x === 'function'`, seed-list sizes, a keyphrase check that ran its own inline code, and a text search in `vite.config.ts`.
+
+---
+
 ## [1.20.0] - 2026-09-23
 
 ### Fixed

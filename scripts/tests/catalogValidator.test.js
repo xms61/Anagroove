@@ -5,117 +5,92 @@ import { runCatalogCleanup } from '../../server/db/catalogCleanup.js';
 import { evaluateCatalogGate } from '../../server/db/catalogGate.js';
 import { CatalogValidator } from '../../server/db/catalogValidator.js';
 
-test('Database Validation Engine, Dupe Detection & Diagnostics', async () => {
-  const memCatalog = new SqliteCatalog(':memory:');
-  const validator = new CatalogValidator(memCatalog.db);
-
-  // 1. Pragmas check
-  const pragmas = validator.checkPragmas();
-  assert(pragmas.integrityOk === true, 'In-memory catalog passes integrity check');
-  assert(pragmas.foreignKeysOk === true, 'In-memory catalog has zero foreign key violations');
-
-  // 2. Populate test data with duplicates and anomalies
-  // Track 1
-  memCatalog.upsertTrack({
-    title: 'Starboy',
-    artist: 'The Weeknd',
-    isrc: 'USUM71607007',
-    album: 'Starboy',
-    durationMs: 230000,
-    popularity: 950000,
-    provider: 'deezer',
-    providerTrackId: '138597793',
-    sampleUrl: 'https://cdns-preview.deezer.com/preview-1.mp3',
-    releaseYear: 2016,
+/**
+ * Starboy (clean), a duplicate Starboy row, an audiobook and an 8-second clip.
+ * The last three are legacy rows that upsertTrack refuses today, so they are inserted with SQL.
+ */
+function fixtureCatalog() {
+  const catalog = new SqliteCatalog(':memory:');
+  catalog.upsertTrack({
+    title: 'Starboy', artist: 'The Weeknd', isrc: 'USUM71607007', album: 'Starboy', durationMs: 230000, popularity: 950000,
+    provider: 'deezer', providerTrackId: '138597793', sampleUrl: 'https://cdns-preview.deezer.com/preview-1.mp3', releaseYear: 2016,
     artistMetadata: { genres: ['Pop', 'R&B'] },
   });
-
-  // Track 2: Soft duplicate of Track 1 (same artist, same canonical title, duration delta = 1000ms)
-  memCatalog.db.prepare(`
+  catalog.db.prepare(`
     INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date, country_code, language, popularity, is_explicit)
     VALUES ('USUM71607008', 'starboy', 'Starboy', 1, 'Starboy (Deluxe)', 231000, 2016, '2016-11-25', 'US', 'en', 900000, 1)
   `).run();
 
-  // Legacy junk from before the admission policy existed (upsertTrack now refuses these rows)
-  const insertLegacyTrack = ({ title, artist, canonicalArtist, isrc, album, durationMs, providerTrackId, sampleUrl, genres = null }) => {
-    memCatalog.db.prepare('INSERT OR IGNORE INTO artists (canonical_name, display_name, genres_json) VALUES (?, ?, ?)')
-      .run(canonicalArtist, artist, genres ? JSON.stringify(genres) : null);
-    const artistId = memCatalog.db.prepare('SELECT id FROM artists WHERE canonical_name = ?').get(canonicalArtist).id;
-    const trackId = Number(memCatalog.db.prepare(`
+  const insertLegacyTrack = ({ title, artist, isrc, album, durationMs, providerTrackId, genres = null }) => {
+    catalog.db.prepare('INSERT OR IGNORE INTO artists (canonical_name, display_name, genres_json) VALUES (?, ?, ?)')
+      .run(artist.toLowerCase(), artist, genres ? JSON.stringify(genres) : null);
+    const artistId = catalog.db.prepare('SELECT id FROM artists WHERE canonical_name = ?').get(artist.toLowerCase()).id;
+    const trackId = Number(catalog.db.prepare(`
       INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, language, popularity)
       VALUES (?, ?, ?, ?, ?, ?, 'de', 41)
     `).run(isrc, normalizeDedupeTitle(title), title, artistId, album, durationMs).lastInsertRowid);
-    memCatalog.insertSample(trackId, { provider: 'deezer', providerTrackId, sampleUrl });
-    memCatalog.db.prepare("INSERT INTO track_providers (track_id, provider, provider_track_id) VALUES (?, 'deezer', ?)").run(trackId, providerTrackId);
+    catalog.insertSample(trackId, { provider: 'deezer', providerTrackId, sampleUrl: `https://cdns-preview.deezer.com/${providerTrackId}.mp3` });
+    catalog.db.prepare("INSERT INTO track_providers (track_id, provider, provider_track_id) VALUES (?, 'deezer', ?)").run(trackId, providerTrackId);
   };
+  insertLegacyTrack({ title: 'Kapitel 1 - Das Schloss', artist: 'Gruselkabinett', isrc: 'DEUM71600001', album: 'Folge 01', durationMs: 120000, providerTrackId: '999999', genres: ['Spoken Word'] });
+  insertLegacyTrack({ title: 'Intro SFX', artist: 'Sound Effects FX', isrc: 'USFX71600001', album: 'Effects', durationMs: 8000, providerTrackId: '888888' });
 
-  // Track 3: Contaminated audiobook track
-  insertLegacyTrack({
-    title: 'Kapitel 1 - Das Schloss',
-    artist: 'Gruselkabinett',
-    canonicalArtist: 'gruselkabinett',
-    isrc: 'DEUM71600001',
-    album: 'Folge 01',
-    durationMs: 120000,
-    providerTrackId: '999999',
-    sampleUrl: 'https://cdns-preview.deezer.com/preview-audiobook.mp3',
-    genres: ['Spoken Word'],
-  });
+  return { catalog, validator: new CatalogValidator(catalog.db) };
+}
 
-  // Track 4: Short duration anomaly (< 15s)
-  insertLegacyTrack({
-    title: 'Intro SFX',
-    artist: 'Sound Effects FX',
-    canonicalArtist: 'sound effects fx',
-    isrc: 'USFX71600001',
-    album: 'Effects',
-    durationMs: 8000,
-    providerTrackId: '888888',
-    sampleUrl: 'https://cdns-preview.deezer.com/preview-sfx.mp3',
-  });
+test('a fresh catalog passes the integrity and foreign-key checks', () => {
+  const { catalog, validator } = fixtureCatalog();
+  const pragmas = validator.checkPragmas();
+  assert.equal(pragmas.integrityOk, true);
+  assert.equal(pragmas.foreignKeysOk, true);
+  catalog.close();
+});
 
-  // 3. Test findDuplicates
-  const dupes = validator.findDuplicates();
-  assert(dupes.softDuplicateClustersCount === 1, 'Detects exactly 1 soft duplicate cluster');
-  assert(dupes.softDuplicatesSample[0].artist === 'The Weeknd', 'Identifies duplicate artist as The Weeknd');
+test('diagnostics find the duplicate, the too-short clip and the audiobook', () => {
+  const { catalog, validator } = fixtureCatalog();
+  const duplicates = validator.findDuplicates();
+  assert.equal(duplicates.softDuplicateClustersCount, 1);
+  assert.equal(duplicates.softDuplicatesSample[0].artist, 'The Weeknd');
 
-  // 4. Test findDataAnomalies
   const anomalies = validator.findDataAnomalies();
-  assert(anomalies.durationAnomalies.tooShortCount === 1, 'Detects track under 15 seconds');
-  assert(anomalies.contamination.audiobooksCount === 1, 'Detects Gruselkabinett audiobook contamination');
-  assert(anomalies.contamination.totalContaminatedCount === 1, 'Tallies total contaminated tracks');
+  assert.equal(anomalies.durationAnomalies.tooShortCount, 1);
+  assert.equal(anomalies.contamination.audiobooksCount, 1);
+  assert.equal(anomalies.contamination.totalContaminatedCount, 1);
 
-  // 5. Test generateStatistics
-  const stats = validator.generateStatistics();
-  assert(stats.overview.totalTracks === 4, 'Counts 4 total tracks in test database');
-  assert(stats.overview.totalArtists === 3, 'Counts 3 distinct artists in test database');
-  assert(stats.overview.sampleCoveragePct === 75, 'Computes 75% audio sample coverage (3/4 tracks with samples)');
-  assert(stats.popularity.normalizedAvgPop > 0, 'Computes normalized average popularity');
+  const { overview, popularity } = validator.generateStatistics();
+  assert.equal(overview.totalTracks, 4);
+  assert.equal(overview.totalArtists, 3);
+  assert.equal(overview.sampleCoveragePct, 75);
+  assert.ok(popularity.normalizedAvgPop > 0);
+  catalog.close();
+});
 
-  // 6. Cleanup dry run changes nothing
-  const dryCleanup = runCatalogCleanup(memCatalog.db);
-  assert(dryCleanup.applied === false && validator.generateStatistics().overview.totalTracks === 4, 'Cleanup dry run rolls back');
+test('the cleanup dry run changes nothing; applying it merges the duplicate and deletes the junk', () => {
+  const { catalog, validator } = fixtureCatalog();
+  assert.equal(runCatalogCleanup(catalog.db).applied, false);
+  assert.equal(validator.generateStatistics().overview.totalTracks, 4);
 
-  // 7. Cleanup merges the duplicate and deletes the audiobook and the 8-second clip
-  const cleanup = runCatalogCleanup(memCatalog.db, { apply: true });
-  assert(cleanup.steps.find(s => s.name === 'duplicates').removed === 1, 'Cleanup merges the duplicate Starboy row');
-  assert(cleanup.steps.find(s => s.name === 'policy').deleted === 2, 'Cleanup deletes the audiobook and the too-short clip');
+  const cleanup = runCatalogCleanup(catalog.db, { apply: true });
+  assert.equal(cleanup.steps.find(s => s.name === 'duplicates').removed, 1);
+  assert.equal(cleanup.steps.find(s => s.name === 'policy').deleted, 2);
+  assert.equal(validator.generateStatistics().overview.totalTracks, 1);
+  assert.equal(validator.findDuplicates().softDuplicateClustersCount, 0);
+  catalog.close();
+});
 
-  // 8. Verify post-cleanup state
-  const postStats = validator.generateStatistics();
-  assert(postStats.overview.totalTracks === 1, '1 canonical track remains after cleanup');
-  const postDupes = validator.findDuplicates();
-  assert(postDupes.softDuplicateClustersCount === 0, 'Zero duplicate groups remain after cleanup');
-
-  // 9. Test Report Generation
-  const reportMd = validator.generateMarkdownReport({
-    pragmas,
+test('the markdown report includes the gate section', () => {
+  const { catalog, validator } = fixtureCatalog();
+  const cleanup = runCatalogCleanup(catalog.db, { apply: true });
+  const report = validator.generateMarkdownReport({
+    pragmas: validator.checkPragmas(),
     orphans: validator.findOrphans(),
-    duplicates: postDupes,
+    duplicates: validator.findDuplicates(),
     anomalies: validator.findDataAnomalies(),
-    stats: postStats,
+    stats: validator.generateStatistics(),
     cleanup,
-    gate: evaluateCatalogGate(memCatalog.db, { minYearCoverage: 0, minIsrcCoverage: 0 }),
+    gate: evaluateCatalogGate(catalog.db, { minYearCoverage: 0, minIsrcCoverage: 0 }),
   });
-  assert(typeof reportMd === 'string' && reportMd.includes('# SpotySpice Database Validation') && reportMd.includes('## 8. Validation Gate'), 'Generates valid markdown report string');
+  assert.ok(report.includes('# SpotySpice Database Validation'));
+  assert.ok(report.includes('## 8. Validation Gate'));
+  catalog.close();
 });
