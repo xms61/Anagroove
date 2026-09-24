@@ -24,4 +24,4 @@ gh pr create --base main --head <branch> --title "<type>(<scope>): <summary> (v<
 ```
 If a PR is already open for the branch, push more commits to it.
 
-CI (`.github/workflows/ci.yml`, Node from `.nvmrc`) runs lint, typecheck, server tests with coverage thresholds, frontend tests, the validation gate on a generated fixture catalog, and the build. A second job runs the Playwright smoke test. `manual-release.yml` does the tagged Docker release.
+CI (`.github/workflows/ci.yml`, Node from `.nvmrc`) runs lint, typecheck, server tests with coverage thresholds, frontend tests, the validation gate on a generated fixture catalog, and the build. A second job runs the Playwright smoke test. `manual-release.yml` does the tagged release: a read-only `validate` job (version check, tests, Docker build), then a `release` job, the only one with write access, that tags and publishes. Workflow tokens are read-only unless a job asks for more, and actions are pinned to commit SHAs (Dependabot proposes updates).

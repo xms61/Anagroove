@@ -1,0 +1,7 @@
+# Keeps the SHA-pinned workflow actions current; each update arrives as a PR to review
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
