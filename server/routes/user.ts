@@ -2,20 +2,21 @@
  * Per-user state: progress, solved history and blacklist. Every route requires a valid
  * anonymous X-User-Id.
  */
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import { db } from '../db.ts';
-import { validateBlacklistPayload, validateHistoryPayload, validateProgressPayload, validateUserId } from '../validators.js';
+import { validateBlacklistPayload, validateHistoryPayload, validateProgressPayload, validateUserId } from '../validators.ts';
 
-export function requireUserId(req, res, next) {
+export const requireUserId: RequestHandler = (req, res, next) => {
   const validatedId = validateUserId(req.headers['x-user-id'] || req.query.userId);
   if (!validatedId) {
-    return res.status(400).json({
+    res.status(400).json({
       error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)',
     });
+    return;
   }
   req.userId = validatedId;
   next();
-}
+};
 
 export function createUserRouter() {
   const router = express.Router();

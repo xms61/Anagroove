@@ -1,17 +1,17 @@
 {
   "name": "anagroove",
   "private": true,
-  "version": "1.28.5",
+  "version": "1.28.6",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "concurrently \"node server/server.js\" \"vite\"",
+    "dev": "concurrently \"node server/server.ts\" \"vite\"",
     "dev:client": "vite",
-    "dev:server": "node server/server.js",
+    "dev:server": "node server/server.ts",
     "build": "tsc && vite build",
-    "start": "node server/server.js",
+    "start": "node server/server.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

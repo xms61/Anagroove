@@ -1,17 +1,15 @@
 /**
  * In-memory sliding window rate limiter middleware for Express and WebSocket throttling.
  */
+import type { RequestHandler } from 'express';
 
-/**
- * Creates an Express sliding-window rate limiter middleware.
- *
- * @param {Object} options
- * @param {number} options.windowMs - Time window in milliseconds
- * @param {number} options.max - Max requests allowed in the window
- * @param {string} [options.message] - Custom error message
- */
-export function createRateLimiter({ windowMs = 60000, max = 100, message = 'Too many requests, please try again later.' } = {}) {
-  const hits = new Map();
+/** An Express sliding-window rate limiter: at most `max` requests per IP in `windowMs`. */
+export function createRateLimiter({ windowMs = 60000, max = 100, message = 'Too many requests, please try again later.' }: {
+  windowMs?: number;
+  max?: number;
+  message?: string;
+} = {}): RequestHandler {
+  const hits = new Map<string, number[]>();
 
   // Periodic cleanup every minute
   const cleanupInterval = setInterval(() => {
@@ -39,7 +37,8 @@ export function createRateLimiter({ windowMs = 60000, max = 100, message = 'Too 
 
     if (recent.length >= max) {
       res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
-      return res.status(429).json({ error: message });
+      res.status(429).json({ error: message });
+      return;
     }
 
     recent.push(now);
@@ -51,17 +50,17 @@ export function createRateLimiter({ windowMs = 60000, max = 100, message = 'Too 
 /**
  * WebSocket IP connection tracker
  */
-const ipConnections = new Map();
+const ipConnections = new Map<string, number>();
 
 export const wsRateLimiter = {
-  checkConnection(ip, max = 15) {
+  checkConnection(ip: string, max = 15): boolean {
     const count = ipConnections.get(ip) || 0;
     if (count >= max) return false;
     ipConnections.set(ip, count + 1);
     return true;
   },
 
-  releaseConnection(ip) {
+  releaseConnection(ip: string): void {
     const count = ipConnections.get(ip) || 0;
     if (count <= 1) {
       ipConnections.delete(ip);
@@ -73,7 +72,7 @@ export const wsRateLimiter = {
   /**
    * Tracks message frequency per socket
    */
-  createMessageTracker(maxPerSec = 30) {
+  createMessageTracker(maxPerSec = 30): () => boolean {
     let windowStart = Date.now();
     let messageCount = 0;
 

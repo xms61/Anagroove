@@ -3,7 +3,7 @@ import { after, afterEach, before, describe, test } from 'node:test';
 import { blacklistMatchesTrack } from '../../shared/musicIdentity.js';
 import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.ts';
 import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.ts';
-import { server } from '../../server/server.js';
+import { server } from '../../server/server.ts';
 import { db } from '../../server/db.ts';
 import { wsTestClient } from './helpers.js';
 

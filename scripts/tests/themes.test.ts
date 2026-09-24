@@ -4,7 +4,7 @@ import { THEMES, themeById, genresForPrompt } from '../../shared/themes.ts';
 import { ALLOWED_LANGUAGES } from '../../server/db/trackNormalization.js';
 import { allowedLanguagesForContext } from '../../server/policy/selectionPolicy.ts';
 import { DEEZER_GENRE_TAXONOMY } from '../../server/services/deezerMusicProvider.ts';
-import { validateLivePuzzlePayload } from '../../server/validators.js';
+import { validateLivePuzzlePayload } from '../../server/validators.ts';
 
 test('theme ids are unique and every theme has a label, icon and description', () => {
   assert.equal(new Set(THEMES.map(t => t.id)).size, THEMES.length);

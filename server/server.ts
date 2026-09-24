@@ -3,8 +3,8 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createRateLimiter } from './middleware/rateLimiter.js';
-import { createLivePuzzleStore } from './http/livePuzzleStore.js';
+import { createRateLimiter } from './middleware/rateLimiter.ts';
+import { createLivePuzzleStore } from './http/livePuzzleStore.ts';
 import {
   clientIpFromUpgrade,
   corsPolicy,
@@ -13,10 +13,10 @@ import {
   requestLogger,
   securityHeaders,
   trustProxy,
-} from './http/security.js';
-import { createMusicRouter } from './routes/music.js';
-import { createUserRouter } from './routes/user.js';
-import { attachMultiplayer } from './ws/rooms.js';
+} from './http/security.ts';
+import { createMusicRouter } from './routes/music.ts';
+import { createUserRouter } from './routes/user.ts';
+import { attachMultiplayer } from './ws/rooms.ts';
 import { peekSqliteCatalog } from './db/sqliteCatalog.js';
 import { onShutdown } from './shutdown.ts';
 import { logger } from './logger.js';
@@ -24,7 +24,7 @@ import { logger } from './logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
+const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const app = express();
@@ -58,7 +58,7 @@ app.use('/api/puzzles/live', musicApiLimiter);
 // Local audio for generated anime OP/ED samples
 app.use('/audio/anime', express.static(path.join(__dirname, '../data/anime_samples')));
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 

@@ -4,6 +4,15 @@
  */
 import crypto from 'crypto';
 import { logger } from '../logger.js';
+import type { Puzzle } from '../../shared/types.ts';
+
+interface StoredPuzzle {
+  puzzle: Puzzle;
+  expiresAt: number;
+  expiryTimer: NodeJS.Timeout | null;
+}
+
+export type LivePuzzleStore = ReturnType<typeof createLivePuzzleStore>;
 
 const LIVE_PUZZLE_TTL_MS = 5 * 60 * 1000;
 const MAX_LIVE_PUZZLES = 100;
@@ -11,20 +20,20 @@ const MAX_LIVE_PUZZLES = 100;
 export function createLivePuzzleStore({
   ttlMs = LIVE_PUZZLE_TTL_MS,
   maxEntries = MAX_LIVE_PUZZLES,
-  createToken = crypto.randomUUID,
-} = {}) {
-  const puzzles = new Map();
+  createToken = (): string => crypto.randomUUID(),
+}: { ttlMs?: number; maxEntries?: number; createToken?: () => string } = {}) {
+  const puzzles = new Map<string, StoredPuzzle>();
   const capacity = Math.max(1, maxEntries);
 
-  function remove(token) {
+  function remove(token: string): StoredPuzzle | null {
     const record = puzzles.get(token);
     if (!record) return null;
-    clearTimeout(record.expiryTimer);
+    if (record.expiryTimer) clearTimeout(record.expiryTimer);
     puzzles.delete(token);
     return record;
   }
 
-  function expire(token) {
+  function expire(token: string): void {
     const record = puzzles.get(token);
     if (!record) return;
     const remainingMs = record.expiresAt - Date.now();
@@ -43,16 +52,17 @@ export function createLivePuzzleStore({
   }
 
   return {
-    add(puzzle) {
+    /** Stores a puzzle and returns its one-time token. */
+    add(puzzle: Puzzle): string {
       removeExpired();
       while (puzzles.size >= capacity) {
-        const evicted = puzzles.keys().next().value;
+        const evicted = puzzles.keys().next().value!;
         remove(evicted);
         logger.store('evicted', evicted, '(capacity reached)');
       }
 
       const token = createToken();
-      const record = {
+      const record: StoredPuzzle = {
         puzzle,
         expiresAt: Date.now() + ttlMs,
         expiryTimer: null,
@@ -63,7 +73,8 @@ export function createLivePuzzleStore({
       logger.store('created', token, `(active: ${puzzles.size})`);
       return token;
     },
-    consume(token) {
+    /** The stored puzzle, once; null when unknown or expired. */
+    consume(token: string): StoredPuzzle | null {
       const record = puzzles.get(token);
       if (!record || record.expiresAt <= Date.now()) {
         remove(token);
@@ -73,10 +84,10 @@ export function createLivePuzzleStore({
       logger.store('consumed', token);
       return remove(token);
     },
-    clear() {
+    clear(): void {
       for (const token of puzzles.keys()) remove(token);
     },
-    get size() {
+    get size(): number {
       removeExpired();
       return puzzles.size;
     },

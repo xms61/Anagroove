@@ -24,7 +24,7 @@ Object.assign(process.env, {
 // Server modules resolve their data paths on import, so they load after the env is set
 const { buildFixtureCatalog } = await import('../fixtures/fixtureCatalog.js');
 const { tracks } = buildFixtureCatalog(path.join(dataDir, 'catalog.sqlite'));
-const { server } = await import('../../../server/server.js');
+const { server } = await import('../../../server/server.ts');
 
 const port = Number(process.env.E2E_PORT) || 3101;
 server.listen(port, '127.0.0.1', () => {

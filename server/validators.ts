@@ -2,27 +2,42 @@
  * Input validation and sanitization for Anagroove backend endpoints & WebSockets.
  */
 
+import type { BlacklistType } from './db/userStore.ts';
+
+/** A validated value, or the reason it was rejected. */
+export type Validation<T> = { valid: true; data: T; error?: undefined } | { valid: false; error: string; data?: undefined };
+
+type Body = Record<string, unknown>;
+const isBody = (body: unknown): body is Body => Boolean(body) && typeof body === 'object';
+
+/** A WebSocket message after validation; room handlers read the fields their action needs. */
+export type WsMessage = Body & {
+  action: string;
+  playerId?: string;
+  playerName?: string;
+  roomCode?: string;
+  resumeToken?: string;
+  livePuzzleToken?: string;
+  row?: number;
+  col?: number;
+  char?: string;
+  progress?: number;
+};
+
 const USER_ID_REGEX = /^[a-zA-Z0-9_-]{3,64}$/;
 const ROOM_CODE_REGEX = /^[A-Za-z]{3,10}-\d{2,4}$/;
 const RESUME_TOKEN_REGEX = /^[a-f0-9]{32}$/;
 const PREVIEW_REF_REGEX = /^(deezer|itunes|catalog):\d{1,20}$/;
 
-/**
- * Validates a stable audio preview reference ("deezer:123", "itunes:456", "catalog:7").
- * @returns {string | null}
- */
-export function validatePreviewRef(ref) {
+/** Validates a stable audio preview reference ("deezer:123", "itunes:456", "catalog:7"). */
+export function validatePreviewRef(ref: unknown): string | null {
   if (typeof ref !== 'string') return null;
   const trimmed = ref.trim();
   return PREVIEW_REF_REGEX.test(trimmed) ? trimmed : null;
 }
 
-/**
- * Validates format and length of anonymous user ID.
- * @param {any} userId
- * @returns {string | null} Sanitized userId or null if invalid
- */
-export function validateUserId(userId) {
+/** The trimmed anonymous user id, or null when its format or length is invalid. */
+export function validateUserId(userId: unknown): string | null {
   if (typeof userId !== 'string') return null;
   const trimmed = userId.trim();
   if (!USER_ID_REGEX.test(trimmed)) return null;
@@ -32,8 +47,8 @@ export function validateUserId(userId) {
 /**
  * Validates progress save payload
  */
-export function validateProgressPayload(body) {
-  if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
+export function validateProgressPayload(body: unknown): Validation<{ puzzleId: string; themeId: string; userLetters: string[][]; validity: unknown[] }> {
+  if (!isBody(body)) return { valid: false, error: 'Invalid payload body' };
 
   const { puzzleId, themeId, userLetters, validity } = body;
 
@@ -49,10 +64,11 @@ export function validateProgressPayload(body) {
     return { valid: false, error: 'Invalid userLetters grid dimensions' };
   }
 
-  const cols = userLetters[0]?.length;
-  if (!Array.isArray(userLetters[0]) || cols === 0 || cols > 30) {
+  const firstRow: unknown = userLetters[0];
+  if (!Array.isArray(firstRow) || firstRow.length === 0 || firstRow.length > 30) {
     return { valid: false, error: 'Invalid userLetters grid columns' };
   }
+  const cols = firstRow.length;
 
   for (const row of userLetters) {
     if (!Array.isArray(row) || row.length !== cols) {
@@ -69,7 +85,7 @@ export function validateProgressPayload(body) {
     if (!Array.isArray(validity) || validity.length !== userLetters.length) {
       return { valid: false, error: 'Invalid validity dimensions' };
     }
-    const allowed = new Set(['untested', 'correct', 'wrong', 'incorrect', null, '']);
+    const allowed = new Set<unknown>(['untested', 'correct', 'wrong', 'incorrect', null, '']);
     for (const row of validity) {
       if (!Array.isArray(row) || row.length !== cols) {
         return { valid: false, error: 'Inconsistent grid rows in validity' };
@@ -87,8 +103,8 @@ export function validateProgressPayload(body) {
     data: {
       puzzleId: puzzleId.trim(),
       themeId: typeof themeId === 'string' ? themeId.trim() : 'mixed',
-      userLetters,
-      validity: validity || []
+      userLetters: userLetters as string[][],
+      validity: Array.isArray(validity) ? validity : []
     }
   };
 }
@@ -96,8 +112,8 @@ export function validateProgressPayload(body) {
 /**
  * Validates history save payload
  */
-export function validateHistoryPayload(body) {
-  if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
+export function validateHistoryPayload(body: unknown): Validation<{ puzzleId: string; title: string; cluesCount: number; timeSeconds: number }> {
+  if (!isBody(body)) return { valid: false, error: 'Invalid payload body' };
 
   const { puzzleId, title, cluesCount, timeSeconds } = body;
 
@@ -105,12 +121,12 @@ export function validateHistoryPayload(body) {
     return { valid: false, error: 'Invalid puzzleId' };
   }
 
-  const clues = parseInt(cluesCount);
+  const clues = parseInt(String(cluesCount));
   if (isNaN(clues) || clues < 0 || clues > 150) {
     return { valid: false, error: 'Invalid cluesCount' };
   }
 
-  const time = parseFloat(timeSeconds);
+  const time = parseFloat(String(timeSeconds));
   if (isNaN(time) || time < 0 || time > 86400) {
     return { valid: false, error: 'Invalid timeSeconds' };
   }
@@ -129,8 +145,8 @@ export function validateHistoryPayload(body) {
 /**
  * Validates blacklist payload
  */
-export function validateBlacklistPayload(body) {
-  if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
+export function validateBlacklistPayload(body: unknown): Validation<{ name: string; type: BlacklistType; provider?: string; providerArtistId?: string; providerTrackId?: string }> {
+  if (!isBody(body)) return { valid: false, error: 'Invalid payload body' };
 
   const { name, type, provider, providerArtistId, providerTrackId } = body;
 
@@ -173,19 +189,33 @@ const PUZZLE_LANGUAGES = ['en', 'ja', 'ko'];
 
 /**
  * Optional language filter: an array (JSON body) or comma list (query string) of en/ja/ko.
- * @returns {{ valid: boolean, languages?: string[] }} languages is undefined when not set
+ * `languages` is undefined when not set.
  */
-export function parseLanguageFilter(value) {
+export function parseLanguageFilter(value: unknown): { valid: boolean; languages?: string[] } {
   if (value === undefined || value === null || value === '') return { valid: true, languages: undefined };
-  const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : null;
+  const list: unknown[] | null = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : null;
   if (!list || list.length > 3) return { valid: false };
   const languages = [...new Set(list.map(v => String(v).trim().toLowerCase()))];
   if (!languages.every(l => PUZZLE_LANGUAGES.includes(l))) return { valid: false };
   return { valid: true, languages: languages.length > 0 ? languages : undefined };
 }
 
-export function validateLivePuzzlePayload(body) {
-  if (!body || typeof body !== 'object') return { valid: false, error: 'Invalid payload body' };
+export interface LivePuzzleRequest {
+  genre: string;
+  minFans: number;
+  targetWords: number;
+  recentIds: string[];
+  prompt: string;
+  artist: string;
+  album: string;
+  decade: string;
+  popularity?: string;
+  seed?: string;
+  languages?: string[];
+}
+
+export function validateLivePuzzlePayload(body: unknown): Validation<LivePuzzleRequest> {
+  if (!isBody(body)) return { valid: false, error: 'Invalid payload body' };
   if (body.genre !== undefined && typeof body.genre !== 'string') return { valid: false, error: 'Invalid genre' };
   if (body.prompt !== undefined && typeof body.prompt !== 'string') return { valid: false, error: 'Invalid prompt' };
   if (body.artist !== undefined && typeof body.artist !== 'string') return { valid: false, error: 'Invalid artist' };
@@ -200,10 +230,10 @@ export function validateLivePuzzlePayload(body) {
 
   const rawGenre = typeof body.genre === 'string' ? body.genre.trim().toLowerCase() : 'all';
   const genre = rawGenre.replace(/[^a-z0-9_\s-]/g, '').slice(0, 50) || 'all';
-  const minFans = Math.max(0, Math.min(50000000, parseInt(body.minFans) || 250000));
-  const targetWords = Math.max(6, Math.min(15, parseInt(body.targetWords) || 10));
+  const minFans = Math.max(0, Math.min(50000000, parseInt(String(body.minFans)) || 250000));
+  const targetWords = Math.max(6, Math.min(15, parseInt(String(body.targetWords)) || 10));
   const recentIds = Array.isArray(body.recentIds)
-    ? body.recentIds
+    ? (body.recentIds as unknown[])
       .slice(-50)
       .filter(id => typeof id === 'string' || typeof id === 'number')
       .map(id => String(id).trim().slice(0, 100))
@@ -240,12 +270,12 @@ export function validateLivePuzzlePayload(body) {
 /**
  * Validates and sanitizes random music query parameters
  */
-export function validateMusicQuery(query) {
+export function validateMusicQuery(query: Record<string, unknown>) {
   const genre = typeof query.genre === 'string' ? query.genre.slice(0, 50).toLowerCase().replace(/[^a-z0-9_\s-]/g, '') : 'all';
-  const minFans = Math.max(0, Math.min(50000000, parseInt(query.minFans) || 250000));
-  const count = Math.max(1, Math.min(50, parseInt(query.count) || 25));
+  const minFans = Math.max(0, Math.min(50000000, parseInt(String(query.minFans)) || 250000));
+  const count = Math.max(1, Math.min(50, parseInt(String(query.count)) || 25));
   
-  let recentIds = [];
+  let recentIds: string[] = [];
   if (typeof query.recent === 'string') {
     recentIds = query.recent
       .split(',')
@@ -289,10 +319,11 @@ const ALLOWED_WS_ACTIONS = new Set([
   'puzzle_solved'
 ]);
 
-export function validateWsMessage(data) {
-  if (!data || typeof data !== 'object') {
+export function validateWsMessage(message: unknown): Validation<WsMessage> {
+  if (!isBody(message)) {
     return { valid: false, error: 'Invalid message payload' };
   }
+  const data = message as WsMessage;
 
   if (!ALLOWED_WS_ACTIONS.has(data.action)) {
     return { valid: false, error: `Unrecognized action: ${data.action}` };
@@ -329,8 +360,8 @@ export function validateWsMessage(data) {
   }
 
   if (data.action === 'coop_cell_update') {
-    const row = parseInt(data.row);
-    const col = parseInt(data.col);
+    const row = parseInt(String(data.row));
+    const col = parseInt(String(data.col));
     if (isNaN(row) || row < 0 || row > 30 || isNaN(col) || col < 0 || col > 30) {
       return { valid: false, error: 'Invalid row or col coordinates' };
     }
@@ -340,7 +371,7 @@ export function validateWsMessage(data) {
   }
 
   if (data.action === 'race_progress_update') {
-    const progress = parseFloat(data.progress);
+    const progress = parseFloat(String(data.progress));
     if (isNaN(progress) || progress < 0 || progress > 100) {
       return { valid: false, error: 'Progress must be a number between 0 and 100' };
     }

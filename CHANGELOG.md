@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.6] - 2026-09-24
+
+### Changed
+- **The HTTP and WebSocket server is TypeScript:**
+  - `server/server.ts`, `server/validators.ts`
+  - `server/http/` (`security`, `livePuzzleStore`), `server/middleware/rateLimiter`
+  - `server/routes/` (`music`, `user`), `server/ws/rooms`
+- **`npm run dev`, `npm start` and the Docker image run `node server/server.ts`.**
+- **Typed request data:**
+  - `Validation<T>`: a validator returns the parsed data or the rejection reason
+  - `LivePuzzleRequest`, `WsMessage`
+  - `Player` and `Room` for multiplayer rooms
+  - `server/express.d.ts` adds `userId` to Express requests
+- **`PORT` is read as a number.**
+- **The first multiplayer player color is `#3de0ff`** instead of the old Spotify green.
+- **Tests:** `deezerProvider` and `validators` are TypeScript. `apiIntegration`, `blacklist` and `hardening` move with the test helpers.
+
+---
+
 ## [1.28.5] - 2026-09-23
 
 ### Changed
@@ -77,11 +96,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.1] - 2026-09-24
-
-### Changed
-- The crawler's, the anime sync script's and the anime image service's User-Agents now link to the renamed repository (`github.com/xms61/Anagroove`); the image service's had no contact URL before.
-
----
-
-Older releases (1.28.0 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.1 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

@@ -7,6 +7,6 @@
     "noImplicitAny": false,
     "strictNullChecks": false
   },
-  "include": ["scripts/tests"],
+  "include": ["scripts/tests", "server/express.d.ts"],
   "exclude": ["scripts/tests/e2e/*.spec.ts"]
 }
