@@ -4,7 +4,8 @@
  * resumable, can be capped with a limit, and never re-request the same row forever.
  *
  *   albums    /album/{id}   -> release date for every catalog track on the album
- *   deezer    /track/{id}   -> ISRC, release date, rank (popularity) for in-scope tracks
+ *   deezer    /track/{id}   -> ISRC, release date, rank (popularity) for in-scope tracks;
+ *             /track/isrc:X -> the Deezer link for tracks known only from the Spotify dumps
  *   artists   /artist/{id}  -> fan count; /album/{id} -> genres
  *   itunes    iTunes search -> strict artist + base title + duration match, attached to the
  *                              existing row (never creates tracks)
@@ -37,9 +38,13 @@ export type EnrichProgress = { step: string; checked: number; total: number } & 
 type StepOptions = { limit?: number; onProgress?: (progress: EnrichProgress) => void };
 
 interface DeezerTrackJson {
+  id?: number;
   isrc?: string;
   release_date?: string;
   rank?: number;
+  link?: string;
+  album?: { id?: number };
+  artist?: { id?: number };
 }
 
 interface DeezerAlbumJson {
@@ -116,16 +121,18 @@ export class CatalogEnricher {
 
   /**
    * Deezer /track/{id}: ISRC, release date, rank. Most popular tracks first.
+   * A track with no Deezer link (from the Spotify dumps) is looked up by its ISRC instead and
+   * gets the link, so its preview resolves without a search.
    */
   async enrichDeezerTracks({ limit = 2000, onProgress = () => {} }: StepOptions = {}) {
     const work = this.db.prepare(`
-      SELECT t.id, t.isrc, t.release_year, t.deezer_rank, t.spotify_popularity,
+      SELECT t.id, t.isrc, t.release_year, t.deezer_rank, t.artist_id,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id
       FROM tracks t
       WHERE ${IN_SCOPE}
         AND t.enriched_at IS NULL
         AND (t.isrc IS NULL OR t.release_year IS NULL OR t.deezer_rank IS NULL)
-        AND EXISTS (SELECT 1 FROM track_providers p WHERE p.track_id = t.id AND p.provider = 'deezer')
+        AND (t.isrc IS NOT NULL OR EXISTS (SELECT 1 FROM track_providers p WHERE p.track_id = t.id AND p.provider = 'deezer'))
       ORDER BY t.popularity DESC
       LIMIT ?
     `).all(limit) as {
@@ -133,7 +140,8 @@ export class CatalogEnricher {
       isrc: string | null;
       release_year: number | null;
       deezer_rank: number | null;
-      deezer_id: string;
+      artist_id: number;
+      deezer_id: string | null;
     }[];
 
     const isrcOwner = this.db.prepare('SELECT id FROM tracks WHERE isrc = ?');
@@ -149,12 +157,27 @@ export class CatalogEnricher {
       WHERE id = ?
     `);
     const markAttempted = this.db.prepare("UPDATE tracks SET enriched_at = datetime('now') WHERE id = ?");
+    const providerOwner = this.db.prepare("SELECT track_id FROM track_providers WHERE provider = 'deezer' AND provider_track_id = ?");
+    const insertProvider = this.db.prepare(`
+      INSERT INTO track_providers (track_id, provider, provider_track_id, external_url, raw_metadata_json, harvested_at)
+      VALUES (?, 'deezer', ?, ?, ?, datetime('now'))
+    `);
+    const setDeezerArtist = this.db.prepare('UPDATE artists SET deezer_id = ? WHERE id = ? AND deezer_id IS NULL AND NOT EXISTS (SELECT 1 FROM artists WHERE deezer_id = ?)');
 
-    const stats = { checked: 0, updated: 0, isrcFilled: 0, yearFilled: 0, isrcConflicts: 0, missing: 0, errors: 0 };
+    const linkByIsrc = (row: { id: number; artist_id: number }, data: DeezerTrackJson) => {
+      const deezerId = String(data.id);
+      if (!data.id || providerOwner.get(deezerId)) return false;
+      insertProvider.run(row.id, deezerId, data.link || null, JSON.stringify({ albumId: data.album?.id ?? null }));
+      if (data.artist?.id) setDeezerArtist.run(data.artist.id, row.artist_id, data.artist.id);
+      return true;
+    };
+
+    const stats = { checked: 0, updated: 0, isrcFilled: 0, yearFilled: 0, isrcConflicts: 0, linkedByIsrc: 0, linkConflicts: 0, missing: 0, errors: 0 };
     for (const row of work) {
       if (this.abortRequested) break;
       stats.checked++;
-      const { status, data } = await this.getJson<DeezerTrackJson>(`https://api.deezer.com/track/${row.deezer_id}`, deezerRateLimiter);
+      const path = row.deezer_id || `isrc:${row.isrc}`;
+      const { status, data } = await this.getJson<DeezerTrackJson>(`https://api.deezer.com/track/${path}`, deezerRateLimiter);
       if (status === 'error') {
         stats.errors++; // left un-stamped so a later run retries
         continue;
@@ -163,6 +186,10 @@ export class CatalogEnricher {
         stats.missing++;
         markAttempted.run(row.id);
         continue;
+      }
+      if (!row.deezer_id) {
+        if (linkByIsrc(row, data)) stats.linkedByIsrc++;
+        else stats.linkConflicts++; // the Deezer track belongs to another row: a duplicate for `npm run db:sanitize`
       }
 
       let isrc = row.isrc ? null : normalizeIsrc(data.isrc);

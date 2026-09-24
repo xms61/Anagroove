@@ -126,11 +126,13 @@ async function attachPreviewRefs(songs: PickedSong[]): Promise<PickedSong[]> {
     }
   }
 
-  return songs.filter(s => {
-    const hasAudio = typeof s.audioUrl === 'string' && (s.audioUrl.startsWith('/api/preview/') || s.audioUrl.startsWith('/audio/'));
-    if (!hasAudio) logger.warn('music_service', `Filtered out track "${s.artist} - ${s.title}" due to missing audio preview`);
-    return hasAudio;
-  });
+  const hasAudio = (s: PickedSong) => typeof s.audioUrl === 'string' && (s.audioUrl.startsWith('/api/preview/') || s.audioUrl.startsWith('/audio/'));
+  const dropped = songs.filter(s => !hasAudio(s));
+  if (dropped.length > 0) {
+    const names = dropped.slice(0, 3).map(s => `"${s.artist} - ${s.title}"`).join(', ');
+    logger.warn('music_service', `Dropped ${dropped.length} of ${songs.length} tracks without an audio preview: ${names}${dropped.length > 3 ? ', …' : ''}`);
+  }
+  return songs.filter(hasAudio);
 }
 
 export async function getRandomSongPool({
