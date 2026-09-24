@@ -4,7 +4,8 @@ import { classifyArtistLanguage, resolveTrackLanguage, scriptLanguage } from '..
 
 // Deleting a track is irreversible, so the corpus leans on English titles that n-gram
 // detectors misread. Each row: [title, artist, expected, extra input, why].
-const CORPUS = [
+// [title, artist, expected language, extra hints, why]
+const CORPUS: [string, string, string, Record<string, string>?, string?][] = [
   // English titles that read as other languages
   ["Sweet Child O' Mine", "Guns N' Roses", 'en'],
   ['Moth To A Flame', 'Swedish House Mafia', 'en'],
@@ -59,7 +60,7 @@ for (const [title, artist, expected, extra = {}, why] of CORPUS) {
 }
 
 // [titles, isrcs, expected artist language]
-const ARTIST_VOTES = [
+const ARTIST_VOTES: [string[], string[], string | null][] = [
   [['Dynamite', '봄날', '피 땀 눈물', 'Butter'], [], 'ko'],
   [['Idol', 'Tabun', 'Racing Into The Night'], ['JPU902000001', 'JPU902000002'], 'ja'],
   [['Le monde est à moi', 'Bande organisée', 'La zone', 'Mon pote'], [], 'fr'],

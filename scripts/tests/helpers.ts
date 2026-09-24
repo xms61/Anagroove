@@ -49,19 +49,22 @@ export function wsTestClient(url) {
   };
 }
 
-export function routedFetch(routes) {
-  const calls = [];
-  const fn = async (url) => {
+/**
+ * A fake fetch answering from [pattern, body or (url) => body] routes; `{ __status }` answers
+ * with that status. Unmatched URLs get a 404. `calls` lists the requested URLs.
+ */
+export function routedFetch(routes: [RegExp, unknown][]) {
+  const calls: string[] = [];
+  const fn = async (url: string): Promise<Response> => {
     calls.push(url);
     for (const [pattern, handler] of routes) {
       if (pattern.test(url)) {
-        const out = typeof handler === 'function' ? handler(url) : handler;
-        if (out && out.__status) return { ok: out.__status < 400, status: out.__status, json: async () => ({}) };
-        return { ok: true, status: 200, json: async () => out };
+        const out = (typeof handler === 'function' ? handler(url) : handler) as { __status?: number } | null;
+        if (out && out.__status) return { ok: out.__status < 400, status: out.__status, json: async () => ({}) } as Response;
+        return mockJsonResponse(out);
       }
     }
-    return { ok: false, status: 404, json: async () => ({}) };
+    return mockJsonResponse({}, 404);
   };
-  fn.calls = calls;
-  return fn;
+  return Object.assign(fn, { calls });
 }

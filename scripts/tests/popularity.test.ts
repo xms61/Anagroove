@@ -56,7 +56,7 @@ test('the score is the percentile within the language, and a Spotify popularity 
 
 test('each language is ranked on its own', () => {
   const catalog = new SqliteCatalog(':memory:');
-  const put = (title, artist, rank, isrc) => catalog.upsertTrack({ title, artist, durationMs: 200000, provider: 'deezer', providerTrackId: title, deezerRank: rank, isrc }).trackId;
+  const put = (title: string, artist: string, rank: number, isrc?: string) => catalog.upsertTrack({ title, artist, durationMs: 200000, provider: 'deezer', providerTrackId: title, deezerRank: rank, isrc }).trackId;
   const en = [put('Low English', 'A', 900000), put('High English', 'B', 990000)];
   const ko = [put('봄날', 'C', 200000, 'KRA402300001'), put('사랑', 'D', 250000, 'KRA402300002')];
   recomputeCatalogPopularity(catalog.db);

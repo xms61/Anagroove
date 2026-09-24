@@ -3,7 +3,7 @@
 Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is called by `GET /api/music/random` and `POST /api/puzzles/live` (`server/routes/music.ts`).
 
 ## Themes (`shared/themes.ts`)
-`THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there, plus a `DEEZER_GENRE_TAXONOMY` entry for the live fallback; `themes.test.js` checks both. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
+`THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there, plus a `DEEZER_GENRE_TAXONOMY` entry for the live fallback; `themes.test.ts` checks both. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
 
 ## Modules
 - `songPool.ts`: orchestrator (query plan → candidates → recency tiers → picker → preview paths). `setMusicProviderForTesting(mock)` replaces the live providers **and** bypasses the catalog.

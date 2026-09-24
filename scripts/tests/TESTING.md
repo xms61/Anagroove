@@ -11,18 +11,18 @@
 
 
 ## Server tests (`node:test`)
-- **Isolation:** `setup_env.js` is preloaded with `--import`. It gives each test process its own temp `SPOTYSPICE_DATA_DIR`, so `users.sqlite`, `catalog.sqlite` and `anime_catalog.sqlite` are throwaway. **Never** run a test file without the preload, or it writes to the real `server/data/`. Run one file with:
-  `node --import ./scripts/tests/setup_env.js --test --test-force-exit scripts/tests/<file>.test.ts` (or `.test.js` for files not moved yet)
+- **Isolation:** `setup_env.ts` is preloaded with `--import`. It gives each test process its own temp `SPOTYSPICE_DATA_DIR`, so `users.sqlite`, `catalog.sqlite` and `anime_catalog.sqlite` are throwaway. **Never** run a test file without the preload, or it writes to the real `server/data/`. Run one file with:
+  `node --import ./scripts/tests/setup_env.ts --test --test-force-exit scripts/tests/<file>.test.ts` (or `.test.js` for the three that wait for the catalog module)
 - The `dot` reporter shows a file that fails to load only as `'test failed'`. Rerun that file alone (command above) to see the error.
 - New test files are TypeScript (`.test.ts`), run by Node directly. `tsconfig.tests.json` checks them with implicit `any` and null checks relaxed: type the tables (`const CASES: [input: string, expected: boolean][]`), not every fixture row.
-- Use `import assert from 'node:assert/strict'` and `test()` from `node:test`. Prefer table-driven tests for rule corpora (see `languageCorpus.test.js`).
+- Use `import assert from 'node:assert/strict'` and `test()` from `node:test`. Prefer table-driven tests for rule corpora (see `languageCorpus.test.ts`).
 - **No network:**
   - Stub music providers with `setMusicProviderForTesting(mock)`, which also bypasses the catalog.
   - Stub preview lookups with `setPreviewFetchForTesting(fn)`.
   - Deezer provider tests replace `globalThis.fetch`.
-  - `SPOTYSPICE_OFFLINE=1` turns off all live fallbacks (`offline.test.js`).
+  - `SPOTYSPICE_OFFLINE=1` turns off all live fallbacks (`offline.test.ts`).
 - **Catalogs:** use `new SqliteCatalog(':memory:')` or a temp path, never the singleton for writes.
-  - Legacy rows that `upsertTrack` would refuse (other languages, live versions, entity-encoded titles) are inserted with raw SQL. The cleanup and gate tests (`catalogCleanup.test.js`) build their fixtures this way.
+  - Legacy rows that `upsertTrack` would refuse (other languages, live versions, entity-encoded titles) are inserted with raw SQL. The cleanup and gate tests (`catalogCleanup.test.ts`) build their fixtures this way.
   - CLI tests run the script with `spawnSync` against a catalog in `os.tmpdir()`.
 - **HTTP/WS:** import `server` from `server/server.ts` and `listen(0)`. `helpers.ts` has `wsTestClient`, `mockJsonResponse`, `routedFetch` and `readJson` (a response body typed loosely for assertions).
 

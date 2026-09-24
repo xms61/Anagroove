@@ -1,7 +1,7 @@
 {
   "name": "anagroove",
   "private": true,
-  "version": "1.28.7",
+  "version": "1.28.8",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "test": "node --import ./scripts/tests/setup_env.js --test --test-force-exit --test-reporter=dot \"scripts/tests/*.test.{js,ts}\"",
+    "test": "node --import ./scripts/tests/setup_env.ts --test --test-force-exit --test-reporter=dot \"scripts/tests/*.test.{js,ts}\"",
     "test:coverage": "c8 npm test && c8 check-coverage --lines 85 --functions 85 --branches 75 --include \"server/db/**\" --include \"server/policy/**\" --include \"shared/**\"",
     "test:web": "vitest run",
     "test:e2e": "playwright test",
