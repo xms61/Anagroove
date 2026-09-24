@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from 'path';
 import { parseFlags, parseOrExit } from './lib/cli.js';
+import type { CatalogSource } from '../server/selection/candidates.ts';
 
 const USAGE = `
 Measures whether every theme and a set of typical custom prompts can be served from the local
@@ -26,12 +27,13 @@ const { sqliteCatalog } = await import('../server/db/sqliteCatalog.js');
 const { measureCoverage, COVERAGE_TARGETS } = await import('../server/selection/coverage.ts');
 
 const started = Date.now();
-const results = await measureCoverage({ catalog: sqliteCatalog });
+// sqliteCatalog.js is still JavaScript; its inferred method types are narrower than the code (T7)
+const results = await measureCoverage({ catalog: sqliteCatalog as unknown as CatalogSource });
 
 if (flags.json) {
   console.log(JSON.stringify(results, null, 2));
 } else {
-  const cell = (value, width) => String(value).padEnd(width);
+  const cell = (value: unknown, width: number) => String(value).padEnd(width);
   console.log(`\n${cell('Target', 28)}${cell('Tracks', 8)}${cell('Artists', 9)}${cell('Languages', 22)}${cell('Puzzle', 8)}${cell('Overlap', 9)}OK`);
   for (const r of results) {
     const languages = Object.entries(r.languages).map(([language, n]) => `${language} ${n}`).join(', ');

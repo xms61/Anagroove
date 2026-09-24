@@ -2,13 +2,14 @@
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import { errorMessage } from '../server/errors.ts';
 
 const ANNAS_URL = 'https://annas-archive.gl/blog/spotify/spotify-top-10k-songs-table.html';
 const ANNAS_DEST = 'data/spotify_top10k.html';
 const BASE_TABLES_DIR = 'data/base_tables';
 const CHANGES_DIR = 'data/changes';
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number) {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
@@ -16,8 +17,8 @@ function formatBytes(bytes) {
   return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
 }
 
-async function fetchFile(url, dest) {
-  return new Promise((resolve, reject) => {
+async function fetchFile(url: string, dest: string) {
+  return new Promise<void>((resolve, reject) => {
     console.log('⏳ Downloading ' + url + '...');
     const file = fs.createWriteStream(dest);
     const req = https.get(url, {
@@ -26,7 +27,8 @@ async function fetchFile(url, dest) {
         'Accept': 'text/html,application/xhtml+xml',
       },
     }, (res) => {
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      const status = res.statusCode ?? 0;
+      if (status >= 200 && status < 300) {
         res.pipe(file);
         file.on('finish', () => {
           file.close();
@@ -63,7 +65,7 @@ async function main() {
     try {
       await fetchFile(ANNAS_URL, ANNAS_DEST);
     } catch (err) {
-      console.warn('  ⚠️ Could not download Anna archive Spotify table: ' + err.message);
+      console.warn('  ⚠️ Could not download Anna archive Spotify table: ' + errorMessage(err));
     }
   } else {
     const stats = fs.statSync(ANNAS_DEST);

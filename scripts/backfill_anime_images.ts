@@ -3,6 +3,14 @@
 import { animeCatalog } from '../server/db/animeCatalog.ts';
 import { resolveAnimeCoverImages } from '../server/services/animeImageService.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import type { SongCandidate } from '../server/types.ts';
+
+interface SeriesRow {
+  id: number;
+  anime_title: string;
+  anilist_id: number;
+  mal_id: number | null;
+}
 
 const USAGE = `
 Caches AniList cover image URLs into anime_catalog.sqlite.
@@ -27,7 +35,7 @@ async function main() {
     ${isAll ? '' : `LIMIT ${limit}`}
   `;
 
-  const rows = animeCatalog.db.prepare(sql).all();
+  const rows = animeCatalog.db.prepare(sql).all() as unknown as SeriesRow[];
   console.log(`Found ${rows.length} anime series needing cover artwork.`);
 
   if (rows.length === 0) {
@@ -35,7 +43,7 @@ async function main() {
     process.exit(0);
   }
 
-  const tracks = rows.map(r => ({
+  const tracks: Partial<SongCandidate>[] = rows.map(r => ({
     catalogTrackId: r.id,
     animeTitle: r.anime_title,
     anilistId: r.anilist_id,

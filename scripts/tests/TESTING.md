@@ -24,7 +24,7 @@
 - **Catalogs:** use `new SqliteCatalog(':memory:')` or a temp path, never the singleton for writes.
   - Legacy rows that `upsertTrack` would refuse (other languages, live versions, entity-encoded titles) are inserted with raw SQL. The cleanup and gate tests (`catalogCleanup.test.js`) build their fixtures this way.
   - CLI tests run the script with `spawnSync` against a catalog in `os.tmpdir()`.
-- **HTTP/WS:** import `server` from `server/server.ts` and `listen(0)`. `helpers.js` has `wsTestClient`, `mockJsonResponse` and `routedFetch`.
+- **HTTP/WS:** import `server` from `server/server.ts` and `listen(0)`. `helpers.ts` has `wsTestClient`, `mockJsonResponse`, `routedFetch` and `readJson` (a response body typed loosely for assertions).
 
 | File | Covers |
 | :-- | :-- |
@@ -43,8 +43,8 @@
 - Mock `../services/apiClient`, `../services/socketService` and `canvas-confetti` with `vi.mock`. Use `renderHook` + `act`, and `vi.useFakeTimers()` for the debounced progress save.
 
 ## Fixture catalog & smoke test
-- `fixtures/fixtureCatalog.js` builds 92 clean tracks (80 en, 6 ja, 6 ko) with years, ISRCs and Deezer ids through `upsertTrack`. It throws if the admission policy rejects any row, so a rule change that drops ordinary titles fails loudly. SQLite files are never committed; the fixture is always generated.
-- `e2e/server.js` builds the fixture into a temp dir and starts the server in production mode with `SPOTYSPICE_OFFLINE=1` on port 3101 (`E2E_PORT`).
+- `fixtures/fixtureCatalog.ts` builds 92 clean tracks (80 en, 6 ja, 6 ko) with years, ISRCs and Deezer ids through `upsertTrack`. It throws if the admission policy rejects any row, so a rule change that drops ordinary titles fails loudly. SQLite files are never committed; the fixture is always generated.
+- `e2e/server.ts` builds the fixture into a temp dir and starts the server in production mode with `SPOTYSPICE_OFFLINE=1` on port 3101 (`E2E_PORT`).
 - `smoke.spec.ts`:
   - loads the app, which generates a puzzle
   - types every answer through the keyboard, expects the end screen and checks the solve in `/api/history`

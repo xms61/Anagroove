@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseFlags, parseOrExit } from './lib/cli.js';
+import { errorMessage } from '../server/errors.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,11 +14,49 @@ const BASE_URL = 'https://api.animethemes.moe/anime';
 const PAGE_SIZE = 100;
 const DELAY_MS = 600; // Pacing to stay comfortably under 90 req/min limit
 
-function sleep(ms) {
+/** One opening or ending in data/anime_metadata_index.json. */
+export interface AnimeThemeMetadata {
+  animeId: number;
+  animeTitle: string;
+  animeSlug?: string;
+  year: number | null;
+  season: string | null;
+  malId: number | null;
+  anilistId: number | null;
+  themeType: string;
+  themeNumber: number;
+  themeSlug: string;
+  songTitle: string;
+  artistName: string;
+  artists: string[];
+}
+
+export interface AnimeMetadataIndex {
+  byBasename: Record<string, AnimeThemeMetadata>;
+  bySlugKey: Record<string, AnimeThemeMetadata>;
+}
+
+/** The fields this script reads from an api.animethemes.moe anime. */
+interface AnimeThemesAnime {
+  id: number;
+  name: string;
+  slug?: string;
+  year?: number;
+  season?: string;
+  resources?: { site: string; external_id: number }[];
+  animethemes?: {
+    type?: string;
+    sequence?: number;
+    song?: { title?: string; artists?: { name?: string }[] };
+    animethemeentries?: { videos?: { basename?: string }[] }[];
+  }[];
+}
+
+function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export function normalizeAnimeSlugKey(filename) {
+export function normalizeAnimeSlugKey(filename: string): string {
   if (!filename) return '';
   const clean = path.basename(filename, path.extname(filename));
   // Matches e.g. "100Man-OP1-NCBD1080" -> "100man-op1"
@@ -28,7 +67,7 @@ export function normalizeAnimeSlugKey(filename) {
   return clean.toLowerCase();
 }
 
-export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {}) {
+export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {}): Promise<AnimeMetadataIndex> {
   if (!forceRefresh && fs.existsSync(INDEX_PATH)) {
     console.log(`[AnimeSync] Metadata index already exists at ${INDEX_PATH}`);
     const indexData = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
@@ -39,7 +78,7 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
   console.log('[AnimeSync] Starting AnimeThemes catalog synchronization...');
   let page = 1;
   let hasMore = true;
-  const allAnime = [];
+  const allAnime: AnimeThemesAnime[] = [];
 
   while (hasMore) {
     const url = `${BASE_URL}?include=animethemes.song.artists,animethemes.animethemeentries.videos,resources&page[size]=${PAGE_SIZE}&page[number]=${page}`;
@@ -60,7 +99,7 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
         throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
       }
 
-      const data = await res.json();
+      const data = await res.json() as { anime?: AnimeThemesAnime[] };
       const animeBatch = data.anime || [];
       const latency = Date.now() - startTime;
 
@@ -80,7 +119,7 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
         await sleep(DELAY_MS);
       }
     } catch (err) {
-      console.error(`[AnimeSync] Error fetching page ${page}: ${err.message}`);
+      console.error(`[AnimeSync] Error fetching page ${page}: ${errorMessage(err)}`);
       console.log('[AnimeSync] Retrying page in 3 seconds...');
       await sleep(3000);
     }
@@ -92,8 +131,8 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
   fs.writeFileSync(DUMP_PATH, JSON.stringify(allAnime, null, 2), 'utf8');
   console.log(`[AnimeSync] Raw dump saved to ${DUMP_PATH} (${(fs.statSync(DUMP_PATH).size / (1024 * 1024)).toFixed(2)} MB)`);
 
-  const byBasename = {};
-  const bySlugKey = {};
+  const byBasename: Record<string, AnimeThemeMetadata> = {};
+  const bySlugKey: Record<string, AnimeThemeMetadata> = {};
   let totalThemes = 0;
   let totalVideos = 0;
 
@@ -107,13 +146,13 @@ export async function fetchAllAnimeThemesMetadata({ forceRefresh = false } = {})
     for (const t of (a.animethemes || [])) {
       totalThemes++;
       const songTitle = t.song?.title || 'Unknown Title';
-      const artists = (t.song?.artists || []).map(x => x.name).filter(Boolean);
+      const artists = (t.song?.artists || []).map(x => x.name).filter((name): name is string => Boolean(name));
       const artistName = artists.join(', ') || 'Unknown Artist';
       const themeType = (t.type || 'OP').toUpperCase();
       const themeNum = t.sequence || 1;
       const themeSlug = `${themeType}${themeNum}`;
 
-      const themeMetadata = {
+      const themeMetadata: AnimeThemeMetadata = {
         animeId: a.id,
         animeTitle: a.name,
         animeSlug: a.slug,

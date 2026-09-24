@@ -132,20 +132,21 @@ function main() {
 
   console.log(`Mapped ${artistGenreMap.size} distinct artists across genres.`);
 
-  const updateStmt = sqliteCatalog.db.prepare('UPDATE artists SET genres_json = ? WHERE canonical_name = ?');
+  const db = sqliteCatalog.db!;
+  const updateStmt = db.prepare('UPDATE artists SET genres_json = ? WHERE canonical_name = ?');
   let updated = 0;
 
-  sqliteCatalog.db.exec('BEGIN TRANSACTION');
+  db.exec('BEGIN TRANSACTION');
   for (const [canonical, genreSet] of artistGenreMap.entries()) {
     const genresJson = JSON.stringify(Array.from(genreSet));
     const res = updateStmt.run(genresJson, canonical);
-    if (res.changes > 0) updated += res.changes;
+    updated += Number(res.changes);
   }
-  sqliteCatalog.db.exec('COMMIT');
+  db.exec('COMMIT');
 
   console.log(`Updated ${updated} artists in SQLite with verified genres_json.`);
 
-  const sample = sqliteCatalog.db.prepare(
+  const sample = db.prepare(
     'SELECT display_name, genres_json FROM artists WHERE genres_json IS NOT NULL LIMIT 8'
   ).all();
   console.log('Sample updated artists:');

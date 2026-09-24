@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { UsageError, intFlag, listFlag, parseFlags } from '../lib/cli.js';
 import { buildEnrichPlan, DEFAULT_LIMITS } from '../enrich_catalog.js';
-import { buildCrawlPlan, DEFAULT_VECTOR_LIMITS } from '../crawl_catalog.js';
+import { buildCrawlPlan, DEFAULT_VECTOR_LIMITS } from '../crawl_catalog.ts';
 
 const OFF = { albums: null, deezer: null, artists: null, itunes: null };
 

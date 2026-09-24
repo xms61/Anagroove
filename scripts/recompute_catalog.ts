@@ -14,11 +14,12 @@ artist languages, then track languages, then the per-language popularity percent
 
 const flags = parseOrExit(() => parseFlags({ db: { type: 'string' } }), USAGE);
 const catalog = flags.db ? new SqliteCatalog(flags.db) : new SqliteCatalog();
+const db = catalog.db!;
 const started = Date.now();
 
-console.log(`Languages:  ${JSON.stringify(recomputeCatalogLanguages(catalog.db))}`);
-console.log(`Popularity: ${recomputeCatalogPopularity(catalog.db).toLocaleString()} scores changed`);
+console.log(`Languages:  ${JSON.stringify(recomputeCatalogLanguages(db))}`);
+console.log(`Popularity: ${recomputeCatalogPopularity(db).toLocaleString()} scores changed`);
 
-catalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
 catalog.close();
 console.log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);

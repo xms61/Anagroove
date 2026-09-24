@@ -22,7 +22,7 @@ Object.assign(process.env, {
 });
 
 // Server modules resolve their data paths on import, so they load after the env is set
-const { buildFixtureCatalog } = await import('../fixtures/fixtureCatalog.js');
+const { buildFixtureCatalog } = await import('../fixtures/fixtureCatalog.ts');
 const { tracks } = buildFixtureCatalog(path.join(dataDir, 'catalog.sqlite'));
 const { server } = await import('../../../server/server.ts');
 

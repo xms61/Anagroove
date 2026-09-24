@@ -3,18 +3,26 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import zlib from 'zlib';
+import type { Readable } from 'stream';
 import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.js';
 import { normalizeDeezerRank, provisionalPopularity } from '../server/db/trackNormalization.js';
 import { isAbovePopularityFloor } from '../server/db/catalogPopularity.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { errorMessage } from '../server/errors.ts';
+
+// sqliteCatalog.js, trackNormalization.js and catalogPopularity.js are still JavaScript; their inferred parameter types are narrower than the code (T7)
+const provisional = provisionalPopularity as (input: { deezerRank: number | null; spotifyPopularity: number | null }) => number;
+const isrcCountry = extractIsrcCountryCode as (isrc: string | null) => string | null;
+const trackLanguage = detectTrackLanguage as (title: string, artist: string, options: { isrc: string | null }) => ReturnType<typeof detectTrackLanguage>;
+const aboveFloor = isAbovePopularityFloor as (track: { language: unknown; deezerRank: number | null }) => boolean;
 
 const USAGE = `
 Stream-ingests MusicMoveArr dumps (one source per run):
-  node scripts/ingest_musicmovearr.js --csv-file=./data/deezer_tracks.csv --provider=deezer
-  node scripts/ingest_musicmovearr.js --sql-file=./data/changes_2026_03.sql.gz --provider=deezer
-  node scripts/ingest_musicmovearr.js --base-dir=./data/base_tables/ --min-popularity=31
-  node scripts/ingest_musicmovearr.js --incremental-dir=./data/changes/ --dry-run
+  node scripts/ingest_musicmovearr.ts --csv-file=./data/deezer_tracks.csv --provider=deezer
+  node scripts/ingest_musicmovearr.ts --sql-file=./data/changes_2026_03.sql.gz --provider=deezer
+  node scripts/ingest_musicmovearr.ts --base-dir=./data/base_tables/ --min-popularity=31
+  node scripts/ingest_musicmovearr.ts --incremental-dir=./data/changes/ --dry-run
 Other flags: --limit=N  --batch-size=2000`;
 
 const OPTIONS = {
@@ -27,8 +35,30 @@ const OPTIONS = {
   'base-dir': { type: 'string' },
   'incremental-dir': { type: 'string' },
   provider: { type: 'string' },
-};
-const flags = import.meta.main
+} as const;
+
+interface IngestFlags {
+  'dry-run'?: boolean;
+  'csv-file'?: string;
+  'sql-file'?: string;
+  'base-dir'?: string;
+  'incremental-dir'?: string;
+  provider?: string;
+  minPopularity?: number;
+  limit?: number;
+  batchSize?: number;
+}
+
+interface IngestStats {
+  totalLines: number;
+  qualifiedCandidates: number;
+  skippedPopularity: number;
+  skippedAuthenticity: number;
+  insertedCanonical: number;
+  mergedCross: number;
+}
+
+const flags: IngestFlags = import.meta.main
   ? parseOrExit(() => {
     const values = parseFlags(OPTIONS);
     return {
@@ -51,16 +81,16 @@ const providerOverride = (flags.provider ?? 'deezer').toLowerCase();
 const batchSize = flags.batchSize || 2000;
 
 /** Spotify popularity from the dump reaches --min-popularity, or the Deezer rank reaches its language's floor. */
-function passesPopularityFloor(candidate) {
+function passesPopularityFloor(candidate: TrackCandidate) {
   return (candidate.spotifyPopularity ?? -1) >= minPopularity
-    || isAbovePopularityFloor({ language: candidate.language, deezerRank: candidate.deezerRank });
+    || aboveFloor({ language: candidate.language, deezerRank: candidate.deezerRank });
 }
 
 /**
  * Parses a standard CSV/TSV line respecting quoted fields.
  */
-export function parseDelimitedLine(line = '', delimiter = ',') {
-  const values = [];
+export function parseDelimitedLine(line = '', delimiter = ','): string[] {
+  const values: string[] = [];
   let current = '';
   let insideQuotes = false;
 
@@ -87,8 +117,8 @@ export function parseDelimitedLine(line = '', delimiter = ',') {
 /**
  * Converts raw row values into a standardized Anagroove catalog candidate.
  */
-export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer') {
-  const getVal = (fieldNames) => {
+export function mapRowToCandidate(row: (string | null)[], headers: string[] = [], defaultProvider = 'deezer') {
+  const getVal = (fieldNames: string[]) => {
     for (const name of fieldNames) {
       const idx = headers.indexOf(name.toLowerCase());
       if (idx !== -1 && row[idx] !== undefined && row[idx] !== '') {
@@ -122,14 +152,14 @@ export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer')
   // Values above 100 are Deezer ranks (0 - ~1,000,000); 1-100 is a Spotify popularity
   const deezerRank = rawValue > 100 ? normalizeDeezerRank(rawValue) : null;
   const spotifyPopularity = rawValue > 0 && rawValue <= 100 ? rawValue : null;
-  const popularity = provisionalPopularity({ deezerRank, spotifyPopularity });
+  const popularity = provisional({ deezerRank, spotifyPopularity });
 
   const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
   const isExplicit = explicitVal === '1' || String(explicitVal).toLowerCase() === 'true';
 
   const cleanIsrc = isrc ? String(isrc).trim().toUpperCase() : null;
-  const countryCode = extractIsrcCountryCode(cleanIsrc);
-  const language = detectTrackLanguage(title, artist, { isrc: cleanIsrc });
+  const countryCode = isrcCountry(cleanIsrc);
+  const language = trackLanguage(title, artist, { isrc: cleanIsrc });
 
   return {
     provider: defaultProvider,
@@ -151,12 +181,14 @@ export function mapRowToCandidate(row, headers = [], defaultProvider = 'deezer')
   };
 }
 
+type TrackCandidate = NonNullable<ReturnType<typeof mapRowToCandidate>>;
+
 /**
  * Parses SQL INSERT statement values row: (val1, val2, val3)
  */
-export function parseSqlInsertTuple(tupleStr = '') {
+export function parseSqlInsertTuple(tupleStr = ''): (string | null)[] {
   const clean = tupleStr.trim().replace(/^\(|\)$/g, '');
-  const values = [];
+  const values: (string | null)[] = [];
   let current = '';
   let insideQuotes = false;
   let quoteChar = '';
@@ -188,7 +220,7 @@ export function parseSqlInsertTuple(tupleStr = '') {
 /**
  * Streams through a CSV/TSV file, batches candidates, and updates SQLite.
  */
-export async function streamIngestCsv(filePath, provider = 'deezer', stats) {
+export async function streamIngestCsv(filePath: string, provider = 'deezer', stats: IngestStats) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -198,9 +230,9 @@ export async function streamIngestCsv(filePath, provider = 'deezer', stats) {
   const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
   const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
-  let headers = null;
+  let headers: string[] | null = null;
   let delimiter = ',';
-  let batch = [];
+  let batch: TrackCandidate[] = [];
 
   for await (const line of rl) {
     if (!line || line.trim() === '') continue;
@@ -243,7 +275,7 @@ export async function streamIngestCsv(filePath, provider = 'deezer', stats) {
 
       // Periodic WAL Compaction every 100k tracks
       if (stats.qualifiedCandidates % 100000 === 0 && !isDryRun) {
-        sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+        sqliteCatalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
       }
 
       if (stats.qualifiedCandidates % 10000 === 0) {
@@ -268,20 +300,20 @@ export async function streamIngestCsv(filePath, provider = 'deezer', stats) {
 /**
  * Streams through a compressed .sql.gz or plain .sql PostgreSQL incremental diff file.
  */
-export async function streamIngestSql(filePath, provider = 'deezer', stats) {
+export async function streamIngestSql(filePath: string, provider = 'deezer', stats: IngestStats) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
 
   console.log(`\n📦 Streaming SQL Diff: ${path.basename(filePath)} (Provider: ${provider})`);
 
-  let inputStream = fs.createReadStream(filePath);
+  let inputStream: Readable = fs.createReadStream(filePath);
   if (filePath.endsWith('.gz')) {
     inputStream = inputStream.pipe(zlib.createGunzip());
   }
 
   const rl = readline.createInterface({ input: inputStream, crlfDelay: Infinity });
-  let batch = [];
+  let batch: TrackCandidate[] = [];
 
   for await (const line of rl) {
     if (!line || !line.startsWith('INSERT INTO')) continue;
@@ -328,7 +360,7 @@ export async function streamIngestSql(filePath, provider = 'deezer', stats) {
         batch = [];
 
         if (stats.qualifiedCandidates % 100000 === 0 && !isDryRun) {
-          sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+          sqliteCatalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
         }
 
         if (stats.qualifiedCandidates % 10000 === 0) {
@@ -365,7 +397,7 @@ async function main() {
     console.log(`   Initial DB: ${(initialDbStats.tracks || 0).toLocaleString()} tracks | ${(initialDbStats.artists || 0).toLocaleString()} artists | ${samples.toLocaleString()} samples`);
   }
 
-  const stats = {
+  const stats: IngestStats = {
     totalLines: 0,
     qualifiedCandidates: 0,
     skippedPopularity: 0,
@@ -402,7 +434,7 @@ async function main() {
     }
 
     if (!isDryRun) {
-      sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+      sqliteCatalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     }
 
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -425,7 +457,7 @@ async function main() {
       console.log(`   Total Audio Samples: ${finalSamples.toLocaleString()}`);
     }
   } catch (err) {
-    console.error(`\n❌ Ingestion failed: ${err.message}`);
+    console.error(`\n❌ Ingestion failed: ${errorMessage(err)}`);
     process.exit(1);
   }
 }

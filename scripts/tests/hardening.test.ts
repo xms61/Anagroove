@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { IncomingMessage } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.ts';
@@ -14,7 +15,7 @@ import {
   resolvePreviewRef,
   setPreviewFetchForTesting,
 } from '../../server/services/previewResolver.ts';
-import { mockJsonResponse, wsTestClient } from './helpers.js';
+import { mockJsonResponse, wsTestClient, readJson } from './helpers.ts';
 
 const nowSec = Math.floor(Date.now() / 1000);
 const signed = (expSec) => `https://cdnt-preview.dzcdn.net/api/1/1/a/b/c/0/abc.mp3?hdnea=exp=${expSec}~acl=/api/1/1/a/b/c/0/abc.mp3*~data=user_id=0,application_id=42~hmac=deadbeef`;
@@ -100,7 +101,7 @@ test('TRUST_PROXY parsing and the WebSocket client IP', () => {
   assert.equal(parseTrustProxy('1'), 1);
   assert.equal(parseTrustProxy('true'), true);
   assert.equal(parseTrustProxy('loopback'), 'loopback');
-  const upgrade = { socket: { remoteAddress: '10.0.0.5' }, headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9' } };
+  const upgrade = { socket: { remoteAddress: '10.0.0.5' }, headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9' } } as unknown as IncomingMessage;
   assert.equal(clientIpFromUpgrade(upgrade, false), '10.0.0.5', 'X-Forwarded-For is ignored without a trusted proxy');
   assert.equal(clientIpFromUpgrade(upgrade, 1), '203.0.113.9', 'one trusted hop: the entry it appended');
 });
@@ -146,7 +147,7 @@ describe('HTTP and WebSocket server', () => {
   test('a disallowed CORS origin gets a 403 JSON error, not a 500', async () => {
     const response = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'https://evil.example' } });
     assert.equal(response.status, 403);
-    assert.ok((await response.json().catch(() => null))?.error);
+    assert.ok((await readJson(response).catch(() => null))?.error);
   });
 
   test('read-only requests do not create users', async () => {
@@ -157,10 +158,10 @@ describe('HTTP and WebSocket server', () => {
 
   test('blacklist DELETE removes by item id, never by matching name', async () => {
     const headers = { 'Content-Type': 'application/json', 'X-User-Id': `bl-${Date.now()}` };
-    const added = await (await fetch(`${baseUrl}/api/blacklist`, { method: 'POST', headers, body: JSON.stringify({ name: 'Nickelback', type: 'artist' }) })).json();
-    const byName = await (await fetch(`${baseUrl}/api/blacklist/nickelback`, { method: 'DELETE', headers })).json();
+    const added = await readJson(await fetch(`${baseUrl}/api/blacklist`, { method: 'POST', headers, body: JSON.stringify({ name: 'Nickelback', type: 'artist' }) }));
+    const byName = await readJson(await fetch(`${baseUrl}/api/blacklist/nickelback`, { method: 'DELETE', headers }));
     assert.equal(byName.blacklist?.length, 1);
-    const byId = await (await fetch(`${baseUrl}/api/blacklist/${encodeURIComponent(added.blacklist[0].id)}`, { method: 'DELETE', headers })).json();
+    const byId = await readJson(await fetch(`${baseUrl}/api/blacklist/${encodeURIComponent(added.blacklist[0].id)}`, { method: 'DELETE', headers }));
     assert.equal(byId.blacklist?.length, 0);
   });
 
@@ -172,11 +173,11 @@ describe('HTTP and WebSocket server', () => {
     }));
     setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
     const hostId = `host-${Date.now()}`;
-    const live = await (await fetch(`${baseUrl}/api/puzzles/live`, {
+    const live = await readJson(await fetch(`${baseUrl}/api/puzzles/live`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-User-Id': hostId },
       body: JSON.stringify({ genre: 'all', targetWords: 6 }),
-    })).json();
+    }));
     setMusicProviderForTesting();
 
     const connect = async () => {

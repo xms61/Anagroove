@@ -1,6 +1,25 @@
 # Changelog archive
 
-Releases before 1.28.2. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.3. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.2] - 2026-09-23
+
+### Changed
+- **TypeScript setup for the server, shared modules and scripts** (first step of moving them from JavaScript).
+  - Node 24 runs `.ts` files directly by stripping the types. There is no build step, and `tsc` only type-checks.
+  - The new `tsconfig.node.json` checks `server/`, `shared/` and `scripts/`:
+    - `nodenext` resolution
+    - `erasableSyntaxOnly`: no `enum`, `namespace` or constructor parameter properties
+    - `verbatimModuleSyntax`: type-only imports use `import type`
+    - relative imports name the `.ts` file
+    - `strict`
+  - While files move, `.js` files are read for their types but not checked.
+- `npm run typecheck` checks both projects. The frontend config now targets ES2022, and also checks the Playwright smoke test.
+- `npm test`, c8 and ESLint accept `.ts` files next to `.js`.
+- Dev dependencies: `@types/node` 24 (was 22, only installed as a sub-dependency) and `@types/express` 4 (was 5, which didn't match Express 4.22).
+- `AGENTS.md` lists the TypeScript rules for new server, shared and script code.
+
+---
 
 ## [1.28.1] - 2026-09-24
 

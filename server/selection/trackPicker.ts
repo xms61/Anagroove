@@ -4,7 +4,7 @@
  * an artist), then the crossword answer and clue with clue-type and answer-length rotation.
  */
 import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.ts';
-import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type MusicIdentityTrack } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type BlacklistIdentityItem, type MusicIdentityTrack } from '../../shared/musicIdentity.js';
 import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.js';
 import {
   isAuthenticTrack,
@@ -14,7 +14,6 @@ import {
   resolveReleaseYear,
 } from '../policy/selectionPolicy.ts';
 import type { AnswerCandidate, ExtractKeywordOptions, LengthBucket } from '../../shared/musicKeywords.ts';
-import type { BlacklistEntry } from '../db/userStore.ts';
 import type { QueryPlan } from '../services/queryBuilder.ts';
 import type { SongCandidate } from '../types.ts';
 
@@ -58,7 +57,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
   count: number;
   queryPlan: QueryPlan;
   prompt?: string;
-  blacklist?: BlacklistEntry[];
+  blacklist?: BlacklistIdentityItem[];
   recentCount: (track: SongCandidate) => number;
   animeKeyphrase?: string | null;
   isTargetingAnimeKeyphrase?: boolean;

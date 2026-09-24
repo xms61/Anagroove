@@ -11,7 +11,7 @@ import { checkAuthenticity } from '../../server/policy/authenticityRules.js';
 import { CatalogEnricher } from '../../server/crawler/enricher.js';
 import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.ts';
 import { DECADE_PLAYLIST_SEEDS, FOUNDATION_ARTISTS, MusicHarvester, PLAYLIST_SEEDS, toCatalogCandidate } from '../../server/crawler/harvester.ts';
-import { routedFetch } from './helpers.js';
+import { routedFetch } from './helpers.ts';
 
 test('identity keys keep kana dakuten and composed hangul, and fold Latin accents', () => {
   assert.equal(canonicalArtistKey('アイドル'), 'アイドル');

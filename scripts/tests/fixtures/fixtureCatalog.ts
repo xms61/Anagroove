@@ -3,7 +3,7 @@
  * the validation gate (`db:validate --ci`) and the Playwright smoke test run against it.
  * SQLite files are never committed, so the fixture is generated from this code.
  *
- *   node scripts/tests/fixtures/fixtureCatalog.js --out=/tmp/fixture/catalog.sqlite
+ *   node scripts/tests/fixtures/fixtureCatalog.ts --out=/tmp/fixture/catalog.sqlite
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,8 +17,8 @@ const NOUNS = ['Harbor', 'Garden', 'Highway', 'Mirror', 'Thunder', 'Letters', 'W
 const EN_ARTISTS = ['The Lanterns', 'Maple Avenue', 'Copper Wolves', 'Jenny Rivers', 'Northbound', 'The Paper Kites Club',
   'Marcus Bell', 'Sunday Drivers', 'Glass Animals Club', 'Ruby Lane', 'The Night Owls', 'Oliver Stone Band',
   'Harper Quinn', 'Blue Canyon', 'The Violets', 'Leo Carter', 'Echo Park', 'Silver Pines', 'Nora Blake', 'The Tides'];
-const JA_TRACKS = [['Hoshino Band', ['ひかりの道', '夜の街', 'さくら色']], ['Aoi Sora', ['青い空', '星のうた', '風のメロディ']]];
-const KO_TRACKS = [['Seoul Lights', ['봄바람', '밤하늘', '너의 노래']], ['Hanbit', ['바다', '첫눈', '별빛']]];
+const JA_TRACKS: [string, string[]][] = [['Hoshino Band', ['ひかりの道', '夜の街', 'さくら色']], ['Aoi Sora', ['青い空', '星のうた', '風のメロディ']]];
+const KO_TRACKS: [string, string[]][] = [['Seoul Lights', ['봄바람', '밤하늘', '너의 노래']], ['Hanbit', ['바다', '첫눈', '별빛']]];
 
 /**
  * @param {string} dbPath catalog path (created; must not exist yet)
@@ -67,7 +67,7 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const out = process.argv.find(arg => arg.startsWith('--out='))?.slice('--out='.length);
   if (!out) {
-    console.error('Usage: node scripts/tests/fixtures/fixtureCatalog.js --out=<path/catalog.sqlite>');
+    console.error('Usage: node scripts/tests/fixtures/fixtureCatalog.ts --out=<path/catalog.sqlite>');
     process.exit(2);
   }
   if (fs.existsSync(out)) {

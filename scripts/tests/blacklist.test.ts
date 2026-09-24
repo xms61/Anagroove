@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blacklistMatchesTrack } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, type BlacklistIdentityItem } from '../../shared/musicIdentity.js';
 
-const artist = (name) => [{ type: 'artist', name }];
-const song = (name) => [{ type: 'song', name }];
+const artist = (name: string): BlacklistIdentityItem[] => [{ type: 'artist', name }];
+const song = (name: string): BlacklistIdentityItem[] => [{ type: 'song', name }];
 const track = (artistName, title = 'Some Song') => ({ artist: artistName, title });
 
 test('generic artist entries match whole words, including collaborations', () => {
