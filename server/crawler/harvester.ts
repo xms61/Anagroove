@@ -208,6 +208,9 @@ export const DECADE_PLAYLIST_SEEDS = DECADES.flatMap(decade => DECADE_STYLES.map
 /** Deezer's "Asian Music" genre chart, the entry point of the ja/ko vector. */
 const ASIAN_MUSIC_CHART_ID = 16;
 
+/** Top tracks whose ISRCs (`/track/{id}`) back a second language vote before an artist is skipped. */
+const ISRC_SAMPLE_TRACKS = 3;
+
 // Apple Music "most played" charts per storefront: clean, popularity-ranked, original-script titles
 export const APPLE_CHART_STOREFRONTS = ['us', 'gb', 'jp', 'kr'];
 const APPLE_CHART_URL = (storefront: string, limit: number) => `https://rss.marketingtools.apple.com/api/v2/${storefront}/music/most-played/${limit}/songs.json`;
@@ -343,8 +346,8 @@ export class MusicHarvester {
    * Harvests an artist's top tracks and up to `maxAlbums` studio albums, and returns related
    * artists with at least `relatedMinFans` fans for the caller to crawl next. Pass `deezerId`
    * when known (no name search). Skipped without requests for albums: artists under
-   * MIN_ARTIST_FANS (the cleanup would drop most of their tracks) and artists whose top tracks
-   * vote a language outside `languages`.
+   * MIN_ARTIST_FANS (the cleanup would drop most of their tracks) and artists whose language
+   * (`_artistLanguage`) is outside `languages`.
    */
   async harvestArtistDiscography(artistName: string, {
     deezerId = null,
@@ -382,11 +385,7 @@ export class MusicHarvester {
       const artistContext = { artistName: artistData.name || artistName, artistId, fansCount: artistData.nb_fan };
 
       const topTracks = (await this._getJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/artist/${artistId}/top?limit=50`))?.data || [];
-      const { language } = classifyArtistLanguage({
-        titles: topTracks.map(t => t.title ?? ''),
-        isrcs: topTracks.map(t => t.isrc).filter((isrc): isrc is string => Boolean(isrc)),
-        name: artistContext.artistName,
-      });
+      const language = await this._artistLanguage(artistId, artistContext.artistName, topTracks, languages);
       if (language && !languages.includes(language)) return skip(`catalog language "${language}"`);
 
       const topRes = this._ingest(topTracks, { ...artistContext, album: undefined });
@@ -417,6 +416,33 @@ export class MusicHarvester {
     }
 
     return { harvested, merged, relatedArtists };
+  }
+
+  /**
+   * An artist's language: the catalog's vote when the artist is already stored (it saw their
+   * ISRCs), else a vote over their top tracks. Top-track payloads carry no ISRCs and Deezer
+   * romanizes Japanese and Korean titles ("Usseewa"), so a vote outside `languages` is taken
+   * again with the ISRCs of the first ISRC_SAMPLE_TRACKS top tracks.
+   */
+  async _artistLanguage(artistId: number, name: string, topTracks: DeezerApiTrack[], languages: readonly string[]): Promise<string | null> {
+    const stored = this.catalog.db.prepare('SELECT primary_language FROM artists WHERE deezer_id = ?').get(artistId) as { primary_language: string | null } | undefined;
+    if (stored?.primary_language) return stored.primary_language;
+
+    const titles = topTracks.map(t => t.title ?? '');
+    const titleVote = classifyArtistLanguage({ titles, name }).language;
+    if (!titleVote || languages.includes(titleVote)) return titleVote;
+    const isrcs = await this._trackIsrcs(topTracks.slice(0, ISRC_SAMPLE_TRACKS));
+    return classifyArtistLanguage({ titles, isrcs, name }).language;
+  }
+
+  /** ISRCs from `/track/{id}`, the only Deezer payload that always has them. */
+  async _trackIsrcs(tracks: DeezerApiTrack[]): Promise<string[]> {
+    const isrcs: string[] = [];
+    for (const track of tracks) {
+      const full = await this._getJson<DeezerApiTrack>(`https://api.deezer.com/track/${track.id}`);
+      if (full?.isrc) isrcs.push(full.isrc);
+    }
+    return isrcs;
   }
 
   /** The Deezer artist for a name: an exact name match with the most fans, else the most fans. */

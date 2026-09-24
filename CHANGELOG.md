@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.11] - 2026-09-24
+
+### Fixed
+- **The `cjk` crawl no longer skips Japanese and Korean artists as English.** It checked each artist on its Deezer top tracks, which carry no ISRCs and come with romanized titles ("Usseewa", "Gimme Chocolate!!"). Most seeds (Ado, Joe Hisaishi, WINNER, STAYC) were skipped as `catalog language "en"` and still used up the `--cjk` limit.
+  - An artist already in the catalog keeps its stored `primary_language`.
+  - Any other artist whose top-track titles vote outside the allowed languages is voted again with the ISRCs of its first 3 top tracks before it is skipped.
+
+---
+
 ## [1.28.10] - 2026-09-24
 
 ### Changed
@@ -68,23 +77,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.6] - 2026-09-24
-
-### Changed
-- **The HTTP and WebSocket server is TypeScript:**
-  - `server/server.ts`, `server/validators.ts`
-  - `server/http/` (`security`, `livePuzzleStore`), `server/middleware/rateLimiter`
-  - `server/routes/` (`music`, `user`), `server/ws/rooms`
-- **`npm run dev`, `npm start` and the Docker image run `node server/server.ts`.**
-- **Typed request data:**
-  - `Validation<T>`: a validator returns the parsed data or the rejection reason
-  - `LivePuzzleRequest`, `WsMessage`
-  - `Player` and `Room` for multiplayer rooms
-  - `server/express.d.ts` adds `userId` to Express requests
-- **`PORT` is read as a number.**
-- **The first multiplayer player color is `#3de0ff`** instead of the old Spotify green.
-- **Tests:** `deezerProvider` and `validators` are TypeScript. `apiIntegration`, `blacklist` and `hardening` move with the test helpers.
-
----
-
-Older releases (1.28.5 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.6 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

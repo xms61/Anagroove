@@ -1,6 +1,25 @@
 # Changelog archive
 
-Releases before 1.28.6. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.7. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.6] - 2026-09-24
+
+### Changed
+- **The HTTP and WebSocket server is TypeScript:**
+  - `server/server.ts`, `server/validators.ts`
+  - `server/http/` (`security`, `livePuzzleStore`), `server/middleware/rateLimiter`
+  - `server/routes/` (`music`, `user`), `server/ws/rooms`
+- **`npm run dev`, `npm start` and the Docker image run `node server/server.ts`.**
+- **Typed request data:**
+  - `Validation<T>`: a validator returns the parsed data or the rejection reason
+  - `LivePuzzleRequest`, `WsMessage`
+  - `Player` and `Room` for multiplayer rooms
+  - `server/express.d.ts` adds `userId` to Express requests
+- **`PORT` is read as a number.**
+- **The first multiplayer player color is `#3de0ff`** instead of the old Spotify green.
+- **Tests:** `deezerProvider` and `validators` are TypeScript. `apiIntegration`, `blacklist` and `hardening` move with the test helpers.
+
+---
 
 ## [1.28.5] - 2026-09-23
 

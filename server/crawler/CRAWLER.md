@@ -9,7 +9,8 @@
     4. `cjk`: the Deezer Asian Music chart, then discographies of the catalog's Japanese/Korean artists (by Deezer id, most fans first) and their related artists (≥ 20,000 fans), keeping to artists that vote ja/ko.
     5. `artists`: discographies of the foundation artists, then their related artists (≥ 100,000 fans). The limit counts every discography, related ones included.
     6. `lexicon`: single-word title searches.
-  - `harvestArtistDiscography` skips an artist with fewer than 5,000 fans (`MIN_ARTIST_FANS`: the cleanup would drop most of their tracks), and one whose top tracks vote a language outside the allowed ones, before any album or related-artist request.
+  - `harvestArtistDiscography` skips an artist with fewer than 5,000 fans (`MIN_ARTIST_FANS`: the cleanup would drop most of their tracks), and one whose language is outside the allowed ones, before any album or related-artist request.
+  - The language (`_artistLanguage`) is the stored `primary_language` of a catalog artist (matched by Deezer id). Otherwise it is voted on the top tracks. Their payloads carry no ISRCs, and Deezer romanizes Japanese and Korean titles ("Usseewa"), so a vote outside the allowed languages is repeated with the ISRCs of the first 3 top tracks (`/track/{id}`) before the artist is skipped.
   - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.
 - `enricher.ts` (`CatalogEnricher`) fills in metadata. Each step picks its own worklist with SQL and stamps what it has tried (`tracks.enriched_at`, `tracks.itunes_checked_at`, `artists.enriched_at`), so runs are resumable and never loop.
   - `enrichAlbums`: `/album/{id}` (album id from the stored Deezer payload) → release date for every catalog track on the album, including tracks matched through the album's track list. About 9 tracks per request. Run it before `enrichDeezerTracks`.
