@@ -3,7 +3,7 @@
 Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is called by `GET /api/music/random` and `POST /api/puzzles/live` (`server/routes/music.ts`).
 
 ## Themes (`shared/themes.ts`)
-`THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there, plus a `DEEZER_GENRE_TAXONOMY` entry for the live fallback; `themes.test.ts` checks both. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
+`THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there; `themes.test.ts` checks it. The K-pop, J-pop and anime themes allow only Korean or Japanese: a Korean or Japanese act's English-titled songs carry the artist's language. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
 
 ## Modules
 - `songPool.ts`: orchestrator (query plan → candidates → recency tiers → picker → preview paths). `setMusicProviderForTesting(mock)` replaces the live providers **and** bypasses the catalog.
@@ -44,9 +44,11 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
 ## Rules
 - **Language:** catalog rows are judged by their stored `language`; live candidates by `resolveTrackLanguage`. An explicit `languages` filter (generator chips, `queryPlan.languages`) replaces the theme languages in both the catalog window and the picker. Otherwise `allowedLanguagesForContext` returns:
   - a theme id → the theme's `languages` (`shared/themes.ts`)
-  - K-pop or Korean prompts → ko/en
-  - Japanese, J-pop, city pop or anime prompts → ja/en
+  - K-pop or Korean prompts → ko
+  - Japanese, J-pop, city pop or anime prompts → ja
   - everything else → en
+
+  A named artist (`queryPlan.artist`) is served in every admitted language (`buildQueryPlan`), so "songs by YOASOBI" finds Japanese songs. An explicit filter still replaces that.
 
   English-only themes still run live candidates of 1-2 words through the stopword/script heuristics, because titles like "Despacito" are too short for the classifier. From 3 words the classifier decides: stopwords such as "die" or "son" are English words too. Typographic quotes, dashes and the ellipsis (U+2010-U+2027) count as Latin text.
 - **Year window:** a requested year range needs a known year (`resolveReleaseYear`: a vintage remaster year, then the stored year/date, then a year in the title/album). Without a range, unknown years pass. `isTemporalPermitted` never mutates the track; the picker stores the matched year on the output copy.
@@ -66,6 +68,6 @@ Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist 
 
 ## Known limits
 - Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist; there is no live fallback for them.
-- Theme playlist seeds tag every artist on the playlist with the theme genre, so Western acts on "top south korea" carry `K-Pop` (Drake, Queen, AC/DC). The K-pop row of `THEMATIC_RULES` still rejects the known ones by name.
+- K-pop and J-pop acts with no Korean or Japanese evidence in the catalog vote English and stay out of the scene themes. Evidence means hangul or kana titles, KR ISRCs or 20% JP ISRCs, or Deezer's Asian Music genre. On 2026-09-24 this left out LE SSERAFIM and the BTS solo acts. Homonyms merged into one artist (Eve, LISA, Winter, Rainbow) are voted as one.
 - Decade prompts depend on release-year coverage (`catalog:enrich -- --albums=N`). Years come from the album, so compilations carry their own year.
 - Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are rows of `THEMATIC_RULES` in `selectionPolicy.ts`: a context pattern and a reject function. `createThematicPolicy` and `createLanguagePolicy` select the rules for a request once; the picker then runs only those per candidate.

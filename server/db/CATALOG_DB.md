@@ -17,7 +17,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. The web serv
 - New schema changes go in a **new** migration entry. Never edit an applied one.
 
 ## Tables
-- `artists`: `genres_json` holds English genre names: Deezer album genres by genre id (v7 translated the German names stored before), curated clusters, and the theme of any seed playlist the artist appeared on. `canonical_name` UNIQUE (`canonicalArtistKey`: Latin accents folded; kana dakuten and hangul kept), `display_name` (NOCASE index for artist prompts, v8), and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json`, `fans_count`, `primary_language` (voted over the artist's catalog), and `enriched_at`.
+- `artists`: `genres_json` holds English genre names: Deezer album genres by genre id (v7 translated the German names stored before), curated clusters, and the theme of any seed playlist the artist appeared on. Scene genres (`SCENE_GENRES`: K-Pop; Japanese, J-Pop, City Pop, Anime) land on every artist of a K-pop or J-pop playlist, Western acts included, so the language vote only trusts them with evidence and `recomputeCatalogLanguages` removes them from artists voted another language. `canonical_name` UNIQUE (`canonicalArtistKey`: Latin accents folded; kana dakuten and hangul kept), `display_name` (NOCASE index for artist prompts, v8), and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json`, `fans_count`, `primary_language` (voted over the artist's catalog), and `enriched_at`.
 - `tracks`:
   - `isrc` UNIQUE (validated format), `display_title`, `artist_id`, `album_name`, `duration_ms`, `release_year`/`release_date`, `is_explicit`.
   - `canonical_title`: the Unicode **base title** key from `baseTitleKey`. Credits and version tags are removed; kana (including dakuten), hangul and kanji are kept.
@@ -50,7 +50,7 @@ The catalog read path (`sampleCatalogTracks`) only returns `original`/`remaster`
 A match merges provider links, samples, raw popularity, and missing metadata into the existing row. A plain original replaces a remaster as the displayed release. Use `upsertBatch` (one transaction) for bulk writes.
 
 ## Languages after crawls
-`recomputeCatalogLanguages(db)` (`catalogLanguages.ts`, also `npm run catalog:recompute`) re-votes every artist's language and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
+`recomputeCatalogLanguages(db)` (`catalogLanguages.ts`, also `npm run catalog:recompute`) re-votes every artist's language, removes the scene genres the vote doesn't confirm (`sceneGenresRemoved`), and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
 
 Known limit: without an artist vote, about 2.5% of plain two-word English titles read as es/it ("Quiet Shadow", "Neon Anchor"), so a new artist's first such track can be refused. The vote fixes it once the artist has 3+ titles. A per-word check was measured on the 498k-track catalog and rejected: it would have kept ~1,900 two-word titles as English, and most of them are genuinely foreign.
 

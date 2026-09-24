@@ -51,15 +51,15 @@ function contextOf(genre: unknown, prompt: unknown): string {
 
 /**
  * Catalog languages (en/ja/ko) a theme may use: the theme's own list for a theme id,
- * otherwise Korean + English for K-pop prompts, Japanese + English for Japanese/anime
- * prompts, and English for everything else.
+ * otherwise Korean for K-pop prompts, Japanese for Japanese/anime prompts, and English for
+ * everything else. (A named artist is served in every language: see buildQueryPlan.)
  */
 export function allowedLanguagesForContext(genre = 'all', prompt = ''): string[] {
   const theme = typeof genre === 'string' ? themeById(genre) : undefined;
   if (theme && theme.id !== 'all') return [...theme.languages];
   const context = contextOf(genre, prompt);
-  if (/\b(kpop|k-pop|korean)\b/i.test(context)) return ['ko', 'en'];
-  if (/\b(anime|japanese|japan|city\s*pop|j-pop|jpop|j-rock|jrock)\b/i.test(context)) return ['ja', 'en'];
+  if (/\b(kpop|k-pop|korean)\b/i.test(context)) return ['ko'];
+  if (/\b(anime|japanese|japan|city\s*pop|j-pop|jpop|j-rock|jrock)\b/i.test(context)) return ['ja'];
   return ['en'];
 }
 
@@ -161,13 +161,6 @@ const THEMATIC_RULES: readonly ThematicRule[] = [
     rejects: ({ lowerArtist, lowerTitle }) =>
       /\bpop\b/i.test(lowerArtist) && !/\b(japanese|city|j-pop)\b/i.test(lowerArtist) &&
       /\b(city|kill city|motor city|sin city|inner city)\b/i.test(lowerTitle),
-  },
-  {
-    // K-pop: tracks named after the theme, and Western acts that playlist seeds tagged K-Pop
-    appliesTo: /\b(kpop|k-pop)\b/i,
-    rejects: ({ lowerArtist, lowerTitle }) =>
-      /^(k-?pop|new\s+gen|4th\s+gen|5th\s+gen)$/i.test(lowerTitle) ||
-      /\b(m4rkim|steven\s+wilson|carrie\s+underwood|destiny'?s\s+child|billy\s+idol|hozier|maroon\s+5|selena\s+gomez|dua\s+lipa|adele|kid\s+cudi|foster\s+the\s+people|becky\s+g|ton\s+koopman|nelis\s+leeman|michael\s+jackson|oasis|chappell\s+roan|billie\s+eilish|travis\s+scott|the\s+weeknd|lacrim|410|snoop\s+dogg|eminem|post\s+malone|drake)\b/i.test(lowerArtist),
   },
   {
     // Gaming: the rapper The Game and "gamin" stems

@@ -32,7 +32,9 @@ test('a prompt overrides genre=all and keeps its decade', () => {
   assert.deepEqual([plan.genre, plan.decade, plan.artist], ['Japanese City Pop', '1980s', '']);
 });
 
-test('a prompt naming an artist puts the artist in the plan (the only live lookup)', () => {
-  assert.equal(buildQueryPlan({ prompt: 'songs by Queen' }).artist.toLowerCase(), 'queen');
+test('a prompt naming an artist puts the artist in the plan (the only live lookup), in every language', () => {
+  const plan = buildQueryPlan({ prompt: 'songs by Queen' });
+  assert.deepEqual([plan.artist.toLowerCase(), plan.languages], ['queen', ['en', 'ja', 'ko']]);
   assert.equal(buildQueryPlan({ genre: 'rock', artist: 'AC/DC' }).artist, 'AC/DC');
+  assert.equal(buildQueryPlan({ genre: 'kpop' }).languages, null, 'the theme decides');
 });

@@ -32,6 +32,10 @@ test('every theme is a valid live-puzzle genre', () => {
   }
 });
 
+test('the K-pop, J-pop and anime themes allow only their own language', () => {
+  assert.deepEqual(['kpop', 'jpop', 'anime'].map(id => themeById(id)?.languages), [['ko'], ['ja'], ['ja']]);
+});
+
 test('the selection languages of a theme are the theme\'s own', () => {
   for (const theme of THEMES.filter(t => t.id !== 'all')) {
     assert.deepEqual(allowedLanguagesForContext(theme.id), [...theme.languages], theme.id);

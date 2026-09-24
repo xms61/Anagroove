@@ -16,7 +16,7 @@ Flags go after `--` (`npm run db:migrate -- --no-backup`). Every script rejects 
 | `npm run crawl -- --all` | Crawl: Apple charts, then Deezer vectors. Name vectors to run only those (`-- --artists=250`; flags in `server/crawler/CRAWLER.md`) |
 | `npm run catalog:enrich -- --all` | Fill release years by album, ISRC/year/rank by track, artist fans/genres, and strict iTunes links. Name steps to run only those (`-- --albums=N --deezer=N --artists=N --itunes=N`) |
 | `npm run catalog:coverage` | Offline report: can every theme and ~40 benchmark prompts be served with enough tracks, artists and variety (`-- --ci --json --data-dir=path`) |
-| `npm run catalog:recompute` | Local, after crawls and enrichment: re-vote artist/track languages, then recompute the per-language popularity percentiles (`-- --db=path`) |
+| `npm run catalog:recompute` | Local, after crawls and enrichment: re-vote artist/track languages (and drop the K-pop/J-pop scene genres the vote doesn't confirm), then recompute the per-language popularity percentiles (`-- --db=path`) |
 | `npm run catalog:genres` | Apply curated artist genre clusters |
 | `npm run crawl:artists` / `crawl:playlists` / `crawl:status` | Artist-only / playlist-only / catalog metrics |
 | `npm run crawl:top10k` | Ingest Anna's Archive Spotify top‑10k |

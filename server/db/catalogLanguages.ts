@@ -1,15 +1,35 @@
 /**
  * Recomputes artist-level languages (voted over each artist's catalog) and re-resolves every
- * track's language with them. Pure local work: no network. Used by migration v3 and by
+ * track's language with them. Scene genres (K-Pop, Japanese, …) that the vote doesn't confirm are
+ * removed from the artist. Pure local work: no network. Used by migration v3 and by
  * `npm run catalog:recompute` after new crawls.
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { classifyArtistLanguage, resolveTrackLanguage } from './languageClassifier.ts';
+import { SCENE_GENRES } from '../../shared/themes.ts';
 
 export interface LanguageRecompute {
   artists: number;
   tracks: number;
   changed: number;
+  sceneGenresRemoved: number;
+}
+
+/** Genres stored as a JSON array; anything else reads as none. */
+export function parseGenres(json: string | null | undefined): string[] {
+  try {
+    const genres = JSON.parse(json || '[]');
+    return Array.isArray(genres) ? genres : [];
+  } catch {
+    return [];
+  }
+}
+
+/** An artist's genres without the scene genres of languages other than its own (none while unvoted). */
+export function withoutForeignSceneGenres(genres: string[], language: string | null): string[] {
+  if (!language) return genres;
+  const foreign = Object.entries(SCENE_GENRES).filter(([scene]) => scene !== language).flatMap(([, sceneGenres]) => sceneGenres);
+  return genres.filter(genre => !foreign.includes(genre));
 }
 
 interface TrackLanguageRow {
@@ -36,17 +56,25 @@ export function recomputeCatalogLanguages(db: DatabaseSync): LanguageRecompute {
 
 function recompute(db: DatabaseSync): LanguageRecompute {
   const setArtistLanguage = db.prepare('UPDATE artists SET primary_language = ? WHERE id = ?');
-  const artistRows = db.prepare('SELECT id, display_name FROM artists').all() as { id: number; display_name: string }[];
-  const artistNames = new Map(artistRows.map(r => [r.id, r.display_name]));
+  const setArtistGenres = db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?');
+  const artistRows = db.prepare('SELECT id, display_name, genres_json FROM artists').all() as { id: number; display_name: string; genres_json: string | null }[];
+  const artistsById = new Map(artistRows.map(r => [r.id, { name: r.display_name, genres: parseGenres(r.genres_json) }]));
 
   let artists = 0;
+  let sceneGenresRemoved = 0;
   let currentArtist: number | null = null;
   let titles: string[] = [];
   let isrcs: (string | null)[] = [];
   const flush = () => {
     if (currentArtist === null) return;
-    const { language } = classifyArtistLanguage({ titles, isrcs, name: artistNames.get(currentArtist) || '' });
+    const { name = '', genres = [] } = artistsById.get(currentArtist) || {};
+    const { language } = classifyArtistLanguage({ titles, isrcs, name, genres });
     setArtistLanguage.run(language, currentArtist);
+    const kept = withoutForeignSceneGenres(genres, language);
+    if (kept.length < genres.length) {
+      setArtistGenres.run(kept.length > 0 ? JSON.stringify(kept) : null, currentArtist);
+      sceneGenresRemoved += genres.length - kept.length;
+    }
     artists++;
   };
 
@@ -84,5 +112,5 @@ function recompute(db: DatabaseSync): LanguageRecompute {
     }
   }
 
-  return { artists, tracks: rows.length, changed };
+  return { artists, tracks: rows.length, changed, sceneGenresRemoved };
 }

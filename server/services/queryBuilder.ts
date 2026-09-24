@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { ALLOWED_LANGUAGES } from '../db/trackNormalization.ts';
 import type { YearRange } from '../types.ts';
 
 /** What a prompt says about the songs it wants. */
@@ -31,7 +32,10 @@ export interface QueryPlan {
   yearRange?: YearRange;
   targetAnimeKeyphrase: string | null;
   prompt: string;
-  /** Explicit song languages (the API's language filter); otherwise the theme decides. */
+  /**
+   * Song languages when the theme doesn't decide: every admitted language for a named artist
+   * (BTS or YOASOBI sing in their own), replaced by the API's language filter when one is set.
+   */
   languages?: string[] | null;
 }
 
@@ -314,6 +318,7 @@ export function buildQueryPlan(userOptions: QueryOptions = {}): QueryPlan {
     yearRange: options.yearRange,
     targetAnimeKeyphrase: options.targetAnimeKeyphrase || null,
     prompt,
+    languages: artist ? [...ALLOWED_LANGUAGES] : null,
   };
 }
 

@@ -50,6 +50,10 @@ const LANGUAGE_CASES: [track: Track, genre: string, prompt: string, options: { l
   [{ title: 'Idol', artist: 'YOASOBI', language: 'ja' }, 'all', 'japanese city pop', {}, true, 'Japanese in a Japanese theme'],
   [{ title: 'Idol', artist: 'YOASOBI', language: 'ja' }, 'pop', '', { languages: ['ja'] }, true, 'an explicit filter replaces the theme languages'],
   [{ title: 'Levitating', artist: 'Dua Lipa', language: 'en' }, 'pop', '', { languages: ['ja'] }, false, 'an explicit filter excludes other languages'],
+  [{ title: 'Dynamite', artist: 'BTS', language: 'ko' }, 'kpop', '', {}, true, 'a Korean act\'s English title in K-pop'],
+  [{ title: 'Before He Cheats', artist: 'Carrie Underwood', language: 'en' }, 'kpop', '', {}, false, 'a Western act in K-pop'],
+  [{ title: 'Plastic Love', artist: 'Mariya Takeuchi', language: 'ja' }, 'all', '80s Japanese City Pop', {}, true, 'a Japanese act\'s romanized title in city pop'],
+  [{ title: 'Kill City', artist: 'Iggy Pop', language: 'en' }, 'all', 'city pop', {}, false, 'a Western act in city pop'],
 ];
 for (const [track, genre, prompt, options, expected, why] of LANGUAGE_CASES) {
   test(`isLanguagePermitted: ${why} -> ${expected}`, () => {
@@ -57,9 +61,10 @@ for (const [track, genre, prompt, options, expected, why] of LANGUAGE_CASES) {
   });
 }
 
-test('theme languages map onto the en/ja/ko catalog', () => {
-  assert.deepEqual(allowedLanguagesForContext('kpop'), ['ko', 'en']);
-  assert.deepEqual(allowedLanguagesForContext('all', 'anime openings'), ['ja', 'en']);
+test('scene prompts use their own language, everything else English', () => {
+  assert.deepEqual(allowedLanguagesForContext('kpop'), ['ko']);
+  assert.deepEqual(allowedLanguagesForContext('all', 'korean ballads'), ['ko']);
+  assert.deepEqual(allowedLanguagesForContext('all', 'anime openings'), ['ja']);
   assert.deepEqual(allowedLanguagesForContext('rock'), ['en']);
 });
 
@@ -149,11 +154,6 @@ const THEMATIC_CASES: [track: Track, genre: string, prompt: string, expected: bo
   [{ title: 'Around the World', artist: 'Daft Punk' }, 'poppunk', 'pop-punk hits', false, 'Daft Punk is not pop-punk'],
   [{ title: 'We Own The Night', artist: 'Dance Gavin Dance' }, 'edm', 'dance edm', false, 'a post-hardcore band'],
   [{ title: 'Private Dancer', artist: 'Tina Turner' }, 'edm', 'dance music', false, '"Dancer"'],
-  [{ title: 'People Who Eat Darkness', artist: 'Steven Wilson' }, 'kpop', 'new gen kpop', false, 'Western act in K-pop'],
-  [{ title: 'Before He Cheats', artist: 'Carrie Underwood' }, 'kpop', 'new gen kpop', false, 'Western act in K-pop'],
-  [{ title: 'Cater 2 U', artist: "Destiny's Child" }, 'kpop', 'new gen kpop', false, 'Western act in K-pop'],
-  [{ title: 'Eyes Without a Face', artist: 'Billy Idol', selection: { genre: 'Rock' } }, 'kpop', 'new gen kpop', false, 'iTunes rock in K-pop'],
-  [{ title: 'NEW GEN', artist: 'M4rkim' }, 'kpop', 'new gen kpop', false, 'a title named after the query'],
   [{ title: 'Liminal Space', artist: 'LE SSERAFIM', selection: { genre: 'K-Pop' } }, 'kpop', 'new gen kpop', true, 'a real K-pop group'],
   [{ title: 'CASE 143', artist: 'Stray Kids', selection: { genre: 'K-Pop' } }, 'kpop', 'new gen kpop', true, 'a real K-pop group'],
 ];
@@ -167,9 +167,6 @@ for (const [track, genre, prompt, expected, why] of THEMATIC_CASES) {
 const LIVE_LANGUAGE_CASES: [track: Track, genre: string, prompt: string, expected: boolean, why: string][] = [
   [{ title: 'Blinding Lights', artist: 'The Weeknd' }, 'pop', '', true, 'English pop'],
   [{ title: 'Amor de Mi Vida', artist: 'Artista' }, 'pop', '', false, 'Spanish in English pop'],
-  [{ title: 'Gurenge', artist: 'LiSA' }, 'anime', '', true, 'Japanese in anime'],
-  [{ title: 'Dynamite', artist: 'BTS' }, 'kpop', '', true, 'Korean in K-pop'],
-  [{ title: 'Plastic Love', artist: 'Mariya Takeuchi' }, 'all', '80s Japanese City Pop', true, 'Japanese in city pop'],
   [{ title: '真夜中のドア / Stay With Me', artist: '松原みき' }, 'all', 'Japanese City Pop', true, 'kanji and kana in city pop'],
   [{ title: 'Soda Pop (version française)', artist: 'Saja Boys' }, 'kpop', 'new gen kpop', false, 'a French dub'],
   [{ title: 'Symphonie à dix-sept parties, RH 64: II. Larghetto', artist: 'François-Xavier Roth' }, 'all', '', false, 'a classical movement'],

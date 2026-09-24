@@ -3,13 +3,15 @@
  *
  * Signals, strongest first:
  *   1. Script: hangul -> ko, kana -> ja, Han-only -> ja/ko with a JP/KR ISRC or artist, else zh.
- *   2. Artist language: an artist whose catalog is Japanese/Korean (by script or ISRC registrant)
- *      keeps romanized/English-titled songs in ja/ko. Voted over all of the artist's titles.
+ *   2. Artist language: an artist whose catalog is Japanese/Korean (by script or ISRC registrant,
+ *      or a K-pop/J-pop scene genre backed by evidence) keeps romanized/English-titled songs in
+ *      ja/ko. Voted over all of the artist's titles.
  *   3. Title language from the ELD n-gram detector (short-text friendly), used when the artist is
  *      unknown or the title is long enough to outweigh the artist vote.
  * Artist *names* are never run through the text detector ("King Von" is not German).
  */
 import { eld } from 'eld/medium';
+import { ASIAN_MUSIC, SCENE_GENRES } from '../../shared/themes.ts';
 
 export interface TitleDetection {
   language: string | null;
@@ -114,9 +116,32 @@ export function isClearlyForeign(detected: TitleDetection | null | undefined): b
   return detected.margin >= requiredMargin(detected.words);
 }
 
-/** Votes an artist's language over its catalog titles and ISRC registrants. */
+/**
+ * Korean and Japanese acts often have romanized titles and US-registered ISRCs, which the script
+ * and ISRC vote misses. A scene genre (from a theme playlist) places them when Deezer files the
+ * artist under Asian Music or the ISRCs show the country: any KR registration, or a fifth JP ones
+ * (Japan editions of Western records carry JP codes too). K-Pop comes first: K-pop acts also
+ * release in Japan and appear on anime playlists. A confirmed scene weighs like an ISRC majority,
+ * so a K-pop group whose catalog is mostly Japanese live recordings stays Korean.
+ */
+const SCENES = [
+  { language: 'ko', genres: SCENE_GENRES.ko, country: 'KR', minShare: 0 },
+  { language: 'ja', genres: SCENE_GENRES.ja, country: 'JP', minShare: 0.2 },
+];
+
+function sceneLanguage(genres: readonly string[], registrants: string[]): string | null {
+  const asianMusic = genres.includes(ASIAN_MUSIC);
+  for (const scene of SCENES) {
+    if (!scene.genres.some(genre => genres.includes(genre))) continue;
+    const fromCountry = registrants.filter(r => r === scene.country).length;
+    if (asianMusic || (fromCountry > 0 && fromCountry / registrants.length >= scene.minShare)) return scene.language;
+  }
+  return null;
+}
+
+/** Votes an artist's language over its catalog titles, ISRC registrants and scene genres. */
 export function classifyArtistLanguage(
-  { titles = [], isrcs = [], name = '' }: { titles?: string[]; isrcs?: (string | null)[]; name?: string } = {},
+  { titles = [], isrcs = [], name = '', genres = [] }: { titles?: string[]; isrcs?: (string | null)[]; name?: string; genres?: readonly string[] } = {},
 ): { language: string | null; basis: string } {
   const cleaned = titles.map(languageText).filter(Boolean);
   const total = cleaned.length;
@@ -133,14 +158,15 @@ export function classifyArtistLanguage(
     else if (script) otherScripts.set(script, (otherScripts.get(script) || 0) + 1);
   }
 
-  const registrants = isrcs.map(isrcRegistrant).filter(Boolean);
+  const registrants = isrcs.map(isrcRegistrant).filter((r): r is string => Boolean(r));
   const jp = registrants.filter(r => r === 'JP').length;
   const kr = registrants.filter(r => r === 'KR').length;
   const nameScript = scriptLanguage(name);
 
   const enough = (count: number) => count >= 2 || (total > 0 && count / total >= 0.1);
-  const koScore = hangul + (registrants.length >= 2 && kr / registrants.length >= 0.5 ? total : 0) + (nameScript === 'ko' ? total : 0);
-  const jaScore = kana + (registrants.length >= 2 && jp / registrants.length >= 0.5 ? total : 0) + (nameScript === 'ja' ? total : 0);
+  const scene = sceneLanguage(genres, registrants);
+  const koScore = hangul + (registrants.length >= 2 && kr / registrants.length >= 0.5 ? total : 0) + (nameScript === 'ko' ? total : 0) + (scene === 'ko' ? total : 0);
+  const jaScore = kana + (registrants.length >= 2 && jp / registrants.length >= 0.5 ? total : 0) + (nameScript === 'ja' ? total : 0) + (scene === 'ja' ? total : 0);
   if ((enough(hangul) || koScore > hangul) && koScore >= jaScore && koScore > 0) return { language: 'ko', basis: 'script/isrc' };
   if ((enough(kana) || jaScore > kana) && jaScore > 0) return { language: 'ja', basis: 'script/isrc' };
   if (total > 0 && hanOnly / total >= 0.5) return { language: 'zh', basis: 'script' };

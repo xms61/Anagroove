@@ -151,8 +151,8 @@ export async function getRandomSongPool({
   languages,
 }: SongPoolRequest = {}): Promise<PickedSong[]> {
   const queryPlan = buildQueryPlan({ genre, prompt, artist, album, decade, popularity });
-  // An explicit EN/JA/KO filter from the generator replaces the theme's default languages
-  queryPlan.languages = Array.isArray(languages) && languages.length > 0 ? languages : null;
+  // An explicit EN/JA/KO filter from the generator replaces the default languages
+  if (Array.isArray(languages) && languages.length > 0) queryPlan.languages = languages;
   logger.info('query', `Plan: genre="${queryPlan.genre}" artist="${queryPlan.artist || ''}" popularity=${queryPlan.popularity || 'balanced'}`);
 
   const rng = createRng(seed);

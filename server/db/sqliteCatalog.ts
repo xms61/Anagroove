@@ -6,6 +6,7 @@ import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 import { DATA_DIR } from '../paths.ts';
 import { runCatalogMigrations, type MigrationResult } from './catalogMigrations.ts';
+import { parseGenres } from './catalogLanguages.ts';
 import { lazySingleton } from './lazySingleton.ts';
 import { catalogBusyTimeout } from './busyTimeout.ts';
 import { isAuthenticMetadata } from '../policy/authenticityRules.ts';
@@ -156,16 +157,6 @@ export function normalizeDedupeArtist(artist = '') {
 }
 
 export { detectTrackLanguage, extractIsrcCountryCode };
-
-/** Genres stored as a JSON array; anything else reads as none. */
-function parseGenres(json: string | null | undefined): string[] {
-  try {
-    const genres = JSON.parse(json || '[]');
-    return Array.isArray(genres) ? genres : [];
-  } catch {
-    return [];
-  }
-}
 
 function prepareStatements(db: DatabaseSync) {
   return {
