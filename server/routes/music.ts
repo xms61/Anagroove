@@ -4,6 +4,7 @@
 import express from 'express';
 import { db } from '../db.ts';
 import { getRandomSongPool } from '../selection/songPool.ts';
+import { createRng } from '../selection/random.ts';
 import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.ts';
 import { ProviderBudgetError } from '../crawler/rateLimiter.ts';
@@ -119,7 +120,8 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
           : `⚡ Live: ${genre === 'all' ? (popularity === 'pure' ? 'Pure Universe' : 'Eclectic Hits') : genre}`;
 
       // Every picked song has its answer, clue and a preview path (songPool.attachPreviewRefs)
-      const puzzle = generateLiveCrossword(songs as LiveSong[], puzzleTitle, targetWords);
+      // A seeded request gets a reproducible layout too (the suffix keeps it apart from song selection)
+      const puzzle = generateLiveCrossword(songs as LiveSong[], puzzleTitle, targetWords, seed ? { rng: createRng(`${seed}:grid`) } : {});
       if (!puzzle) {
         logger.warn('puzzle', `Crossword generator could not place words from ${songs.length} candidates`);
         return res.status(422).json({

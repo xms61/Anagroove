@@ -23,3 +23,5 @@
 ## Grid rules
 - Every placed word crosses 1–3 existing words; placements with 2–3 crossings score higher.
 - The bounding box is computed dynamically.
+- 150 randomized trials (300 for `dense`), keeping the best score. A trial stops as soon as a whole pass over the remaining songs places nothing, since the grid can no longer change. Crossed words are found through per-direction owner grids and the bounding box is kept up to date, so checking a placement costs O(answer length).
+- `options.rng` drives every random choice. `POST /api/puzzles/live` passes `createRng(`${seed}:grid`)` for a seeded request, so the same seed gives the same songs and the same layout.

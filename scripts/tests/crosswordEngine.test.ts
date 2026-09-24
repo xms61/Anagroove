@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { shuffleArray } from '../../shared/shuffle.ts';
 import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
+import { createRng } from '../../server/selection/random.ts';
 
 test('Unbiased Fisher-Yates Shuffle', async () => {
   const empty = shuffleArray([]);
@@ -51,4 +52,25 @@ test('Live Crossword Placement Engine', async () => {
   assert(testPuzzle && testPuzzle.clues.every(c => (c.crossings || 1) >= 1 && (c.crossings || 1) <= 3), 'All words cross between 1 and 3 times');
   const distinctCrossings = new Set(testPuzzle.clues.map(c => c.crossings || 1));
   assert(distinctCrossings.size >= 2, 'Words feature varied crossing frequencies (e.g. 1, 2, or 3 crossings)');
+});
+
+const songsFor = (answers: string[]): LiveSong[] => answers.map((answer, i) => ({
+  id: `s${i}`, title: answer, artist: 'Artist', album: '', albumArt: '', audioUrl: '', answer, clueType: 'Song title', clueText: answer,
+}));
+
+test('the same seed gives the same layout', () => {
+  const songs = songsFor(['GETLUCKY', 'STARBOY', 'ONEMORETIME', 'HARDER', 'AROUNDTHEWORLD', 'INSTANTCRUSH', 'TECHNOLOGIC', 'AERODYNAMIC']);
+  const layout = (seed: string) => {
+    const puzzle = generateLiveCrossword(songs, 'Seeded', 6, { rng: createRng(seed) });
+    return JSON.stringify({ grid: puzzle?.grid, clues: puzzle?.clues });
+  };
+  assert.equal(layout('seed-a'), layout('seed-a'));
+  const shuffleRng = createRng('shuffle');
+  assert.deepEqual(shuffleArray([1, 2, 3, 4, 5], shuffleRng), shuffleArray([1, 2, 3, 4, 5], createRng('shuffle')));
+});
+
+test('answers that share no letters give up quickly instead of retrying every pass', () => {
+  const start = Date.now();
+  assert.equal(generateLiveCrossword(songsFor(['AAAA', 'BBBB', 'CCCC', 'DDDD', 'EEEE', 'FFFF', 'GGGG']), 'Disjoint', 6), null);
+  assert.ok(Date.now() - start < 500, `${Date.now() - start} ms`);
 });
