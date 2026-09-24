@@ -10,6 +10,17 @@ import { blacklistIdentityKey, canonicalArtistKey, canonicalTrackKey } from '../
 import { logger } from '../logger.ts';
 
 const USER_ID_MAX = 64;
+// Each write returns the whole list, so the lists stay small enough to send on every request
+export const MAX_BLACKLIST_ITEMS = 500;
+export const MAX_HISTORY_ITEMS = 1000;
+
+/** Thrown when a user's hidden list is full; the route answers 409. */
+export class BlacklistFullError extends Error {
+  constructor() {
+    super(`A user can hide up to ${MAX_BLACKLIST_ITEMS} artists and songs`);
+    this.name = 'BlacklistFullError';
+  }
+}
 
 export type BlacklistType = 'artist' | 'song';
 
@@ -141,8 +152,11 @@ function prepareStatements(db: DatabaseSync) {
     `),
     clearProgressFor: db.prepare('DELETE FROM progress WHERE user_id = ? AND puzzle_id = ?'),
     getHistory: db.prepare('SELECT data_json FROM solved_history WHERE user_id = ? ORDER BY solved_at, rowid'),
+    trimHistory: db.prepare(`DELETE FROM solved_history WHERE user_id = ? AND rowid NOT IN (
+      SELECT rowid FROM solved_history WHERE user_id = ? ORDER BY solved_at DESC, rowid DESC LIMIT ${MAX_HISTORY_ITEMS})`),
     addHistory: db.prepare('INSERT OR IGNORE INTO solved_history (user_id, puzzle_id, data_json, solved_at) VALUES (?, ?, ?, ?)'),
     getBlacklist: db.prepare('SELECT * FROM blacklist WHERE user_id = ? ORDER BY date_added, rowid'),
+    countBlacklist: db.prepare('SELECT COUNT(*) AS n FROM blacklist WHERE user_id = ?'),
     addBlacklist: db.prepare(`
       INSERT OR IGNORE INTO blacklist (user_id, id, type, name, identity_key, provider, provider_artist_id, provider_track_id, date_added)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -234,8 +248,11 @@ export class UserStore {
       this.touchUser(id);
       const solvedAt = Date.now();
       const inserted = this.stmt.addHistory.run(id, String(solvedItem.puzzleId), JSON.stringify({ ...solvedItem, solvedAt }), solvedAt).changes;
-      // Solving a puzzle clears the saved progress for it
-      if (inserted) this.stmt.clearProgressFor.run(id, String(solvedItem.puzzleId));
+      // Solving a puzzle clears the saved progress for it; the history keeps the newest entries
+      if (inserted) {
+        this.stmt.clearProgressFor.run(id, String(solvedItem.puzzleId));
+        this.stmt.trimHistory.run(id, id);
+      }
     });
     return this.getSolvedHistory(id);
   }
@@ -288,7 +305,10 @@ export class UserStore {
     if (!id) return [];
     this.transaction(() => {
       this.touchUser(id);
-      this.insertBlacklistItem(id, item);
+      // Checked after the insert so re-adding an item that is already hidden stays a no-op
+      if (this.insertBlacklistItem(id, item) && Number(this.stmt.countBlacklist.get(id)?.n) > MAX_BLACKLIST_ITEMS) {
+        throw new BlacklistFullError();
+      }
     });
     return this.getBlacklist(id);
   }

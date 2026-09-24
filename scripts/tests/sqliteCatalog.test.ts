@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
 import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.ts';
 import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../../server/db/catalogMigrations.ts';
@@ -203,4 +206,23 @@ test('migration v7 translates German Deezer genre names already stored', () => {
   const { genres_json: json } = catalog.db.prepare("SELECT genres_json FROM artists WHERE display_name = 'Composer'").get();
   assert.deepEqual(JSON.parse(String(json)), ['Films/Games', 'Classical']);
   catalog.close();
+});
+
+test('a short busy timeout makes a blocked write fail fast instead of waiting', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-busy-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dbPath = path.join(dir, 'catalog.sqlite');
+  const script = new SqliteCatalog(dbPath);
+  const server = new SqliteCatalog(dbPath, { busyTimeoutMs: 100 });
+  script.db.exec('BEGIN IMMEDIATE;');
+  try {
+    assert.equal(server.db.prepare('PRAGMA busy_timeout').get()?.timeout, 100);
+    const start = Date.now();
+    assert.throws(() => server.db.exec('CREATE TABLE busy_probe (x)'), /locked|busy/i);
+    assert.ok(Date.now() - start < 1000, 'gave up after about 100 ms');
+  } finally {
+    script.db.exec('ROLLBACK;');
+    script.close();
+    server.close();
+  }
 });

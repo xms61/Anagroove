@@ -71,6 +71,8 @@ export interface BlacklistItem {
   dateAdded: number;
 }
 
+export type BlacklistSave = { blacklist: BlacklistItem[] } | { error: string };
+
 export type BlacklistTarget = Omit<BlacklistItem, 'id' | 'dateAdded' | 'canonicalKey'>;
 
 export const apiClient = {
@@ -154,21 +156,21 @@ export const apiClient = {
     return null;
   },
 
-  async addBlacklist(target: BlacklistTarget): Promise<BlacklistItem[] | null> {
+  /** The saved list, or the message to show (the server's own when the list is full). */
+  async addBlacklist(target: BlacklistTarget): Promise<BlacklistSave> {
     try {
       const res = await fetch('/api/blacklist', {
         method: 'POST',
         headers: headers(),
         body: JSON.stringify(target),
       });
-      if (res.ok) {
-        const data = await res.json();
-        return data.blacklist || [];
-      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return { blacklist: data.blacklist || [] };
+      if (res.status === 409 && typeof data.error === 'string') return { error: data.error };
     } catch (err) {
       console.warn('Could not add to blacklist on server:', err);
     }
-    return null;
+    return { error: 'Could not save your blacklist change. Live puzzles were not changed.' };
   },
 
   async removeBlacklist(id: string): Promise<BlacklistItem[] | null> {

@@ -6,6 +6,7 @@ import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.ts';
 import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.ts';
 import { db } from '../../server/db.ts';
+import { MAX_BLACKLIST_ITEMS } from '../../server/db/userStore.ts';
 import {
   resolveTrackPreview,
   clearPreviewCacheForTesting,
@@ -238,6 +239,18 @@ describe('HTTP and WebSocket server', () => {
     const userId = `probe-${Date.now()}`;
     assert.equal((await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } })).status, 200);
     assert.equal(db.findUser(userId), null);
+  });
+
+  test('a full hidden list answers 409 with a message the client shows', async () => {
+    const userId = `full-${Date.now()}`;
+    for (let i = 0; i < MAX_BLACKLIST_ITEMS; i++) db.addBlacklistItem(userId, { name: `Artist ${i}`, type: 'artist' });
+    const response = await fetch(`${baseUrl}/api/blacklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+      body: JSON.stringify({ name: 'One Too Many', type: 'artist' }),
+    });
+    assert.equal(response.status, 409);
+    assert.match((await readJson(response)).error, /up to 500/);
   });
 
   test('blacklist DELETE removes by item id, never by matching name', async () => {

@@ -50,13 +50,13 @@ export function useBlacklist() {
       ...(typeof artist !== 'string' && artist.provider ? { provider: artist.provider } : {}),
       ...(typeof artist !== 'string' && artist.providerArtistId ? { providerArtistId: artist.providerArtistId } : {}),
     };
-    const updated = await apiClient.addBlacklist(target);
-    if (!updated) {
-      alert('Could not save your blacklist change. Live puzzles were not changed.');
+    const saved = await apiClient.addBlacklist(target);
+    if ('error' in saved) {
+      alert(saved.error);
       return;
     }
-    setBlacklist(updated);
-    writeJson(LOCAL_STORAGE_KEY, (updated));
+    setBlacklist(saved.blacklist);
+    writeJson(LOCAL_STORAGE_KEY, saved.blacklist);
   }, []);
 
   const addSong = useCallback(async (song: Pick<Song, 'title' | 'provider' | 'providerTrackId'> | string) => {
@@ -70,13 +70,13 @@ export function useBlacklist() {
       ...(typeof song !== 'string' && song.provider ? { provider: song.provider } : {}),
       ...(typeof song !== 'string' && song.providerTrackId ? { providerTrackId: song.providerTrackId } : {}),
     };
-    const updated = await apiClient.addBlacklist(target);
-    if (!updated) {
-      alert('Could not save your blacklist change. Live puzzles were not changed.');
+    const saved = await apiClient.addBlacklist(target);
+    if ('error' in saved) {
+      alert(saved.error);
       return;
     }
-    setBlacklist(updated);
-    writeJson(LOCAL_STORAGE_KEY, (updated));
+    setBlacklist(saved.blacklist);
+    writeJson(LOCAL_STORAGE_KEY, saved.blacklist);
   }, []);
 
   const removeItem = useCallback(async (idOrName: string) => {

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { DATA_DIR } from '../paths.ts';
 import { lazySingleton } from './lazySingleton.ts';
+import { catalogBusyTimeout } from './busyTimeout.ts';
 
 const DEFAULT_ANIME_DB_PATH = path.join(DATA_DIR, 'anime_catalog.sqlite');
 
@@ -122,7 +123,7 @@ export class AnimeCatalog {
       this.db.exec('PRAGMA journal_mode = WAL;');
       this.db.exec('PRAGMA synchronous = NORMAL;');
       this.db.exec('PRAGMA foreign_keys = ON;');
-      this.db.exec('PRAGMA busy_timeout = 10000;');
+      this.db.exec(`PRAGMA busy_timeout = ${catalogBusyTimeout()};`);
     } catch {
       // WAL mode not supported in :memory: databases
     }

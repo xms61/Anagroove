@@ -18,6 +18,7 @@ import { createMusicRouter } from './routes/music.ts';
 import { createUserRouter } from './routes/user.ts';
 import { attachMultiplayer } from './ws/rooms.ts';
 import { peekSqliteCatalog } from './db/sqliteCatalog.ts';
+import { setCatalogBusyTimeout } from './db/busyTimeout.ts';
 import { onShutdown } from './shutdown.ts';
 import { logger } from './logger.ts';
 
@@ -26,6 +27,10 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 3000 : 3001);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// A crawl can hold a catalog's write lock for seconds; the server's catalog writes (learning from
+// live results, preview samples, anime covers) give up instead of blocking the event loop
+setCatalogBusyTimeout(250);
 
 const app = express();
 const livePuzzles = createLivePuzzleStore();

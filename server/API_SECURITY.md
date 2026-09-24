@@ -29,6 +29,7 @@ Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/w
   - The old `store.json` (or its `.bak`) is imported once on first open, recorded in `meta`, and then no longer read.
   - Reads (`findUser`, `get*`) never create users; writes do.
   - Blacklist rows are unique per (user, type, identity key), and DELETE matches the item `id` only.
+  - A user can hide up to 500 items (`MAX_BLACKLIST_ITEMS`; the next add answers 409), and the solved history keeps the newest 1,000 entries (`MAX_HISTORY_ITEMS`). Every write returns the whole list.
 - Shutdown: register cleanup with `onShutdown(name, fn)` in `server/shutdown.ts` (user store and catalog WAL checkpoints). Never add your own SIGINT/SIGTERM handlers.
 
 ## Env vars (see `.env.example`)

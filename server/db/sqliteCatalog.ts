@@ -7,6 +7,7 @@ import { errorMessage } from '../errors.ts';
 import { DATA_DIR } from '../paths.ts';
 import { runCatalogMigrations, type MigrationResult } from './catalogMigrations.ts';
 import { lazySingleton } from './lazySingleton.ts';
+import { catalogBusyTimeout } from './busyTimeout.ts';
 import { isAuthenticMetadata } from '../policy/authenticityRules.ts';
 import type { YearRange } from '../types.ts';
 import {
@@ -268,7 +269,7 @@ export class SqliteCatalog {
   private readonly statements: ReturnType<typeof prepareStatements>;
   private rejectionStats: Record<RejectionReason, number> = { missingFields: 0, title: 0, language: 0, version: 0, inauthentic: 0, duration: 0 };
 
-  constructor(dbPath = DEFAULT_DB_PATH) {
+  constructor(dbPath = DEFAULT_DB_PATH, { busyTimeoutMs = catalogBusyTimeout() }: { busyTimeoutMs?: number } = {}) {
     this.dbPath = dbPath;
     if (dbPath !== ':memory:') {
       fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -280,7 +281,7 @@ export class SqliteCatalog {
     try {
       this.db.exec('PRAGMA journal_mode = WAL;');
       this.db.exec('PRAGMA synchronous = NORMAL;');
-      this.db.exec('PRAGMA busy_timeout = 10000;');
+      this.db.exec(`PRAGMA busy_timeout = ${Math.trunc(busyTimeoutMs)};`);
       this.db.exec('PRAGMA foreign_keys = ON;');
       this.db.exec('PRAGMA mmap_size = 2147483648;'); // 2GB memory-mapped I/O
       this.db.exec('PRAGMA cache_size = -64000;');    // 64MB memory page cache

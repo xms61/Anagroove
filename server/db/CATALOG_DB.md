@@ -8,7 +8,7 @@ Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` 
 `sqliteCatalog` and `animeCatalog` are **lazy singletons** (`lazySingleton.ts`): importing a module opens nothing, and the first property access opens (and migrates) the file. Scripts and tests that must not touch real data need `SPOTYSPICE_DATA_DIR`, or `new SqliteCatalog(':memory:')`.
 
 ## Pragmas
-WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
+WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. The web server lowers the busy timeout to 250 ms before first use (`setCatalogBusyTimeout`, `busyTimeout.ts`, also used by the anime catalog): its catalog writes are best-effort caching, and `node:sqlite` blocks the event loop while it waits for a script's write lock. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
 
 ## Migrations (`catalogMigrations.ts`)
 - Versions are tracked in `PRAGMA user_version` (currently **v7**). Each migration runs in its own transaction.

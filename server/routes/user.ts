@@ -4,6 +4,7 @@
  */
 import express, { type RequestHandler } from 'express';
 import { db } from '../db.ts';
+import { BlacklistFullError, MAX_BLACKLIST_ITEMS } from '../db/userStore.ts';
 import { validateBlacklistPayload, validateHistoryPayload, validateProgressPayload, validateUserId } from '../validators.ts';
 
 export const requireUserId: RequestHandler = (req, res, next) => {
@@ -55,7 +56,12 @@ export function createUserRouter() {
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
-    res.json({ success: true, blacklist: db.addBlacklistItem(req.userId, validation.data) });
+    try {
+      res.json({ success: true, blacklist: db.addBlacklistItem(req.userId, validation.data) });
+    } catch (err) {
+      if (!(err instanceof BlacklistFullError)) throw err;
+      res.status(409).json({ error: `You can hide up to ${MAX_BLACKLIST_ITEMS} artists and songs. Remove some to hide more.` });
+    }
   });
 
   router.delete('/blacklist/:id', (req, res) => {
