@@ -4,7 +4,7 @@
  * an artist), then the crossword answer and clue with clue-type and answer-length rotation.
  */
 import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.ts';
-import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
+import { canonicalArtistKey, canonicalTrackKey, compileBlacklist, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.ts';
 import {
   isAuthenticTrack,
@@ -90,6 +90,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
   if (isTargetingAnimeKeyphrase && animeKeyphrase) banTokens(animeKeyphrase);
 
   const policyContext = prompt || queryPlan.prompt;
+  const isBlacklisted = compileBlacklist(blacklist);
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const targetArtistKey = queryPlan.artist ? canonicalArtistKey(queryPlan.artist) : '';
 
@@ -143,7 +144,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.duplicateTitle++;
         continue;
       }
-      if (blacklistMatchesTrack(blacklist, track)) {
+      if (isBlacklisted(track)) {
         rejections.blacklist++;
         continue;
       }
@@ -165,9 +166,11 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         continue;
       }
 
-      const isTargetArtist = isTargetingSingleArtist && (artistIdentity.includes(targetArtistKey) || targetArtistKey.includes(artistIdentity));
-      const isKeyphraseAnimeMatch = isTargetingAnimeKeyphrase && Boolean(track.isAnimeOped);
       const artistNames = splitArtistNames(track.artist);
+      // Whole names only: "Drake" targets "Drake feat. Future", never "Nick Drake"
+      const isTargetArtist = isTargetingSingleArtist && Boolean(artistIdentity) &&
+        (artistIdentity === targetArtistKey || artistNames.some(name => canonicalArtistKey(name) === targetArtistKey));
+      const isKeyphraseAnimeMatch = isTargetingAnimeKeyphrase && Boolean(track.isAnimeOped);
       const isDuplicateArtist = !isTargetArtist && !isKeyphraseAnimeMatch && (
         seenArtists.has(artistIdentity) || artistNames.some(name => seenArtists.has(canonicalArtistKey(name)))
       );

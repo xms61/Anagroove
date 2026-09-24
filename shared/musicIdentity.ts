@@ -110,31 +110,73 @@ export function toCrosswordAnswer(displayName: unknown, { minLength = 2, maxLeng
   return answer.length >= minLength && answer.length <= maxLength ? answer : null;
 }
 
-export function blacklistMatchesTrack(blacklist: BlacklistIdentityItem[] | null | undefined, track: MusicIdentityTrack): boolean {
-  const artistKey = canonicalArtistKey(track.artist);
-  const titleKey = canonicalTrackKey(track.title);
+/**
+ * Compiles a blacklist once per request into id and name sets; the returned matcher costs
+ * O(words²) per track, whatever the list's size.
+ *
+ * An artist hidden by provider id matches that id exactly. The song may not carry an id from
+ * that provider (catalog rows without a Deezer artist id, iTunes results): then the hidden name
+ * decides, so a hide made from a live Deezer song also hides the artist's other songs. A song
+ * with a provider id is hidden by that id only (a title alone is too common); without one, by
+ * title.
+ */
+export function compileBlacklist(blacklist: BlacklistIdentityItem[] | null | undefined): (track: MusicIdentityTrack) => boolean {
+  const artistIds = new Set<string>();
+  const trackIds = new Set<string>();
+  const artistNames = new Set<string>();
+  const songNames = new Set<string>();
+  // Names of artists hidden by id, per provider ('*' when the provider is unknown)
+  const identifiedArtistNames = new Map<string, Set<string>>();
 
-  return (blacklist || []).some(item => {
-    if (!item || (item.type !== 'artist' && item.type !== 'song')) return false;
-
+  for (const item of blacklist || []) {
+    if (item?.type !== 'artist' && item?.type !== 'song') continue;
+    const name = canonicalMusicKey(item.name) || item.canonicalKey || '';
+    const provider = item.provider || '*';
     if (item.type === 'artist' && item.providerArtistId) {
-      return (!item.provider || item.provider === track.provider) &&
-        String(item.providerArtistId) === String(track.providerArtistId);
+      artistIds.add(`${provider}:${item.providerArtistId}`);
+      if (name) identifiedArtistNames.set(provider, (identifiedArtistNames.get(provider) || new Set()).add(name));
+    } else if (item.type === 'artist') {
+      if (name) artistNames.add(name);
+    } else if (item.providerTrackId) {
+      trackIds.add(`${provider}:${item.providerTrackId}`);
+    } else if (name) {
+      songNames.add(name);
     }
+  }
+  const hasId = (ids: Set<string>, provider: string | undefined, id: string | number | null | undefined): boolean =>
+    id !== null && id !== undefined && id !== '' && (ids.has(`*:${id}`) || ids.has(`${provider}:${id}`));
 
-    if (item.type === 'song' && item.providerTrackId) {
-      return (!item.provider || item.provider === track.provider) &&
-        String(item.providerTrackId) === String(track.providerTrackId);
+  return track => {
+    if (hasId(artistIds, track.provider, track.providerArtistId) || hasId(trackIds, track.provider, track.providerTrackId)) return true;
+    const artistKey = canonicalArtistKey(track.artist);
+    if (containsAnyPhrase(artistKey, artistNames) || containsAnyPhrase(canonicalTrackKey(track.title), songNames)) return true;
+    const hasArtistId = track.providerArtistId !== null && track.providerArtistId !== undefined && track.providerArtistId !== '';
+    for (const [provider, names] of identifiedArtistNames) {
+      const idWasComparable = hasArtistId && (provider === '*' || provider === track.provider);
+      if (!idWasComparable && containsAnyPhrase(artistKey, names)) return true;
     }
-
-    const candidateKey = item.type === 'artist' ? artistKey : titleKey;
-    const blacklistKey = canonicalMusicKey(item.name) || item.canonicalKey;
-    return Boolean(candidateKey && blacklistKey && containsWords(candidateKey, blacklistKey));
-  });
+    return false;
+  };
 }
 
-// Whole-word match on canonical keys: "drake" blocks "drake feat future" and "hey jude" blocks
-// "hey jude remastered 2015", but "iu" does not block "julius" and "queen latifah" not "queen".
-function containsWords(candidateKey: string, blacklistKey: string): boolean {
-  return ` ${candidateKey} `.includes(` ${blacklistKey} `);
+export function blacklistMatchesTrack(blacklist: BlacklistIdentityItem[] | null | undefined, track: MusicIdentityTrack): boolean {
+  return compileBlacklist(blacklist)(track);
+}
+
+/**
+ * Whole-word match on canonical keys: true when `phrases` holds a run of consecutive words of
+ * `key`. "drake" matches "drake feat future" and "hey jude" matches "hey jude remastered 2015",
+ * but "iu" does not match "julius" and "queen latifah" not "queen".
+ */
+function containsAnyPhrase(key: string, phrases: ReadonlySet<string>): boolean {
+  if (!key || phrases.size === 0) return false;
+  const words = key.split(' ');
+  for (let start = 0; start < words.length; start++) {
+    let phrase = '';
+    for (let end = start; end < words.length; end++) {
+      phrase = phrase ? `${phrase} ${words[end]}` : words[end];
+      if (phrases.has(phrase)) return true;
+    }
+  }
+  return false;
 }

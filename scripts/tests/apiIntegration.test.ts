@@ -98,7 +98,7 @@ test('generic blacklist entries match canonically; provider-scoped ones match th
   assert.ok(blacklistMatchesTrack([generic], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
   assert.ok(blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE' }));
   assert.ok(!blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
-  assert.ok(!blacklistMatchesTrack([scoped], { ...track, provider: 'other', artist: 'BEYONCE' }));
+  assert.ok(blacklistMatchesTrack([scoped], { ...track, provider: 'other', artist: 'BEYONCE' }), 'another provider\'s ids are not comparable: the name decides');
   assert.ok(!blacklistMatchesTrack(
     [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '1' }],
     { provider: 'deezer', providerTrackId: '2', title: 'Hello', artist: 'Different Artist' }

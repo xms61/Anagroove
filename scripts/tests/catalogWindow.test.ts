@@ -60,11 +60,27 @@ test('year, artist and text filters narrow the window in SQL', () => {
   catalog.close();
 });
 
+test('a few full-text matches are returned as they are, for any number of keywords', () => {
+  const catalog = thirtyTrackCatalog();
+  const titles = (ftsQuery: string) => catalog.sampleCatalogTracks({ ftsQuery, poolSize: 50 }).map(r => r.title).sort();
+  assert.deepEqual(titles('"ong 12" OR "ong 13"'), ['Sample Song 12', 'Sample Song 13']);
+  assert.deepEqual(titles('"ong 12"'), ['Sample Song 12']);
+  catalog.close();
+});
+
 test('the catalog window honours an explicit language filter', () => {
   const catalog = new SqliteCatalog(':memory:');
   catalog.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '901', deezerRank: 800000 });
   catalog.upsertTrack({ title: 'アイドル', artist: 'YOASOBI', durationMs: 213000, provider: 'deezer', providerTrackId: '902', deezerRank: 800000, isrc: 'JPU902300400' });
   const rows = catalogCandidates({ catalog, queryPlan: { genre: 'all', popularity: 'pure', languages: ['ja'] } as QueryPlan, prompt: '', rng: createRng('lang') });
   assert.deepEqual(rows.map(r => r.language), ['ja']);
+  catalog.close();
+});
+
+test('catalog candidates carry the artist\'s Deezer id, so id-based hides apply to them', () => {
+  const catalog = new SqliteCatalog(':memory:');
+  catalog.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '901', deezerRank: 800000, artistMetadata: { deezerId: 8706544 } });
+  const [row] = catalogCandidates({ catalog, queryPlan: { genre: 'all', popularity: 'pure' } as QueryPlan, prompt: '', rng: createRng('ids') });
+  assert.equal(String(row.providerArtistId), '8706544');
   catalog.close();
 });

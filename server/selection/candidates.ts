@@ -60,6 +60,7 @@ function catalogRowToCandidate(row: CatalogRow): SongCandidate {
     catalogTrackId: row.id,
     provider: row.deezer_id || !row.itunes_id ? 'deezer' : 'itunes',
     providerTrackId: row.deezer_id || row.itunes_id || String(row.id),
+    providerArtistId: row.artist_deezer_id,
     deezer_id: row.deezer_id,
     spotify_id: row.spotify_id,
     itunes_id: row.itunes_id,

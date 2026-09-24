@@ -34,6 +34,10 @@ export function getAnimeThemeType(genre = '', prompt = '') {
  * Language policy: English for most themes; Japanese and Korean only for themes and prompts
  * that ask for them (anime, J-pop, city pop, K-pop) or an explicit language filter.
  */
+// Latin letters plus typographic quotes, dashes and the ellipsis (U+2010-U+2027): "Don’t Start Now"
+const LATIN_TEXT = /^[\u0020-\u024F\u2010-\u2027\s\d]*$/u;
+const wordCount = (text: string): number => text.split(/\s+/).filter(Boolean).length;
+
 export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = '', { languages = null }: { languages?: readonly string[] | null } = {}): boolean {
   // Anime OP/ED tracks from the dedicated anime catalog are always permitted
   if (track?.isAnimeOped) {
@@ -59,7 +63,9 @@ export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = ''
   const hasCatalogLanguage = typeof track?.language === 'string' && Boolean(track.language);
   const language = hasCatalogLanguage ? track.language : resolveTrackLanguage({ title, artist });
   if (!allowed.includes(language)) return false;
-  if (hasCatalogLanguage || !englishOnly) {
+  // The classifier decides titles of 3+ words; the heuristics below are for 1-2 word titles
+  // ("Despacito"), which are too short for it. Stopwords like "die" or "son" are English words too.
+  if (hasCatalogLanguage || !englishOnly || wordCount(title) >= 3) {
     return !isClassicalOrKidsMismatch(title, artist, context);
   }
 
@@ -75,7 +81,7 @@ export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = ''
 
   // Reject non-Latin alphabets (Cyrillic, Greek, Arabic, Kanji, Hiragana, Hangul, Thai, etc.)
   // \u0020-\u024F encompasses standard printable characters and Latin Extended (common Western European accents)
-  if (/[^\u0020-\u024F\s\d.,!?'"&()/-]/u.test(title) || /[^\u0020-\u024F\s\d.,!?'"&()/-]/u.test(artist)) {
+  if (!LATIN_TEXT.test(title) || !LATIN_TEXT.test(artist)) {
     return false;
   }
 

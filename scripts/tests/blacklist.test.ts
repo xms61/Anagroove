@@ -27,3 +27,19 @@ test('generic song entries match the title and its versions only', () => {
   assert.ok(!blacklistMatchesTrack(song('Hey Jude (Remastered 2015)'), track('The Beatles', 'Hey Jude')),
     'a longer blacklisted title does not block a shorter one');
 });
+
+test('an artist hidden from a live Deezer song is also hidden in catalog songs without an artist id', () => {
+  const hidden: BlacklistIdentityItem[] = [{ type: 'artist', name: 'Drake', provider: 'deezer', providerArtistId: '246791' }];
+  const catalogSong = { artist: 'Drake', title: 'Hotline Bling', provider: 'deezer', providerTrackId: '111' };
+  assert.ok(blacklistMatchesTrack(hidden, { ...catalogSong, providerArtistId: '246791' }), 'by id');
+  assert.ok(blacklistMatchesTrack(hidden, catalogSong), 'by name');
+  assert.ok(blacklistMatchesTrack(hidden, { artist: 'Renamed Account', title: 'x', provider: 'deezer', providerArtistId: 246791 }), 'numeric id');
+  assert.ok(blacklistMatchesTrack(hidden, { artist: 'Drake', title: 'One Dance', provider: 'itunes', providerArtistId: '271256' }), 'another provider\'s id');
+  assert.ok(!blacklistMatchesTrack(hidden, { artist: 'Nick Drake', title: 'Pink Moon', provider: 'deezer', providerArtistId: '1' }), 'a different Deezer artist');
+});
+
+test('a song hidden by provider id stays scoped to that id', () => {
+  const hidden: BlacklistIdentityItem[] = [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '42' }];
+  assert.ok(blacklistMatchesTrack(hidden, { artist: 'Adele', title: 'Hello', provider: 'deezer', providerTrackId: '42' }));
+  assert.ok(!blacklistMatchesTrack(hidden, { artist: 'Lionel Richie', title: 'Hello', provider: 'deezer', providerTrackId: '43' }));
+});

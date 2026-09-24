@@ -175,6 +175,11 @@ const LIVE_LANGUAGE_CASES: [track: Track, genre: string, prompt: string, expecte
   [{ title: 'Symphonie à dix-sept parties, RH 64: II. Larghetto', artist: 'François-Xavier Roth' }, 'all', '', false, 'a classical movement'],
   [{ title: 'Rock a Bye Baby', artist: 'Nursery Rhymes 123' }, 'all', '', false, 'a nursery rhyme'],
   [{ title: 'Telegrama', artist: 'Zeca Baleiro', selection: { genre: 'Pop Latino' } }, 'all', '', false, 'a foreign provider genre'],
+  [{ title: 'Die With A Smile', artist: 'Lady Gaga, Bruno Mars' }, 'all', '', true, '"die" is English too'],
+  [{ title: 'Son of a Preacher Man', artist: 'Dusty Springfield' }, 'all', '', true, '"son" is English too'],
+  [{ title: 'Don’t Start Now', artist: 'Dua Lipa' }, 'all', '', true, 'a typographic apostrophe'],
+  [{ title: 'Despacito', artist: 'Luis Fonsi' }, 'all', '', false, 'a one-word Spanish title'],
+  [{ title: 'La Bamba', artist: 'Ritchie Valens' }, 'all', '', false, 'a two-word Spanish title'],
 ];
 for (const [track, genre, prompt, expected, why] of LIVE_LANGUAGE_CASES) {
   test(`isLanguagePermitted (live): ${why} -> ${expected}`, () => {

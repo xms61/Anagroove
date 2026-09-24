@@ -107,6 +107,8 @@ export interface CatalogRow {
   popularity: number | null;
   rand_key: number;
   deezer_id: string | null;
+  /** The artist's Deezer id, so artist blacklist entries made from live songs match catalog rows. */
+  artist_deezer_id: number | string | null;
   spotify_id: string | null;
   itunes_id: string | null;
   sample_url: string | null;
@@ -676,7 +678,7 @@ export class SqliteCatalog {
     }
 
     const select = `
-      SELECT t.id, t.isrc, t.language, t.display_title AS title, a.display_name AS artist,
+      SELECT t.id, t.isrc, t.language, t.display_title AS title, a.display_name AS artist, a.deezer_id AS artist_deezer_id,
              t.album_name AS album, t.duration_ms, t.release_year, t.release_date, t.popularity, t.rand_key,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
@@ -697,14 +699,16 @@ export class SqliteCatalog {
     };
 
     if (ftsQuery && typeof ftsQuery === 'string' && ftsQuery.trim()) {
+      // The trigram index covers title, artist and album, so its matches are the whole answer
       try {
-        const matched = windowed('t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)', [ftsQuery]);
-        if (matched.length >= 10) return matched;
+        return windowed('t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)', [ftsQuery]);
       } catch {
-        // FTS syntax error (e.g. a token under 3 characters): fall back to LIKE
+        // Malformed FTS input (toFtsQuery emits quoted tokens of 3+ characters): match each token as a substring
       }
-      const term = `%${ftsQuery.replace(/['"*]/g, '').trim()}%`;
-      return windowed('(t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)', [term, term, term]);
+      const terms = [...ftsQuery.matchAll(/"([^"]+)"/g)].map(match => `%${match[1]}%`);
+      if (terms.length === 0) return [];
+      const like = terms.map(() => '(t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)').join(' OR ');
+      return windowed(`(${like})`, terms.flatMap(term => [term, term, term]));
     }
     return windowed(null, []);
   }
