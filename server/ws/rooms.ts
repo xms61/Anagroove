@@ -6,11 +6,11 @@
  */
 import crypto from 'crypto';
 import { Buffer } from 'buffer';
-import type { Server } from 'http';
+import type { IncomingMessage, Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { validateWsMessage, type WsMessage } from '../validators.ts';
-import { wsRateLimiter } from '../middleware/rateLimiter.ts';
-import { clientIpFromUpgrade } from '../http/security.ts';
+import { createFailureCounter, wsRateLimiter } from '../middleware/rateLimiter.ts';
+import { clientIpFromUpgrade, isAllowedOrigin, parseAllowedOrigins } from '../http/security.ts';
 import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 import type { LivePuzzleStore } from '../http/livePuzzleStore.ts';
@@ -34,10 +34,17 @@ export interface Room {
   sharedGrid: string[][] | null;
   isStarted: boolean;
   players: Player[];
+  /** The first player whose solved grid the server verified; later claims are ignored. */
+  winnerId: string | null;
 }
 
 const MAX_PLAYERS_PER_ROOM = 8;
 const RECONNECT_GRACE_MS = 30 * 1000;
+const MAX_MESSAGE_BYTES = 64 * 1024;
+// A socket that misses one ping is terminated, which releases its seat and IP slot
+const HEARTBEAT_MS = 30 * 1000;
+// Room codes are guessable in bulk (16 words x 9,000 numbers), so wrong codes are rate-limited per IP
+const FAILED_JOINS_PER_MINUTE = 10;
 const ROOM_WORDS = ['BEAT', 'GROOVE', 'SPICE', 'VINYL', 'BASS', 'CHORD', 'SOLO', 'FUNK',
   'TEMPO', 'RIFF', 'DROP', 'LOOP', 'VIBE', 'TUNE', 'WAVE', 'ECHO'];
 const PLAYER_COLORS = [
@@ -73,6 +80,13 @@ function roomSnapshot(room: Room) {
   };
 }
 
+/** True when every letter cell of the puzzle holds its answer letter in `grid`. */
+function isSolvedGrid(puzzle: Puzzle, grid: string[][] | undefined): boolean {
+  if (!Array.isArray(grid) || !Array.isArray(puzzle?.grid)) return false;
+  return puzzle.grid.every((row, r) => row.every(cell =>
+    cell.isBlock || !cell.char || String(grid[r]?.[cell.col] ?? '').toUpperCase() === cell.char.toUpperCase()));
+}
+
 function emptyGrid(puzzle: Puzzle | undefined): string[][] | null {
   return puzzle?.rows && puzzle?.cols
     ? Array.from({ length: Math.min(30, puzzle.rows) }, () => Array(Math.min(30, puzzle.cols)).fill(''))
@@ -80,9 +94,35 @@ function emptyGrid(puzzle: Puzzle | undefined): string[][] | null {
 }
 
 /** Attaches the multiplayer WebSocket server to an HTTP server. */
-export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles: LivePuzzleStore }) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+export function attachMultiplayer(server: Server, { livePuzzles, heartbeatMs = HEARTBEAT_MS }: { livePuzzles: LivePuzzleStore; heartbeatMs?: number }) {
+  // Larger frames are refused while they arrive (close 1009); the library default is 100 MiB
+  const allowedOrigins = parseAllowedOrigins();
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: MAX_MESSAGE_BYTES,
+    // The same origin rule as the HTTP API (clients without Origin, such as scripts, are allowed)
+    verifyClient: ({ origin, req }: { origin: string | undefined; req: IncomingMessage }) => isAllowedOrigin(origin, req.headers.host, allowedOrigins),
+  });
   const rooms = new Map<string, Room>();
+  const failedJoins = createFailureCounter({ windowMs: 60 * 1000, max: FAILED_JOINS_PER_MINUTE });
+
+  const alive = new WeakMap<WebSocket, boolean>();
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (!alive.get(client)) {
+        client.terminate();
+        continue;
+      }
+      alive.set(client, false);
+      client.ping();
+    }
+  }, heartbeatMs);
+  heartbeat.unref();
+  wss.on('close', () => {
+    clearInterval(heartbeat);
+    failedJoins.stop();
+  });
 
   // Friendly room codes with collision avoidance (16 words x 9,000 numbers)
   function generateRoomCode(): string {
@@ -134,6 +174,10 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
     }
 
     logger.ws(`Client connected: ${ip}`);
+    alive.set(ws, true);
+    ws.on('pong', () => alive.set(ws, true));
+    // Protocol errors (an oversized frame, bad UTF-8) close the socket; without a listener they would crash the process
+    ws.on('error', err => logger.warn('ws', `Closing connection from ${ip}: ${err.message}`));
     const allowMessage = wsRateLimiter.createMessageTracker(35);
     let currentPlayer: Player | null = null;
     let currentRoomCode: string | null = null;
@@ -185,6 +229,7 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
           sharedGrid: emptyGrid(livePuzzle.puzzle),
           isStarted: false,
           players: [player],
+          winnerId: null,
         };
         rooms.set(roomCode, room);
 
@@ -192,9 +237,14 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
       },
 
       join_room(data) {
+        if (!failedJoins.allow(ip)) {
+          sendError('Too many attempts. Wait a minute, then check the code.');
+          return;
+        }
         const roomCode = (data.roomCode || '').toUpperCase().trim();
         const room = rooms.get(roomCode);
         if (!room) {
+          failedJoins.record(ip);
           sendError('Room not found. Check your code!');
           return;
         }
@@ -325,7 +375,15 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
           sendError('You are not a member of this room.');
           return;
         }
-        broadcastToRoom(member.room.code, { type: 'puzzle_solved', winnerId: member.player.id, winnerName: member.player.name });
+        const { room, player } = member;
+        // Only a started game can be won, only once, and only with a grid the server checked
+        if (!room.isStarted || room.winnerId) return;
+        if (!isSolvedGrid(room.puzzle, data.grid)) {
+          sendError('That grid is not solved yet.');
+          return;
+        }
+        room.winnerId = player.id;
+        broadcastToRoom(room.code, { type: 'puzzle_solved', winnerId: player.id, winnerName: player.name });
       },
     };
 
@@ -333,10 +391,6 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
       try {
         // ws delivers text frames as a Buffer (binaryType 'nodebuffer')
         const message = raw as Buffer;
-        if (message.length > 65536) {
-          sendError('Message payload too large (max 64KB)');
-          return;
-        }
         if (!allowMessage()) {
           sendError('Message rate limit exceeded');
           return;

@@ -60,6 +60,7 @@ function catalogRowToCandidate(row: CatalogRow): SongCandidate {
     catalogTrackId: row.id,
     provider: row.deezer_id || !row.itunes_id ? 'deezer' : 'itunes',
     providerTrackId: row.deezer_id || row.itunes_id || String(row.id),
+    providerArtistId: row.artist_deezer_id,
     deezer_id: row.deezer_id,
     spotify_id: row.spotify_id,
     itunes_id: row.itunes_id,
@@ -119,13 +120,14 @@ export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds =
  * Live provider candidates. Deezer first; iTunes (rate-limited to 0.25 req/s, so each search
  * costs seconds) only when the pool is still below `needed`.
  */
-export async function externalCandidates({ provider, itunesProvider, queryPlan, limit, includeItunes, needed = 0 }: {
+export async function externalCandidates({ provider, itunesProvider, queryPlan, limit, includeItunes, needed = 0, signal }: {
   provider: MusicProvider;
   itunesProvider: MusicProvider;
   queryPlan: QueryPlan;
   limit: number;
   includeItunes: boolean;
   needed?: number;
+  signal?: AbortSignal;
 }): Promise<SongCandidate[]> {
   const deezer = await provider.getCandidateTracks({
       genre: queryPlan.genre,
@@ -137,11 +139,12 @@ export async function externalCandidates({ provider, itunesProvider, queryPlan, 
       offset: queryPlan.randomOffset,
       popularity: queryPlan.popularity,
       limit,
+      signal,
   });
   if (!includeItunes || deezer.length >= needed) return deezer;
 
   const itunes = await Promise.all(queryPlan.itunesSearches.slice(0, 2).map(term =>
-    itunesProvider.getCandidateTracks({ query: term, limit: 100 }).catch((err: Error): SongCandidate[] => {
+    itunesProvider.getCandidateTracks({ query: term, limit: 100, signal }).catch((err: Error): SongCandidate[] => {
       logger.warn('music_service', `iTunes harvesting error: ${err.message}`);
       return [];
     })

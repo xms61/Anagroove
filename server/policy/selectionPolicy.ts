@@ -30,62 +30,23 @@ export function getAnimeThemeType(genre = '', prompt = '') {
   return null;
 }
 
-/**
- * Language policy: English for most themes; Japanese and Korean only for themes and prompts
- * that ask for them (anime, J-pop, city pop, K-pop) or an explicit language filter.
- */
-export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = '', { languages = null }: { languages?: readonly string[] | null } = {}): boolean {
-  // Anime OP/ED tracks from the dedicated anime catalog are always permitted
-  if (track?.isAnimeOped) {
-    return true;
-  }
+// Latin letters plus typographic quotes, dashes and the ellipsis (U+2010-U+2027): "Don’t Start Now"
+const LATIN_TEXT = /^[\u0020-\u024F\u2010-\u2027\s\d]*$/u;
+const wordCount = (text: string): number => text.split(/\s+/).filter(Boolean).length;
 
-  const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
-  const title = String(track?.title || '');
-  const artist = String(track?.artist || '');
+// Reject foreign animated soundtrack dubs and localized karaoke/sing-along tracks across all genres
+// e.g. "Soda Pop (version française)", "How Far I'll Go (Spanish Version)", "Sing-Along"
+const FOREIGN_DUB_MARKERS = /\b(?:version\s+française|french\s+version|spanish\s+version|versión\b|portuguese\s+version|german\s+version|italian\s+version|tagalog\s+version|sing-along|karaoke)\b/i;
+// Tracks categorized under explicit foreign language genres
+const FOREIGN_GENRES = /\b(pop\s+latino|música\s+mexicana|urbano\s+latino|latin|música\s+tropical|mpb|sertanejo|french\s+pop|german\s+pop|deutschrap|chanson|russian|arabic|punjabi|bollywood|c-pop|cantopop|mandopop)\b/i;
+// Common non-English stopwords (Spanish/Portuguese/French/German/Italian/Dutch)
+const FOREIGN_MARKERS = /\b(despacito|bailando|danza|gasolina|fonsi|amor|vida|corazón|fiesta|feliz|navidad|noche|como|mais|pra|você|sen|ben|bir|del|los|las|por|para|una|uno|dans|avec|pour|des|une|und|nicht|ist|dass|les|le|la|el|aux?|sur|sans|nous|vous|sont|mon|ma|mes|ton|ta|tes|son|sa|ses|qui|que|quoi|dont|où|mais|ou|et|donc|der|die|das|dem|den|ein|eine|einem|einen|einer|eines|mit|auf|für|von|zu|aus|durch|nach|bei|seit|con|sin|sobre|gli|della|delle|dello|dei|degli|nel|nella|je|tu|il|elle|ils|elles|un'|non|più|tutto|tutti|tutta|se|yo|ella|ellos|ellas|pero|más|muy|está|están|hacer|tiempo|año|años)\b/i;
+const CLASSICAL_MARKERS = /\b(symphonie|symphony|concerto|sonata|opus|\bop\.\s*\d+|bwv\s*\d+|larghetto|allegro|adagio|andante|presto|philharmonic|orchester|orchestra|chœur|chor\b)\b/i;
+const KIDS_MARKERS = /\b(nursery\s+rhymes?|lullaby|cocomelon|baby\s+songs?|toddler\s+songs?|kids\s+songs?|chansons\s+pour\s+enfants)\b/i;
 
-  // Reject foreign animated soundtrack dubs and localized karaoke/sing-along tracks across all genres
-  // e.g. "Soda Pop (version française)", "How Far I'll Go (Spanish Version)", "Sing-Along"
-  const foreignDubMarkers = /\b(?:version\s+française|french\s+version|spanish\s+version|versión\b|portuguese\s+version|german\s+version|italian\s+version|tagalog\s+version|sing-along|karaoke)\b/i;
-  if (foreignDubMarkers.test(title)) {
-    return false;
-  }
-
-  // Catalog rows carry a classified language (artist vote + ELD): trust it instead of the
-  // stopword heuristics below, which reject English titles like "Viva La Vida" or "Ma Belle".
-  // Live-provider candidates are classified from their title and artist the same way.
-  const allowed = Array.isArray(languages) && languages.length > 0 ? languages : allowedLanguagesForContext(genre, prompt);
-  const englishOnly = allowed.length === 1 && allowed[0] === 'en';
-  const hasCatalogLanguage = typeof track?.language === 'string' && Boolean(track.language);
-  const language = hasCatalogLanguage ? track.language : resolveTrackLanguage({ title, artist });
-  if (!allowed.includes(language)) return false;
-  if (hasCatalogLanguage || !englishOnly) {
-    return !isClassicalOrKidsMismatch(title, artist, context);
-  }
-
-  // English-only themes: single words like "Despacito" are too short for the classifier, so
-  // live candidates also go through the stopword and script heuristics
-
-  // Reject tracks categorized under explicit foreign language genres unless theme permits
-  const trackGenre = String(track?.selection?.genre || track?.genre || '').toLowerCase();
-  const foreignGenres = /\b(pop\s+latino|música\s+mexicana|urbano\s+latino|latin|música\s+tropical|mpb|sertanejo|french\s+pop|german\s+pop|deutschrap|chanson|russian|arabic|punjabi|bollywood|c-pop|cantopop|mandopop)\b/i;
-  if (foreignGenres.test(trackGenre)) {
-    return false;
-  }
-
-  // Reject non-Latin alphabets (Cyrillic, Greek, Arabic, Kanji, Hiragana, Hangul, Thai, etc.)
-  // \u0020-\u024F encompasses standard printable characters and Latin Extended (common Western European accents)
-  if (/[^\u0020-\u024F\s\d.,!?'"&()/-]/u.test(title) || /[^\u0020-\u024F\s\d.,!?'"&()/-]/u.test(artist)) {
-    return false;
-  }
-
-  // Reject tracks containing common non-English linguistic markers (Spanish/Portuguese/French/German/Italian/Dutch stopwords)
-  const foreignMarkers = /\b(despacito|bailando|danza|gasolina|fonsi|amor|vida|corazón|fiesta|feliz|navidad|noche|como|mais|pra|você|sen|ben|bir|del|los|las|por|para|una|uno|dans|avec|pour|des|une|und|nicht|ist|dass|les|le|la|el|aux?|sur|sans|nous|vous|sont|mon|ma|mes|ton|ta|tes|son|sa|ses|qui|que|quoi|dont|où|mais|ou|et|donc|der|die|das|dem|den|ein|eine|einem|einen|einer|eines|mit|auf|für|von|zu|aus|durch|nach|bei|seit|con|sin|sobre|gli|della|delle|dello|dei|degli|nel|nella|je|tu|il|elle|ils|elles|un'|non|più|tutto|tutti|tutta|se|yo|ella|ellos|ellas|pero|más|muy|está|están|hacer|tiempo|año|años)\b/i;
-  if (foreignMarkers.test(title) || foreignMarkers.test(artist)) {
-    return false;
-  }
-
-  return !isClassicalOrKidsMismatch(title, artist, context);
+/** The genre and prompt as one lower-case string, the input of every context rule. */
+function contextOf(genre: unknown, prompt: unknown): string {
+  return `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
 }
 
 /**
@@ -96,219 +57,214 @@ export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = ''
 export function allowedLanguagesForContext(genre = 'all', prompt = ''): string[] {
   const theme = typeof genre === 'string' ? themeById(genre) : undefined;
   if (theme && theme.id !== 'all') return [...theme.languages];
-  const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
+  const context = contextOf(genre, prompt);
   if (/\b(kpop|k-pop|korean)\b/i.test(context)) return ['ko', 'en'];
   if (/\b(anime|japanese|japan|city\s*pop|j-pop|jpop|j-rock|jrock)\b/i.test(context)) return ['ja', 'en'];
   return ['en'];
 }
 
-// Classical movements and children's music only belong in puzzles that ask for them
-function isClassicalOrKidsMismatch(title: string, artist: string, context: string): boolean {
-  const isClassicalContext = /\b(classical|baroque|orchestra|symphon|opera|choir|choral)\b/i.test(context);
-  if (!isClassicalContext) {
-    const classicalMarkers = /\b(symphonie|symphony|concerto|sonata|opus|\bop\.\s*\d+|bwv\s*\d+|larghetto|allegro|adagio|andante|presto|philharmonic|orchester|orchestra|chœur|chor\b)\b/i;
-    if (classicalMarkers.test(title) || classicalMarkers.test(artist)) return true;
-  }
+/**
+ * Language policy for one request: English for most themes; Japanese and Korean only for themes
+ * and prompts that ask for them (anime, J-pop, city pop, K-pop) or an explicit language filter.
+ * Everything that depends only on the request is resolved once; each check is per track.
+ */
+export function createLanguagePolicy(genre = 'all', prompt = '', { languages = null }: { languages?: readonly string[] | null } = {}): (track: TrackLike) => boolean {
+  const context = contextOf(genre, prompt);
+  const allowed = Array.isArray(languages) && languages.length > 0 ? languages : allowedLanguagesForContext(genre, prompt);
+  const englishOnly = allowed.length === 1 && allowed[0] === 'en';
+  // Classical movements and children's music only belong in puzzles that ask for them
+  const allowsClassical = /\b(classical|baroque|orchestra|symphon|opera|choir|choral)\b/i.test(context);
+  const allowsKids = /\b(kids?|children|nursery|lullab)\b/i.test(context);
+  const isOffTheme = (title: string, artist: string): boolean =>
+    (!allowsClassical && (CLASSICAL_MARKERS.test(title) || CLASSICAL_MARKERS.test(artist))) ||
+    (!allowsKids && (KIDS_MARKERS.test(title) || KIDS_MARKERS.test(artist)));
 
-  const isKidsContext = /\b(kids?|children|nursery|lullab)\b/i.test(context);
-  if (!isKidsContext) {
-    const kidsMarkers = /\b(nursery\s+rhymes?|lullaby|cocomelon|baby\s+songs?|toddler\s+songs?|kids\s+songs?|chansons\s+pour\s+enfants)\b/i;
-    if (kidsMarkers.test(title) || kidsMarkers.test(artist)) return true;
-  }
-  return false;
+  return (track) => {
+    // Anime OP/ED tracks from the dedicated anime catalog are always permitted
+    if (track?.isAnimeOped) return true;
+
+    const title = String(track?.title || '');
+    const artist = String(track?.artist || '');
+    if (FOREIGN_DUB_MARKERS.test(title)) return false;
+
+    // Catalog rows carry a classified language (artist vote + ELD): trust it instead of the
+    // stopword heuristics below, which reject English titles like "Viva La Vida" or "Ma Belle".
+    // Live-provider candidates are classified from their title and artist the same way.
+    const hasCatalogLanguage = typeof track?.language === 'string' && Boolean(track.language);
+    const language = hasCatalogLanguage ? track.language : resolveTrackLanguage({ title, artist });
+    if (!allowed.includes(language)) return false;
+    // The classifier decides titles of 3+ words; the heuristics below are for 1-2 word titles
+    // ("Despacito"), which are too short for it. Stopwords like "die" or "son" are English words too.
+    if (hasCatalogLanguage || !englishOnly || wordCount(title) >= 3) return !isOffTheme(title, artist);
+
+    const trackGenre = String(track?.selection?.genre || track?.genre || '').toLowerCase();
+    if (FOREIGN_GENRES.test(trackGenre)) return false;
+    // Non-Latin alphabets (Cyrillic, Greek, Arabic, Kanji, Hiragana, Hangul, Thai, etc.)
+    if (!LATIN_TEXT.test(title) || !LATIN_TEXT.test(artist)) return false;
+    if (FOREIGN_MARKERS.test(title) || FOREIGN_MARKERS.test(artist)) return false;
+    return !isOffTheme(title, artist);
+  };
 }
 
-/**
- * Detects whether a candidate track is an unintended homonym or keyword collision
- * for cultural/regional or compound genre themes.
- */
-export function isThematicallyPermitted(track: TrackLike, genre = 'all', prompt = ''): boolean {
-  const context = `${typeof genre === 'string' ? genre : ''} ${typeof prompt === 'string' ? prompt : ''}`.toLowerCase();
+export function isLanguagePermitted(track: TrackLike, genre = 'all', prompt = '', options: { languages?: readonly string[] | null } = {}): boolean {
+  return createLanguagePolicy(genre, prompt, options)(track);
+}
+
+/** A candidate's text fields, prepared once for every thematic rule. */
+interface TrackText {
+  track: TrackLike;
+  artist: string;
+  title: string;
+  lowerArtist: string;
+  lowerTitle: string;
+  candidateGenre: string;
+  /** Title, artist and album, lower-cased except the album (as the rules always matched them). */
+  titleArtistAlbum: string;
+}
+
+function trackText(track: TrackLike): TrackText {
   const artist = String(track?.artist || '').trim();
   const title = String(track?.title || '').trim();
   const lowerArtist = artist.toLowerCase();
   const lowerTitle = title.toLowerCase();
-  const candidateGenre = String(track?.selection?.genre || track?.genre || '').toLowerCase();
+  return {
+    track,
+    artist,
+    title,
+    lowerArtist,
+    lowerTitle,
+    candidateGenre: String(track?.selection?.genre || track?.genre || '').toLowerCase(),
+    titleArtistAlbum: `${lowerTitle} ${lowerArtist} ${track?.album || ''}`,
+  };
+}
 
-  // Cultural keyword homonym check
-  // E.g. prompt is "Japanese City Pop" or "French House" or "German Krautrock"
-  const culturalMatch = context.match(/\b(japanese|korean|french|german|italian|spanish|brazilian|irish|british|african|russian|chinese)\b/i);
-  if (culturalMatch) {
-    const culture = culturalMatch[1].toLowerCase();
+const isItunesTrack = (track: TrackLike): boolean => track?.provider === 'itunes' || track?.selection?.source === 'itunes';
+const itunesGenreOf = (track: TrackLike): string => (track?.selection?.genre || track?.genre || '').toLowerCase();
+const HAS_JAPANESE_SCRIPT = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/;
+const ANIME_AFFILIATION = /\b(ost|opening|ending|theme|tv\s*size|soundtrack|version\s*tv|j-rock|j-pop|frieren|naruto|kenshin|bleach|one\s*piece|dragon\s*ball|attack\s*on\s*titan|shingeki|jujutsu|demon\s*slayer|kimetsu|bocchi|evangelion|dandadan)\b/i;
+// Deezer artist 147485 is the Italian hardcore techno producer "AniMe"
+const HARDCORE_ANIME_ARTIST_ID = '147485';
 
-    // Reject Western acts where the artist name is literally "The [Culture] [Noun]" or "[Culture] [Western Name]"
-    // e.g. "The Japanese House", "The Japanese Popstars", "French Montana", "German Brigante"
-    // Also reject when appearing in artist or title (e.g. feat. French Montana)
-    const westernHomonymPattern = new RegExp(`(^|\\bthe\\s+|feat\\.?\\s+|ft\\.?\\s+|with\\s+|\\()${culture}\\s+(house|popstars|montana|brigante|band|project|connection|experience|breakfast|brothers|boys|girls)\\b`, 'i');
-    if (westernHomonymPattern.test(artist) || westernHomonymPattern.test(title)) {
-      return false;
-    }
+/** A homonym guard: applies when the request context matches, rejects the tracks it describes. */
+interface ThematicRule {
+  appliesTo: RegExp;
+  rejects: (text: TrackText) => boolean;
+}
 
-    // Reject novelty track titles like "[Culture] Boy", "[Culture] Girl", "[Culture] Porn"
-    // e.g. Aneka - "Japanese Boy", Doctor Flake - "Japanese Porn"
-    const westernNoveltyTitlePattern = new RegExp(`^${culture}\\s+(boy|girl|porn|breakfast|girl\\s+remix)\\b|\\b${culture}\\s+(boy|girl|porn)\\b`, 'i');
-    if (westernNoveltyTitlePattern.test(title)) {
-      return false;
-    }
-  }
+/**
+ * Homonym and keyword-collision guards for cultural/regional or compound genre themes, e.g.
+ * "City Pop" must not bring Iggy Pop - Kill City. Each former branch is one row; the cultural
+ * guards depend on the culture named in the prompt and are built per request.
+ */
+const THEMATIC_RULES: readonly ThematicRule[] = [
+  {
+    // "City Pop": "Pop" in the artist name and "City" in the title (Iggy Pop - Kill City)
+    appliesTo: /\bcity\s*pop\b/i,
+    rejects: ({ lowerArtist, lowerTitle }) =>
+      /\bpop\b/i.test(lowerArtist) && !/\b(japanese|city|j-pop)\b/i.test(lowerArtist) &&
+      /\b(city|kill city|motor city|sin city|inner city)\b/i.test(lowerTitle),
+  },
+  {
+    // K-pop: tracks named after the search query, Western acts matched on "gen"/"pop"/"korean",
+    // and non-Asian iTunes genres without Hangul
+    appliesTo: /\b(kpop|k-pop)\b/i,
+    rejects: ({ track, artist, title, lowerArtist, lowerTitle }) => {
+      if (/^(k-?pop|new\s+gen|4th\s+gen|5th\s+gen)$/i.test(lowerTitle)) return true;
+      if (/\b(m4rkim|steven\s+wilson|carrie\s+underwood|destiny'?s\s+child|billy\s+idol|hozier|maroon\s+5|selena\s+gomez|dua\s+lipa|adele|kid\s+cudi|foster\s+the\s+people|becky\s+g|ton\s+koopman|nelis\s+leeman|michael\s+jackson|oasis|chappell\s+roan|billie\s+eilish|travis\s+scott|the\s+weeknd|lacrim|410|snoop\s+dogg|eminem|post\s+malone|drake)\b/i.test(lowerArtist)) return true;
+      return isItunesTrack(track) &&
+        ['country', 'rock', 'alternative', 'metal', 'r&b/soul', 'blues', 'punk', 'latin'].includes(itunesGenreOf(track)) &&
+        !/[\uAC00-\uD7AF\u1100-\u11FF]/.test(`${artist} ${title}`);
+    },
+  },
+  {
+    // Gaming: iTunes tracks outside game genres need a game affiliation
+    appliesTo: /\bgaming\b|\bvideo\s+game\b/i,
+    rejects: ({ track, titleArtistAlbum }) =>
+      isItunesTrack(track) &&
+      !['soundtrack', 'video game', 'anime', 'instrumental'].includes(itunesGenreOf(track)) &&
+      !/\b(video\s*game|game|soundtrack|ost|theme|zelda|mario|sonic|pokemon|final\s+fantasy|halo|cyberpunk|skyrim|genshin|undertale|megalovania|toby\s+fox)\b/i.test(titleArtistAlbum),
+  },
+  {
+    // Gaming: the rapper The Game and "gamin" stems
+    appliesTo: /\b(gaming|video\s*games?)\b/i,
+    rejects: ({ lowerArtist, lowerTitle }) => /^(the\s+)?game$/i.test(lowerArtist) || /\bgamin(e|s)?\b/i.test(`${lowerArtist} ${lowerTitle}`),
+  },
+  {
+    // Cinematic: songs merely titled "Movie(s)"
+    appliesTo: /\b(cinematic|movie\s+ost|film\s+score)\b/i,
+    rejects: ({ track, lowerTitle, candidateGenre }) =>
+      /^(the\s+)?movies?$/i.test(lowerTitle) && !/\b(soundtrack|score|theme|original|motion\s+picture)\b/i.test(`${track?.album || ''} ${candidateGenre}`),
+  },
+  {
+    // EDM: artists and titles that only contain "dance"/"electro"
+    appliesTo: /\b(edm|electro|dance)\b/i,
+    rejects: ({ lowerArtist, lowerTitle }) =>
+      /^(édith\s+piaf|edith\s+piaf|yo\s+la\s+tengo)\b/i.test(lowerArtist) ||
+      /\bdance\s+gavin\s+dance\b/i.test(lowerArtist) || /\bdance\s+hall\s+crashers\b/i.test(lowerArtist) ||
+      /\bprivate\s+dancer\b/i.test(lowerTitle),
+  },
+  {
+    // Pop punk: Daft Punk
+    appliesTo: /\b(pop-?punk|punk\s+rock)\b/i,
+    rejects: ({ lowerArtist }) => /\bdaft\s+punk\b/i.test(lowerArtist),
+  },
+  {
+    appliesTo: /\banime\b/i,
+    rejects: rejectsForAnime,
+  },
+];
 
-  // Compound genre homonym check
-  // E.g. "City Pop": reject tracks where "Pop" was in the artist name and "City" in title (like Iggy Pop - Kill City)
-  if (/\bcity\s*pop\b/i.test(context)) {
-    if (/\bpop\b/i.test(lowerArtist) && !/\b(japanese|city|j-pop)\b/i.test(lowerArtist)) {
-      if (/\b(city|kill city|motor city|sin city|inner city)\b/i.test(lowerTitle)) {
-        return false;
-      }
-    }
-  }
+/** Anime: the hardcore DJ "AniMe", "anim*" stems, storefront leakage and Western animation. */
+function rejectsForAnime({ track, artist, title, lowerArtist, lowerTitle, candidateGenre, titleArtistAlbum }: TrackText): boolean {
+  if (String(track?.providerArtistId) === HARDCORE_ANIME_ARTIST_ID || String(track?.artistId) === HARDCORE_ANIME_ARTIST_ID) return true;
+  if (Array.isArray(track?.contributorArtistIds) && track.contributorArtistIds.includes(HARDCORE_ANIME_ARTIST_ID)) return true;
+  if (splitArtistNames(artist).some(name => /^(dj\s+)?anime$/i.test(name.toLowerCase().trim()))) return true;
+  if (/^(dj\s+)?anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) return true;
+  if (toCrosswordAnswer(artist) === 'ANIME') return true;
+  if (/\b(official\s+dominator|ground\s+zero\s+\d+|toxicator\s+\d+|hardcore|anthem|masters\s+of\s+hardcore|traxtorm|thunderdome|aftermath|break\s+your\s+mind)\b/i.test(titleArtistAlbum)) return true;
 
-  // K-POP THEMATIC & STOREFRONT GUARDRAILS
-  if (/\b(kpop|k-pop)\b/i.test(context)) {
-    // 1. Reject tracks simply named after the search query ("K-POP", "NEW GEN", "4TH GEN")
-    if (/^(k-?pop|new\s+gen|4th\s+gen|5th\s+gen)$/i.test(lowerTitle)) {
-      return false;
-    }
+  const hasAnimeAffiliation = HAS_JAPANESE_SCRIPT.test(title) || HAS_JAPANESE_SCRIPT.test(artist) || ANIME_AFFILIATION.test(titleArtistAlbum);
+  if (!hasAnimeAffiliation && /\b(animals?|animais|animosity|animate|animated|animation|animatrix|anima)\b/i.test(`${lowerArtist} ${lowerTitle}`)) return true;
+  // Storefront chart leakage (K-pop charting on Apple Music JP)
+  if (candidateGenre && /\b(k-?pop|korean\s+hip-?hop|country|latin)\b/i.test(candidateGenre)) return true;
+  if (/\b(disney|pixar|dreamworks|illumination|moana|frozen|encanto|lion\s*king|aladdin|beauty\s+and\s+the\s+beast|little\s+mermaid|tangled|coco|zootopia|shrek|toy\s*story)\b/i.test(titleArtistAlbum)) return true;
+  if (/^anime\s+(theme|song|ost|music)$/i.test(lowerTitle)) return true;
+  // Non-Japanese television casts and Latin pop without anime affiliation
+  return !hasAnimeAffiliation && (/\b(empire\s+cast|glee\s+cast|nashville\s+cast|dizzy\s+dros|sandoval)\b/i.test(lowerArtist) || /\b(sabía|sabia)\b/i.test(lowerTitle));
+}
 
-    // 2. Reject Western pop/country/rock/indie acts matched on fuzzy token collisions ("gen", "pop", "korean")
-    const westernActsInKpop = /\b(m4rkim|steven\s+wilson|carrie\s+underwood|destiny'?s\s+child|billy\s+idol|hozier|maroon\s+5|selena\s+gomez|dua\s+lipa|adele|kid\s+cudi|foster\s+the\s+people|becky\s+g|ton\s+koopman|nelis\s+leeman|michael\s+jackson|oasis|chappell\s+roan|billie\s+eilish|travis\s+scott|the\s+weeknd|lacrim|410|snoop\s+dogg|eminem|post\s+malone|drake)\b/i;
-    if (westernActsInKpop.test(lowerArtist)) {
-      return false;
-    }
+/**
+ * Cultural keyword homonyms for a prompt naming a culture ("Japanese City Pop", "French House"):
+ * Western acts named "The [Culture] [Noun]" or "[Culture] [Name]" (The Japanese House, French
+ * Montana), also as a featured artist, and novelty titles ("Japanese Boy").
+ */
+function culturalRule(context: string): ((text: TrackText) => boolean) | null {
+  const match = context.match(/\b(japanese|korean|french|german|italian|spanish|brazilian|irish|british|african|russian|chinese)\b/i);
+  if (!match) return null;
+  const culture = match[1].toLowerCase();
+  const westernHomonym = new RegExp(`(^|\\bthe\\s+|feat\\.?\\s+|ft\\.?\\s+|with\\s+|\\()${culture}\\s+(house|popstars|montana|brigante|band|project|connection|experience|breakfast|brothers|boys|girls)\\b`, 'i');
+  const noveltyTitle = new RegExp(`^${culture}\\s+(boy|girl|porn|breakfast|girl\\s+remix)\\b|\\b${culture}\\s+(boy|girl|porn)\\b`, 'i');
+  return ({ artist, title }) => westernHomonym.test(artist) || westernHomonym.test(title) || noveltyTitle.test(title);
+}
 
-    // 3. iTunes Genre Verification: Disallow non-Asian genres on iTunes unless Korean Hangul text is present
-    if (track?.provider === 'itunes' || track?.selection?.source === 'itunes') {
-      const itunesGenre = (track?.selection?.genre || track?.genre || '').toLowerCase();
-      const nonKpopGenres = ['country', 'rock', 'alternative', 'metal', 'r&b/soul', 'blues', 'punk', 'latin'];
-      if (nonKpopGenres.includes(itunesGenre)) {
-        const hasHangul = /[\uac00-\ud7af\u1100-\u11ff]/.test(`${artist} ${title}`);
-        if (!hasHangul) {
-          return false;
-        }
-      }
-    }
-  }
+/**
+ * Thematic policy for one request: the guards whose context matches are selected once, so each
+ * track runs only those (and no regular expression is built per track).
+ */
+export function createThematicPolicy(genre = 'all', prompt = ''): (track: TrackLike) => boolean {
+  const context = contextOf(genre, prompt);
+  const rejects = THEMATIC_RULES.filter(rule => rule.appliesTo.test(context)).map(rule => rule.rejects);
+  const cultural = culturalRule(context);
+  if (cultural) rejects.unshift(cultural);
+  if (rejects.length === 0) return () => true;
+  return (track) => {
+    const text = trackText(track);
+    return !rejects.some(reject => reject(text));
+  };
+}
 
-  // GAMING THEMATIC GUARDRAILS
-  if (/\bgaming\b/i.test(context) || /\bvideo\s+game\b/i.test(context)) {
-    if (track?.provider === 'itunes' || track?.selection?.source === 'itunes') {
-      const itunesGenre = (track?.selection?.genre || track?.genre || '').toLowerCase();
-      if (!['soundtrack', 'video game', 'anime', 'instrumental'].includes(itunesGenre)) {
-        const hasGamingAffiliation = /\b(video\s*game|game|soundtrack|ost|theme|zelda|mario|sonic|pokemon|final\s+fantasy|halo|cyberpunk|skyrim|genshin|undertale|megalovania|toby\s+fox)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`);
-        if (!hasGamingAffiliation) {
-          return false;
-        }
-      }
-    }
-  }
-
-  // CINEMATIC THEMATIC GUARDRAILS
-  if (/\b(cinematic|movie\s+ost|film\s+score)\b/i.test(context)) {
-    if (/^(the\s+)?movies?$/i.test(lowerTitle) && !/\b(soundtrack|score|theme|original|motion\s+picture)\b/i.test(`${track?.album || ''} ${candidateGenre}`)) {
-      return false;
-    }
-  }
-
-  // EDM THEMATIC GUARDRAILS
-  if (/\b(edm|electro|dance)\b/i.test(context)) {
-    if (/^(édith\s+piaf|edith\s+piaf|yo\s+la\s+tengo)\b/i.test(lowerArtist)) {
-      return false;
-    }
-  }
-
-  // ANIME THEMATIC & STEM COLLISION GUARDRAILS
-  if (/\banime\b/i.test(context)) {
-    // 1. Block Deezer Artist ID 147485 (Italian hardcore techno producer "AniMe" / "Anime")
-    if (String(track?.providerArtistId) === '147485' || String(track?.artistId) === '147485') {
-      return false;
-    }
-    if (Array.isArray(track?.contributorArtistIds) && track.contributorArtistIds.includes('147485')) {
-      return false;
-    }
-
-    // 2. Reject if artist or any collaborator is "Anime" or "DJ AniMe"
-    const artists = splitArtistNames(artist).map(a => a.toLowerCase().trim());
-    if (artists.some(a => /^(dj\s+)?anime$/i.test(a))) {
-      return false;
-    }
-    if (/^(dj\s+)?anime$/i.test(lowerArtist) || /^anime$/i.test(lowerTitle)) {
-      return false;
-    }
-    if (toCrosswordAnswer(artist) === 'ANIME') {
-      return false;
-    }
-
-    // 3. Hardcore techno DJ "AniMe" anthem tracks and label affiliations
-    if (/\b(official\s+dominator|ground\s+zero\s+\d+|toxicator\s+\d+|hardcore|anthem|masters\s+of\s+hardcore|traxtorm|thunderdome|aftermath|break\s+your\s+mind)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`)) {
-      return false;
-    }
-
-    // 3. Deezer prefix/stem collisions on "anim*" (Animal, Animals, Animais, Animosity, Animate, Animatrix, Anima)
-    // When track contains non-anime Latin/English stems and lacks Japanese/Anime context
-    const hasJapaneseAnimeAffiliation =
-      /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(track?.title || '') ||
-      /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(track?.artist || '') ||
-      /\b(ost|opening|ending|theme|tv\s*size|soundtrack|version\s*tv|j-rock|j-pop|frieren|naruto|kenshin|bleach|one\s*piece|dragon\s*ball|attack\s*on\s*titan|shingeki|jujutsu|demon\s*slayer|kimetsu|bocchi|evangelion|dandadan)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`);
-
-    if (!hasJapaneseAnimeAffiliation) {
-      if (/\b(animals?|animais|animosity|animate|animated|animation|animatrix|anima)\b/i.test(`${lowerArtist} ${lowerTitle}`)) {
-        return false;
-      }
-    }
-
-    // 4. Storefront chart leakage: Reject non-anime genres (e.g. K-Pop charting on Apple Music JP)
-    if (candidateGenre && /\b(k-?pop|korean\s+hip-?hop|country|latin)\b/i.test(candidateGenre)) {
-      return false;
-    }
-
-    // 5. Western animation studio and soundtrack leakage (Disney, Pixar, DreamWorks, etc.)
-    if (/\b(disney|pixar|dreamworks|illumination|moana|frozen|encanto|lion\s*king|aladdin|beauty\s+and\s+the\s+beast|little\s+mermaid|tangled|coco|zootopia|shrek|toy\s*story)\b/i.test(`${lowerTitle} ${lowerArtist} ${track?.album || ''}`)) {
-      return false;
-    }
-
-    // 6. Generic novelty titles matching literally "Anime Theme" or "Anime Song"
-    if (/^anime\s+(theme|song|ost|music)$/i.test(lowerTitle)) {
-      return false;
-    }
-
-    // 7. Non-Japanese television cast, hip-hop, or Latin pop leakage without anime affiliation
-    if (!hasJapaneseAnimeAffiliation) {
-      if (/\b(empire\s+cast|glee\s+cast|nashville\s+cast|dizzy\s+dros|sandoval)\b/i.test(lowerArtist)) {
-        return false;
-      }
-      if (/\b(sabía|sabia)\b/i.test(lowerTitle)) {
-        return false;
-      }
-    }
-  }
-
-  // GAMING / VIDEO GAME THEMATIC GUARDRAILS
-  if (/\b(gaming|video\s*games?)\b/i.test(context)) {
-    if (/^(the\s+)?game$/i.test(lowerArtist)) {
-      return false;
-    }
-    if (/\bgamin(e|s)?\b/i.test(`${lowerArtist} ${lowerTitle}`)) {
-      return false;
-    }
-  }
-
-  // POP PUNK / PUNK GUARDRAILS
-  if (/\b(pop-?punk|punk\s+rock)\b/i.test(context)) {
-    if (/\bdaft\s+punk\b/i.test(lowerArtist)) {
-      return false;
-    }
-  }
-
-  // EDM / ELECTRONIC / DANCE GUARDRAILS
-  if (/\b(edm|electro|dance)\b/i.test(context)) {
-    if (/\bdance\s+gavin\s+dance\b/i.test(lowerArtist) || /\bdance\s+hall\s+crashers\b/i.test(lowerArtist)) {
-      return false;
-    }
-    if (/\bprivate\s+dancer\b/i.test(lowerTitle)) {
-      return false;
-    }
-  }
-
-  return true;
+export function isThematicallyPermitted(track: TrackLike, genre = 'all', prompt = ''): boolean {
+  return createThematicPolicy(genre, prompt)(track);
 }
 
 /**

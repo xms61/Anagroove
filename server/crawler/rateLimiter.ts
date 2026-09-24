@@ -1,5 +1,13 @@
 import { logger } from '../logger.ts';
 
+/** A request-path caller would wait longer than it allows for a provider token. */
+export class ProviderBudgetError extends Error {
+  constructor() {
+    super('Provider request budget exhausted');
+    this.name = 'ProviderBudgetError';
+  }
+}
+
 /** `refillRatePerSec` tokens are added per second, up to a burst of `maxTokens`. */
 export class TokenBucketRateLimiter {
   refillRatePerSec: number;
@@ -23,7 +31,9 @@ export class TokenBucketRateLimiter {
     }
   }
 
-  async acquireToken() {
+  /** Waits for a token; throws ProviderBudgetError when the wait would pass `maxWaitMs`. */
+  async acquireToken({ maxWaitMs = Infinity }: { maxWaitMs?: number } = {}): Promise<void> {
+    const deadline = Date.now() + maxWaitMs;
     while (true) {
       this.refill();
       if (this.tokens >= 1) {
@@ -33,6 +43,7 @@ export class TokenBucketRateLimiter {
       // Calculate sleep time needed to get at least 1 token
       const tokensNeeded = 1 - this.tokens;
       const waitMs = Math.ceil((tokensNeeded / this.refillRatePerSec) * 1000);
+      if (Date.now() + waitMs > deadline) throw new ProviderBudgetError();
       await new Promise(resolve => setTimeout(resolve, Math.max(waitMs, 25)));
     }
   }
@@ -53,13 +64,25 @@ export const itunesRateLimiter = new TokenBucketRateLimiter({
 
 const DEFAULT_USER_AGENT = 'Anagroove-MusicIndexer/1.0 (+https://github.com/xms61/Anagroove)';
 
+/** Longest Retry-After a 429 may impose before the next attempt. */
+const MAX_RETRY_AFTER_SEC = 30;
+
+export interface PoliteFetchOptions {
+  rateLimiter?: TokenBucketRateLimiter | null;
+  maxRetries?: number;
+  /** Per attempt: a provider that stops answering fails instead of holding the caller. */
+  timeoutMs?: number;
+  /** Longest wait for a rate-limiter token (request paths); scripts wait as long as it takes. */
+  maxWaitMs?: number;
+}
+
 /**
- * Executes a polite fetch with rate limiting and retry on 429/503.
+ * Executes a polite fetch with rate limiting, a per-attempt timeout and retry on 429/5xx.
  */
 export async function politeFetch(
   url: string,
   options: RequestInit = {},
-  { rateLimiter = null, maxRetries = 3 }: { rateLimiter?: TokenBucketRateLimiter | null; maxRetries?: number } = {},
+  { rateLimiter = null, maxRetries = 3, timeoutMs = 20000, maxWaitMs = Infinity }: PoliteFetchOptions = {},
 ): Promise<Response> {
   const headers = {
     'User-Agent': DEFAULT_USER_AGENT,
@@ -68,15 +91,16 @@ export async function politeFetch(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     if (rateLimiter) {
-      await rateLimiter.acquireToken();
+      await rateLimiter.acquireToken({ maxWaitMs });
     }
 
     try {
-      const response = await fetch(url, { ...options, headers });
+      const signals = [AbortSignal.timeout(timeoutMs), ...(options.signal ? [options.signal] : [])];
+      const response = await fetch(url, { ...options, headers, signal: AbortSignal.any(signals) });
 
       if (response.status === 429) {
         // Rate limited - inspect Retry-After header or apply backoff
-        const retryAfterSec = parseInt(response.headers.get('Retry-After') || '5', 10);
+        const retryAfterSec = Math.min(parseInt(response.headers.get('Retry-After') || '5', 10) || 5, MAX_RETRY_AFTER_SEC);
         const backoffMs = Math.max(retryAfterSec * 1000, 2000 * Math.pow(2, attempt)) + Math.random() * 500;
         logger.warn('rate_limiter', `HTTP 429 Too Many Requests for ${url}. Backing off for ${Math.round(backoffMs)}ms (attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));

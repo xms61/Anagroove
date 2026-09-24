@@ -4,10 +4,12 @@
  */
 import express, { type RequestHandler } from 'express';
 import { db } from '../db.ts';
+import { BlacklistFullError, MAX_BLACKLIST_ITEMS } from '../db/userStore.ts';
 import { validateBlacklistPayload, validateHistoryPayload, validateProgressPayload, validateUserId } from '../validators.ts';
 
 export const requireUserId: RequestHandler = (req, res, next) => {
-  const validatedId = validateUserId(req.headers['x-user-id'] || req.query.userId);
+  // Header only: an id in the URL would end up in logs and browser history
+  const validatedId = validateUserId(req.headers['x-user-id']);
   if (!validatedId) {
     res.status(400).json({
       error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)',
@@ -55,7 +57,12 @@ export function createUserRouter() {
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
-    res.json({ success: true, blacklist: db.addBlacklistItem(req.userId, validation.data) });
+    try {
+      res.json({ success: true, blacklist: db.addBlacklistItem(req.userId, validation.data) });
+    } catch (err) {
+      if (!(err instanceof BlacklistFullError)) throw err;
+      res.status(409).json({ error: `You can hide up to ${MAX_BLACKLIST_ITEMS} artists and songs. Remove some to hide more.` });
+    }
   });
 
   router.delete('/blacklist/:id', (req, res) => {

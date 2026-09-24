@@ -37,6 +37,8 @@ export interface DeezerQuery {
   searches?: string[];
   offset?: number;
   popularity?: string;
+  /** Aborts the searches and the artist lookups (the caller stopped waiting). */
+  signal?: AbortSignal;
 }
 
 type Cache<T> = Map<string, { value: T; expiresAt: number }>;
@@ -108,17 +110,17 @@ export function mapDeezerTrack(track: DeezerApiTrack, artistDetails: DeezerArtis
   };
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetchWithTimeout(url, {}, 6000, 2);
+async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetchWithTimeout(url, { signal }, 6000, 2);
   if (!response.ok) throw new Error(`Deezer returned ${response.status}`);
   return response.json() as Promise<T>;
 }
 
-async function getArtistDetails(artistId: number): Promise<DeezerArtist> {
+async function getArtistDetails(artistId: number, signal?: AbortSignal): Promise<DeezerArtist> {
   const cacheKey = String(artistId);
   const cached = cacheGet(artistCache, cacheKey);
   if (cached) return cached;
-  return cacheSet(artistCache, cacheKey, await fetchJson<DeezerArtist>(`https://api.deezer.com/artist/${encodeURIComponent(cacheKey)}`));
+  return cacheSet(artistCache, cacheKey, await fetchJson<DeezerArtist>(`https://api.deezer.com/artist/${encodeURIComponent(cacheKey)}`, signal));
 }
 
 export const DEEZER_GENRE_TAXONOMY: Record<string, DeezerGenreConfig> = {
@@ -159,6 +161,7 @@ export const deezerMusicProvider = {
     searches = [],
     offset = 0,
     popularity = 'balanced',
+    signal,
   }: DeezerQuery = {}): Promise<SongCandidate[]> {
     const normalizedGenre = typeof genre === 'string' ? genre.toLowerCase().trim() : 'all';
     const genreConfig: DeezerGenreConfig = DEEZER_GENRE_TAXONOMY[normalizedGenre] || {
@@ -178,16 +181,16 @@ export const deezerMusicProvider = {
 
     const requests: Promise<{ data?: DeezerApiTrack[] }>[] = [];
     if (customSearches.length === 0 && genreConfig.chartId !== null && genreConfig.chartId !== undefined && !isPure) {
-      requests.push(fetchJson(`https://api.deezer.com/chart/${genreConfig.chartId}/tracks?limit=100`));
+      requests.push(fetchJson(`https://api.deezer.com/chart/${genreConfig.chartId}/tracks?limit=100`, signal));
     }
     for (const query of customSearches) {
       const searchUrl = offset > 0
         ? `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100&index=${offset}`
         : `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100`;
-      requests.push(fetchJson(searchUrl));
+      requests.push(fetchJson(searchUrl, signal));
     }
     if (requests.length === 0) {
-      requests.push(fetchJson('https://api.deezer.com/chart/0/tracks?limit=100'));
+      requests.push(fetchJson('https://api.deezer.com/chart/0/tracks?limit=100', signal));
     }
 
     const results = await Promise.all(requests);
@@ -202,9 +205,10 @@ export const deezerMusicProvider = {
     const relaxedCandidates: SongCandidate[] = [];
 
     for (const track of uniqueTracks) {
+      if (signal?.aborted) break;
       let artist: DeezerArtist;
       try {
-        artist = await getArtistDetails(track.artist.id);
+        artist = await getArtistDetails(track.artist.id, signal);
       } catch {
         continue;
       }

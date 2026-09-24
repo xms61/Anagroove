@@ -16,7 +16,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
 1. **Query plan:** `queryBuilder.buildQueryPlan` handles the prompt, genre, decade, artist and popularity. `genresForPrompt` (`shared/themes.ts`) maps a theme id, or the words of the genre and prompt, to artist genre clusters.
 2. **Catalog window** (`sqliteCatalog.sampleCatalogTracks`). Every filter runs in SQL:
    - allowed languages, `original`/`remaster` only, a popularity window, and the year range
-   - the artist (resolved to ids first), genres (`artists.genres_json`), and a text theme (trigram FTS, LIKE if FTS finds under 10 rows; skipped when the prompt maps to genres)
+   - the artist (resolved to ids first: canonical name, display name in any case, or a collaboration credit starting with it, by NOCASE range on an index), genres (`artist_genres`), and a text theme (trigram FTS over title, artist and album; its matches are the whole answer, however few. LIKE per token only when the FTS query is malformed. Skipped when the prompt maps to genres)
    - excluding recent `sqlite:<id>` plays
 
    It then reads up to 400 rows in `rand_key` order from a random start (wrapping around; index `idx_tracks_rand`). That's one row per track, 2–160 ms on ~300k tracks.
@@ -32,14 +32,14 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
    | `mainstream` | ≥ 75 (top quarter) | 2 |
 
    A named artist drops the popularity floor (deep cuts allowed).
-4. **Live providers are a fallback only:** used when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s. Deezer results go through `upsertTrack` (admission policy), so the catalog learns. `SPOTYSPICE_OFFLINE=1` (`server/offline.ts`) turns the fallback and preview lookups off.
+4. **Live providers are a fallback only:** used when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s: then the request's `AbortSignal` fires, which also stops the provider's remaining searches and artist lookups. Deezer results go through `upsertTrack` (admission policy), so the catalog learns. `SPOTYSPICE_OFFLINE=1` (`server/offline.ts`) turns the fallback and preview lookups off.
 5. **Recency tiers:** candidates are bucketed by recent plays (0 / 1 / 2 / 3+), counting track ids, legacy `hit-` ids, and recently played artists. Tiers are filled in that order until `count` is reached.
 6. **Picker:**
-   - It rejects duplicate track/title/answer, blacklisted items, language/thematic/authenticity/year policy failures, and non-original versions (`classifyVersion`, which also applies to live candidates).
-   - One track per artist, unless the prompt targets the artist.
+   - It rejects duplicate track/title/answer, blacklisted items (`compileBlacklist`, once per request: an artist hidden by provider id matches that id, or its name when the song has no id from that provider; catalog rows carry the artist's Deezer id), language/thematic/authenticity/year policy failures, and non-original versions (`classifyVersion`, which also applies to live candidates).
+   - One track per artist, unless the prompt targets the artist. The target matches whole names only: the full artist key or one credited artist ("Drake" covers "Drake feat. Future", not "Nick Drake").
    - Answer and clue via `extractAnswerKeyword`, with clue-type and length-bucket rotation. See `shared/CROSSWORD_ENGINE.md`.
 7. **Previews:** `previewRefForTrack` checks the catalog Deezer id, then the iTunes id, then `catalog:<id>`, then the live provider id. `audioUrl` becomes `/api/preview/<ref>`. Songs with no provider ref (none or `catalog:<id>`) go through `batchResolvePreviews`, which searches Deezer and iTunes. Songs it can't resolve are dropped, with one warning line per pool. With `SPOTYSPICE_OFFLINE=1` (as `catalog:coverage` runs) the search is off, so they are always dropped. Anime clips keep `/audio/anime/...`.
-8. **Serving:** `GET /api/preview/:ref` calls `resolvePreviewRef`, which tries Deezer `/track/{id}`, then Deezer search, then iTunes, and redirects (302). The URL is cached until 60 s before the signed URL's `exp`.
+8. **Serving:** `GET /api/preview/:ref` calls `resolvePreviewRef`, which tries Deezer `/track/{id}`, then Deezer search, then iTunes, and redirects (302). The URL is cached until 60 s before the signed URL's `exp`. Concurrent requests for one ref share a lookup, and a ref the providers answered without a preview answers 404 for 10 minutes without a lookup (a timeout is not cached). Lookups time out after 5 s and wait at most 3 s for a rate-limiter token; an exhausted budget answers 503 with `Retry-After`. The iTunes text search only accepts a result with the same artist key and base title.
 
 ## Rules
 - **Language:** catalog rows are judged by their stored `language`; live candidates by `resolveTrackLanguage`. An explicit `languages` filter (generator chips, `queryPlan.languages`) replaces the theme languages in both the catalog window and the picker. Otherwise `allowedLanguagesForContext` returns:
@@ -48,7 +48,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
   - Japanese, J-pop, city pop or anime prompts → ja/en
   - everything else → en
 
-  English-only themes still run live candidates through the stopword/script heuristics, because single words like "Despacito" are too short for the classifier.
+  English-only themes still run live candidates of 1-2 words through the stopword/script heuristics, because titles like "Despacito" are too short for the classifier. From 3 words the classifier decides: stopwords such as "die" or "son" are English words too. Typographic quotes, dashes and the ellipsis (U+2010-U+2027) count as Latin text.
 - **Year window:** a requested year range needs a known year (`resolveReleaseYear`: a vintage remaster year, then the stored year/date, then a year in the title/album). Without a range, unknown years pass. `isTemporalPermitted` never mutates the track; the picker stores the matched year on the output copy.
 - **Named artist:** targeting a single artist means no artist-name clues, and keyphrase tokens are banned as answers.
 - **Anime:** anime prompts use only `animeCatalog`.
@@ -67,4 +67,4 @@ Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist 
 ## Known limits
 - Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist, so they fall back to live providers.
 - Decade prompts depend on release-year coverage (`catalog:enrich -- --albums=N`). Years come from the album, so compilations carry their own year.
-- Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are still code in `selectionPolicy.ts`, not data.
+- Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are rows of `THEMATIC_RULES` in `selectionPolicy.ts`: a context pattern and a reject function. `createThematicPolicy` and `createLanguagePolicy` select the rules for a request once; the picker then runs only those per candidate.

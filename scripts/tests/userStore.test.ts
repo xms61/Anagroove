@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { UserStore } from '../../server/db/userStore.ts';
+import { BlacklistFullError, MAX_BLACKLIST_ITEMS, MAX_HISTORY_ITEMS, UserStore } from '../../server/db/userStore.ts';
 
 let dir;
 let legacyPath;
@@ -80,4 +80,22 @@ test('state persists across restarts without importing again', () => {
   assert.equal(reopened.getSolvedHistory('alice').length, 2);
   assert.equal(reopened.getBlacklist('alice').length, 1);
   reopened.close();
+});
+
+test('the hidden list stops at its limit, and re-adding a hidden item is still a no-op', () => {
+  const store = open();
+  for (let i = 0; i < MAX_BLACKLIST_ITEMS; i++) store.addBlacklistItem('bob', { name: `Artist ${i}`, type: 'artist' });
+  assert.throws(() => store.addBlacklistItem('bob', { name: 'One Too Many', type: 'artist' }), BlacklistFullError);
+  assert.equal(store.addBlacklistItem('bob', { name: 'Artist 0', type: 'artist' }).length, MAX_BLACKLIST_ITEMS);
+  store.close();
+});
+
+test('the solved history keeps the newest entries', () => {
+  const store = open();
+  for (let i = 0; i <= MAX_HISTORY_ITEMS; i++) store.recordSolvedPuzzle('carol', { puzzleId: `p${i}` });
+  const history = store.getSolvedHistory('carol');
+  assert.equal(history.length, MAX_HISTORY_ITEMS);
+  assert.equal(history[0].puzzleId, 'p1');
+  assert.equal(history.at(-1).puzzleId, `p${MAX_HISTORY_ITEMS}`);
+  store.close();
 });

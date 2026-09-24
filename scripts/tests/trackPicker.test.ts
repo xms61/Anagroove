@@ -53,3 +53,15 @@ test('tracks played more often than maxPlays wait for a later tier', () => {
   pick(candidates, 3);
   assert.deepEqual(songs.map(s => s.title), ['Creep', 'Wonderwall']);
 });
+
+test('a named artist exempts their own songs from the one-per-artist rule, not similar names', () => {
+  const { songs, pick } = picker({ artist: 'Drake' });
+  pick(withIds([
+    { title: 'Hotline Bling', artist: 'Drake', language: 'en' },
+    { title: 'Jimmy Cooks', artist: 'Drake feat. 21 Savage', language: 'en' },
+    { title: 'Pink Moon', artist: 'Nick Drake', language: 'en' },
+    { title: 'River Man', artist: 'Nick Drake', language: 'en' },
+  ]), 0);
+  assert.equal(songs.filter(s => s.artist === 'Drake' || s.artist.startsWith('Drake ')).length, 2);
+  assert.equal(songs.filter(s => s.artist === 'Nick Drake').length, 1);
+});

@@ -91,8 +91,8 @@ export function mapItunesTrack(track: ItunesApiTrack | null | undefined, storefr
   };
 }
 
-async function fetchJson(url: string): Promise<{ results?: ItunesApiTrack[] }> {
-  const response = await fetchWithTimeout(url, {}, 6000, 2);
+async function fetchJson(url: string, signal?: AbortSignal): Promise<{ results?: ItunesApiTrack[] }> {
+  const response = await fetchWithTimeout(url, { signal }, 6000, 2);
   if (!response.ok) throw new Error(`iTunes returned ${response.status}`);
   return response.json() as Promise<{ results?: ItunesApiTrack[] }>;
 }
@@ -100,7 +100,7 @@ async function fetchJson(url: string): Promise<{ results?: ItunesApiTrack[] }> {
 export const itunesMusicProvider = {
   name: 'itunes',
 
-  async getCandidateTracks({ query = '', limit = 50, country }: { query?: string; limit?: number; country?: string } = {}): Promise<SongCandidate[]> {
+  async getCandidateTracks({ query = '', limit = 50, country, signal }: { query?: string; limit?: number; country?: string; signal?: AbortSignal } = {}): Promise<SongCandidate[]> {
     const trimmed = typeof query === 'string' ? query.trim() : '';
     if (!trimmed) return [];
 
@@ -112,7 +112,7 @@ export const itunesMusicProvider = {
 
     try {
       const url = `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=song&limit=${Math.min(100, Math.max(10, limit))}${countryParam}`;
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, signal);
       const results = Array.isArray(data?.results) ? data.results : [];
 
       const candidates = results

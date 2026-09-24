@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import type { IncomingMessage } from 'node:http';
+import http, { type IncomingMessage } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.ts';
 import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.ts';
+import { isAllowedOrigin } from '../../server/http/security.ts';
 import { db } from '../../server/db.ts';
+import { MAX_BLACKLIST_ITEMS } from '../../server/db/userStore.ts';
 import {
   resolveTrackPreview,
   clearPreviewCacheForTesting,
@@ -15,6 +18,11 @@ import {
   resolvePreviewRef,
   setPreviewFetchForTesting,
 } from '../../server/services/previewResolver.ts';
+import { politeFetch, ProviderBudgetError, TokenBucketRateLimiter } from '../../server/crawler/rateLimiter.ts';
+import { fetchWithTimeout } from '../../server/services/fetchWithTimeout.ts';
+import { attachMultiplayer } from '../../server/ws/rooms.ts';
+import { createLivePuzzleStore } from '../../server/http/livePuzzleStore.ts';
+import WebSocket from 'ws';
 import { mockJsonResponse, wsTestClient, readJson } from './helpers.ts';
 
 const nowSec = Math.floor(Date.now() / 1000);
@@ -106,6 +114,82 @@ test('TRUST_PROXY parsing and the WebSocket client IP', () => {
   assert.equal(clientIpFromUpgrade(upgrade, 1), '203.0.113.9', 'one trusted hop: the entry it appended');
 });
 
+test('the page\'s own origin is always allowed; others need CORS_ALLOWED_ORIGINS or a local dev origin', () => {
+  assert.ok(isAllowedOrigin(undefined, 'anagroove.example', null), 'no Origin (curl, same-origin GET)');
+  assert.ok(isAllowedOrigin('https://anagroove.example', 'anagroove.example', null), 'same origin on a real domain');
+  assert.ok(isAllowedOrigin('http://localhost:3000', '127.0.0.1:3001', null), 'Vite dev server');
+  assert.ok(!isAllowedOrigin('https://evil.example', 'anagroove.example', null));
+  assert.ok(isAllowedOrigin('https://partner.example', 'anagroove.example', ['https://partner.example']));
+  assert.ok(!isAllowedOrigin('http://localhost:3000', 'anagroove.example', ['https://partner.example']), 'a configured list replaces the dev default');
+  assert.ok(!isAllowedOrigin('not a url', 'anagroove.example', null));
+});
+
+describe('preview lookups stay within the provider budget', () => {
+  after(() => { setPreviewFetchForTesting(); clearPreviewCacheForTesting(); });
+
+  /** A stub fetch that counts calls; `answer` decides each response. */
+  function countingFetch(answer: (url: string) => Promise<Response>) {
+    const calls: string[] = [];
+    setPreviewFetchForTesting(async (url) => { calls.push(url); return answer(url); });
+    clearPreviewCacheForTesting();
+    return calls;
+  }
+
+  test('concurrent requests for one ref share a single lookup', async () => {
+    const calls = countingFetch(async () => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return mockJsonResponse({ id: 1, preview: FRESH_URL });
+    });
+    const urls = await Promise.all(Array.from({ length: 10 }, () => resolvePreviewRef('deezer:1')));
+    assert.deepEqual(new Set(urls), new Set([FRESH_URL]));
+    assert.equal(calls.length, 1);
+  });
+
+  test('a ref without a preview is not looked up again, but a failed lookup is', async () => {
+    const missing = countingFetch(async () => mockJsonResponse({ error: { type: 'DataException' } }));
+    assert.equal(await resolvePreviewRef('deezer:2'), null);
+    assert.equal(await resolvePreviewRef('deezer:2'), null);
+    assert.equal(missing.length, 1);
+
+    const failing = countingFetch(async () => { throw new Error('socket hang up'); });
+    assert.equal(await resolvePreviewRef('deezer:3'), null);
+    assert.equal(await resolvePreviewRef('deezer:3'), null);
+    assert.equal(failing.length, 2);
+  });
+
+  test('an exhausted budget rejects instead of queueing', async () => {
+    countingFetch(async () => { throw new ProviderBudgetError(); });
+    await assert.rejects(resolvePreviewRef('deezer:4'), ProviderBudgetError);
+
+    const bucket = new TokenBucketRateLimiter({ refillRatePerSec: 1, maxTokens: 1 });
+    await bucket.acquireToken({ maxWaitMs: 100 });
+    await assert.rejects(bucket.acquireToken({ maxWaitMs: 100 }), ProviderBudgetError);
+  });
+
+  test('a text search only accepts an iTunes result by the same artist', async () => {
+    countingFetch(async (url) => mockJsonResponse(url.includes('itunes.apple.com')
+      ? { results: [{ previewUrl: 'https://itunes.test/cover.m4a', trackId: 9, artistName: 'Karaoke Stars', trackName: 'Rare Song' }] }
+      : { data: [] }));
+    assert.equal(await resolveTrackPreview({ id: 'x-2', title: 'Rare Song', artist: 'Rare Band' }), null);
+  });
+
+  test('provider fetches time out, and a caller abort stops the retries', async () => {
+    const silent = http.createServer(() => {});
+    await new Promise<void>(resolve => silent.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(silent.address() as AddressInfo).port}/`;
+    try {
+      await assert.rejects(politeFetch(url, {}, { maxRetries: 1, timeoutMs: 100 }));
+      const aborted = AbortSignal.abort();
+      const start = Date.now();
+      await assert.rejects(fetchWithTimeout(url, { signal: aborted }, 5000, 2, 500));
+      assert.ok(Date.now() - start < 400, 'no backoff after the caller aborted');
+    } finally {
+      silent.closeAllConnections();
+      await new Promise(resolve => silent.close(resolve));
+    }
+  });
+});
+
 describe('HTTP and WebSocket server', () => {
   let testServer;
   let baseUrl;
@@ -138,6 +222,18 @@ describe('HTTP and WebSocket server', () => {
     assert.equal((await fetch(`${baseUrl}/api/preview/deezer:999`, { redirect: 'manual' })).status, 404);
   });
 
+  test('GET /api/preview answers 503 with Retry-After when the provider budget is exhausted', async () => {
+    setPreviewFetchForTesting(async () => { throw new ProviderBudgetError(); });
+    clearPreviewCacheForTesting();
+    try {
+      const response = await fetch(`${baseUrl}/api/preview/deezer:4343`, { redirect: 'manual' });
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('retry-after'), '5');
+    } finally {
+      stubPreviewFetch();
+    }
+  });
+
   test('security headers are set and X-Powered-By is removed', async () => {
     const health = await fetch(`${baseUrl}/api/health`);
     assert.equal(health.headers.get('x-content-type-options'), 'nosniff');
@@ -150,10 +246,44 @@ describe('HTTP and WebSocket server', () => {
     assert.ok((await readJson(response).catch(() => null))?.error);
   });
 
+  test('a same-origin POST on a real domain is allowed without CORS_ALLOWED_ORIGINS', async () => {
+    const status = await new Promise<number>((resolve, reject) => {
+      const request = http.request(`${baseUrl}/api/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': `origin-${Date.now()}`, Host: 'anagroove.example', Origin: 'https://anagroove.example' },
+      }, response => { response.resume(); resolve(response.statusCode); });
+      request.on('error', reject);
+      request.end(JSON.stringify({ name: 'Nickelback', type: 'artist' }));
+    });
+    assert.equal(status, 200);
+  });
+
+  test('the user id is read from the header only and never logged', async (t) => {
+    const userId = `secret-${Date.now()}`;
+    const lines: string[] = [];
+    t.mock.method(console, 'log', (...args: unknown[]) => { lines.push(args.join(' ')); });
+    assert.equal((await fetch(`${baseUrl}/api/progress?userId=${userId}`)).status, 400);
+    assert.equal((await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } })).status, 200);
+    assert.ok(lines.some(line => line.includes('/api/progress')), 'requests are still logged');
+    assert.ok(lines.every(line => !line.includes(userId)));
+  });
+
   test('read-only requests do not create users', async () => {
     const userId = `probe-${Date.now()}`;
     assert.equal((await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } })).status, 200);
     assert.equal(db.findUser(userId), null);
+  });
+
+  test('a full hidden list answers 409 with a message the client shows', async () => {
+    const userId = `full-${Date.now()}`;
+    for (let i = 0; i < MAX_BLACKLIST_ITEMS; i++) db.addBlacklistItem(userId, { name: `Artist ${i}`, type: 'artist' });
+    const response = await fetch(`${baseUrl}/api/blacklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+      body: JSON.stringify({ name: 'One Too Many', type: 'artist' }),
+    });
+    assert.equal(response.status, 409);
+    assert.match((await readJson(response)).error, /up to 500/);
   });
 
   test('blacklist DELETE removes by item id, never by matching name', async () => {
@@ -225,5 +355,101 @@ describe('HTTP and WebSocket server', () => {
     const cell = await guest.next(m => m.type === 'coop_cell_update');
     assert.equal(cell.playerId, hostId, 'the server-bound identity, not the claimed one');
     assert.equal(cell.playerColor, '#3de0ff');
+  });
+
+  test('a race is won once, after the start, and only with a grid the server checked', async () => {
+    const mockTracks = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({
+      id: `deezer:${index}`, provider: 'deezer', providerTrackId: String(index), providerArtistId: String(index),
+      title, artist: `Racer ${index}`, album: 'Mock Album', albumArt: '', audioUrl: `https://cdn.example.test/${index}.mp3`,
+      selection: { source: 'deezer', rank: 500000, artistFans: 900000 },
+    }));
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
+    const hostId = `racer-${Date.now()}`;
+    const live = await readJson(await fetch(`${baseUrl}/api/puzzles/live`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': hostId },
+      body: JSON.stringify({ genre: 'all', targetWords: 6 }),
+    }));
+    setMusicProviderForTesting();
+    const solved: string[][] = live.puzzle.grid.map(row => row.map(cell => cell.char || ''));
+    const wrong = solved.map(row => row.map(char => (char ? 'Z' : '')));
+
+    const connect = async () => {
+      const client = wsTestClient(wsUrl);
+      clients.push(client);
+      await client.open;
+      return client;
+    };
+    const host = await connect();
+    host.send({ action: 'create_room', playerId: hostId, playerName: 'Host', mode: 'race', livePuzzleToken: live.livePuzzleToken });
+    const roomCode = (await host.next(m => m.type === 'room_created')).room.code;
+    const guest = await connect();
+    guest.send({ action: 'join_room', roomCode, playerId: `${hostId}-guest`, playerName: 'Guest' });
+    await guest.next(m => m.type === 'room_joined');
+
+    guest.send({ action: 'puzzle_solved', roomCode, grid: solved });
+    guest.send({ action: 'puzzle_solved', roomCode });
+    assert.match((await guest.next(m => m.type === 'error')).message, /solved grid/, 'a claim without a grid is invalid');
+
+    host.send({ action: 'start_game', roomCode });
+    await guest.next(m => m.type === 'game_started');
+    guest.send({ action: 'puzzle_solved', roomCode, grid: wrong });
+    assert.match((await guest.next(m => m.type === 'error')).message, /not solved/);
+
+    guest.send({ action: 'puzzle_solved', roomCode, grid: solved });
+    const win = await host.next(m => m.type === 'puzzle_solved');
+    assert.equal(win.winnerName, 'Guest', 'the claim sent before the start was ignored, this one counts');
+    host.send({ action: 'puzzle_solved', roomCode, grid: solved });
+    await assert.rejects(host.next(m => m.type === 'puzzle_solved', 300), /Timed out/, 'a second claim is ignored');
+  });
+});
+
+describe('WebSocket limits', () => {
+  let limitServer;
+  let wsUrl;
+  const sockets = [];
+
+  before(async () => {
+    limitServer = http.createServer();
+    attachMultiplayer(limitServer, { livePuzzles: createLivePuzzleStore(), heartbeatMs: 50 });
+    await new Promise<void>(resolve => limitServer.listen(0, '127.0.0.1', resolve));
+    wsUrl = `ws://127.0.0.1:${limitServer.address().port}/ws`;
+  });
+
+  after(async () => {
+    for (const socket of sockets) socket.terminate();
+    await new Promise(resolve => limitServer.close(resolve));
+  });
+
+  const open = async (options = {}) => {
+    const socket = new WebSocket(wsUrl, options);
+    sockets.push(socket);
+    await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+    return socket;
+  };
+  const closeCode = (socket: WebSocket) => new Promise<number>(resolve => socket.once('close', code => resolve(code)));
+
+  test('a frame over 64 KiB closes the socket with 1009 before it is buffered', async () => {
+    const socket = await open();
+    const closed = closeCode(socket);
+    socket.send('x'.repeat(64 * 1024 + 1));
+    assert.equal(await closed, 1009);
+  });
+
+  test('a socket that stops answering pings is terminated', async () => {
+    const socket = await open({ autoPong: false });
+    assert.equal(await closeCode(socket), 1006);
+  });
+
+  test('wrong room codes are limited to 10 per minute per IP', async () => {
+    const client = wsTestClient(wsUrl);
+    sockets.push(client.ws);
+    await client.open;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      client.send({ action: 'join_room', roomCode: `BEAT-${1000 + attempt}`, playerId: 'guesser-1' });
+      assert.match((await client.next(m => m.type === 'error')).message, /not found/i);
+    }
+    client.send({ action: 'join_room', roomCode: 'BEAT-2000', playerId: 'guesser-1' });
+    assert.match((await client.next(m => m.type === 'error')).message, /too many attempts/i);
   });
 });

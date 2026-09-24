@@ -39,7 +39,7 @@ describe('useBlacklist', () => {
     api.getBlacklist
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([item('Offline Song', { type: 'song', provider: 'deezer', providerTrackId: '9' })]);
-    api.addBlacklist.mockResolvedValue([]);
+    api.addBlacklist.mockResolvedValue({ blacklist: [] });
     const { result } = renderHook(() => useBlacklist());
     await waitFor(() => expect(api.getBlacklist).toHaveBeenCalledTimes(2));
     expect(api.addBlacklist).toHaveBeenCalledWith({ name: 'Offline Song', type: 'song', provider: 'deezer', providerTrackId: '9' });
@@ -55,7 +55,7 @@ describe('useBlacklist', () => {
 
   it('adds a trimmed artist with provider ids and persists the result', async () => {
     api.getBlacklist.mockReturnValue(new Promise(() => {}));
-    api.addBlacklist.mockResolvedValue([item('Adele')]);
+    api.addBlacklist.mockResolvedValue({ blacklist: [item('Adele')] });
     const { result } = renderHook(() => useBlacklist());
     await act(() => result.current.addArtist({ artist: '  Adele ', provider: 'deezer', providerArtistId: '75798' }));
     expect(api.addBlacklist).toHaveBeenCalledWith({ name: 'Adele', type: 'artist', provider: 'deezer', providerArtistId: '75798' });
@@ -65,12 +65,12 @@ describe('useBlacklist', () => {
 
   it('skips blank names and keeps the list when the server refuses', async () => {
     api.getBlacklist.mockReturnValue(new Promise(() => {}));
-    api.addBlacklist.mockResolvedValue(null);
+    api.addBlacklist.mockResolvedValue({ error: 'You can hide up to 500 artists and songs. Remove some to hide more.' });
     const { result } = renderHook(() => useBlacklist());
     await act(() => result.current.addSong('   '));
     expect(api.addBlacklist).not.toHaveBeenCalled();
     await act(() => result.current.addSong('Hello'));
-    expect(window.alert).toHaveBeenCalledTimes(1);
+    expect(window.alert).toHaveBeenCalledWith('You can hide up to 500 artists and songs. Remove some to hide more.');
     expect(result.current.blacklist).toEqual([]);
   });
 

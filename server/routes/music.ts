@@ -4,8 +4,10 @@
 import express from 'express';
 import { db } from '../db.ts';
 import { getRandomSongPool } from '../selection/songPool.ts';
+import { createRng } from '../selection/random.ts';
 import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.ts';
+import { ProviderBudgetError } from '../crawler/rateLimiter.ts';
 import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.ts';
 import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
@@ -31,6 +33,10 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
       res.setHeader('Cache-Control', 'private, max-age=60');
       return res.redirect(302, url);
     } catch (err) {
+      if (err instanceof ProviderBudgetError) {
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({ error: 'Audio previews are busy. Try again in a few seconds.' });
+      }
       logger.warn('preview', `Preview resolution failed for ${ref}: ${errorMessage(err)}`);
       return res.status(502).json({ error: 'Audio preview provider unavailable' });
     }
@@ -40,7 +46,7 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
   router.get('/music/random', async (req, res) => {
     try {
       const validatedQuery = validateMusicQuery(req.query as Record<string, unknown>);
-      const rawUserId = req.headers['x-user-id'] || req.query.userId;
+      const rawUserId = req.headers['x-user-id'];
       const userId = rawUserId ? validateUserId(rawUserId) : null;
 
       const songs = await getRandomSongPool({
@@ -68,8 +74,7 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
   // Builds one complete puzzle on the server so every multiplayer participant
   // receives the host's same, already-selected tracks and grid.
   router.post('/puzzles/live', async (req, res) => {
-    const rawUserId = req.headers['x-user-id'] || req.query.userId;
-    const userId = validateUserId(rawUserId);
+    const userId = validateUserId(req.headers['x-user-id']);
     if (!userId) {
       return res.status(400).json({ error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)' });
     }
@@ -82,7 +87,7 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
     try {
       const { genre, minFans, targetWords, recentIds, prompt, artist, album, decade, popularity, seed, languages } = validation.data;
 
-      logger.info('puzzle', `Generating live puzzle for user "${userId}" | genre: ${genre}, popularity: ${popularity}, prompt: "${prompt || ''}"`);
+      logger.info('puzzle', `Generating live puzzle | genre: ${genre}, popularity: ${popularity}, prompt: ${JSON.stringify(prompt || '')}`);
       const genStart = Date.now();
 
       const songs = await getRandomSongPool({
@@ -115,7 +120,8 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
           : `⚡ Live: ${genre === 'all' ? (popularity === 'pure' ? 'Pure Universe' : 'Eclectic Hits') : genre}`;
 
       // Every picked song has its answer, clue and a preview path (songPool.attachPreviewRefs)
-      const puzzle = generateLiveCrossword(songs as LiveSong[], puzzleTitle, targetWords);
+      // A seeded request gets a reproducible layout too (the suffix keeps it apart from song selection)
+      const puzzle = generateLiveCrossword(songs as LiveSong[], puzzleTitle, targetWords, seed ? { rng: createRng(`${seed}:grid`) } : {});
       if (!puzzle) {
         logger.warn('puzzle', `Crossword generator could not place words from ${songs.length} candidates`);
         return res.status(422).json({

@@ -4,13 +4,13 @@
  * an artist), then the crossword answer and clue with clue-type and answer-length rotation.
  */
 import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.ts';
-import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
+import { canonicalArtistKey, canonicalTrackKey, compileBlacklist, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.ts';
 import {
+  createLanguagePolicy,
+  createThematicPolicy,
   isAuthenticTrack,
-  isLanguagePermitted,
   isTemporalPermitted,
-  isThematicallyPermitted,
   resolveReleaseYear,
 } from '../policy/selectionPolicy.ts';
 import type { AnswerCandidate, ExtractKeywordOptions, LengthBucket } from '../../shared/musicKeywords.ts';
@@ -90,6 +90,10 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
   if (isTargetingAnimeKeyphrase && animeKeyphrase) banTokens(animeKeyphrase);
 
   const policyContext = prompt || queryPlan.prompt;
+  const isBlacklisted = compileBlacklist(blacklist);
+  // Everything that depends only on the request is resolved once, not per candidate
+  const isLanguageOk = createLanguagePolicy(queryPlan.genre, policyContext, { languages: queryPlan.languages });
+  const isThemeOk = createThematicPolicy(queryPlan.genre, policyContext);
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const targetArtistKey = queryPlan.artist ? canonicalArtistKey(queryPlan.artist) : '';
 
@@ -143,11 +147,11 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.duplicateTitle++;
         continue;
       }
-      if (blacklistMatchesTrack(blacklist, track)) {
+      if (isBlacklisted(track)) {
         rejections.blacklist++;
         continue;
       }
-      if (!isLanguagePermitted(track, queryPlan.genre, policyContext, { languages: queryPlan.languages })) {
+      if (!isLanguageOk(track)) {
         rejections.language++;
         continue;
       }
@@ -156,7 +160,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.version++;
         continue;
       }
-      if (!isThematicallyPermitted(track, queryPlan.genre, policyContext) || !isAuthenticTrack(track)) {
+      if (!isThemeOk(track) || !isAuthenticTrack(track)) {
         rejections.thematic++;
         continue;
       }
@@ -165,9 +169,11 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         continue;
       }
 
-      const isTargetArtist = isTargetingSingleArtist && (artistIdentity.includes(targetArtistKey) || targetArtistKey.includes(artistIdentity));
-      const isKeyphraseAnimeMatch = isTargetingAnimeKeyphrase && Boolean(track.isAnimeOped);
       const artistNames = splitArtistNames(track.artist);
+      // Whole names only: "Drake" targets "Drake feat. Future", never "Nick Drake"
+      const isTargetArtist = isTargetingSingleArtist && Boolean(artistIdentity) &&
+        (artistIdentity === targetArtistKey || artistNames.some(name => canonicalArtistKey(name) === targetArtistKey));
+      const isKeyphraseAnimeMatch = isTargetingAnimeKeyphrase && Boolean(track.isAnimeOped);
       const isDuplicateArtist = !isTargetArtist && !isKeyphraseAnimeMatch && (
         seenArtists.has(artistIdentity) || artistNames.some(name => seenArtists.has(canonicalArtistKey(name)))
       );

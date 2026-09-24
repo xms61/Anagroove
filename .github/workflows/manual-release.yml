@@ -14,25 +14,40 @@ on:
         default: false
         type: boolean
 
+# Read-only by default; only the release job, which runs no project code, can write
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
-  validate-and-release:
-    name: Lint, Test, Docker Build & Release
+  validate:
+    name: Lint, Test & Docker Build
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.get_version.outputs.tag }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
           cache: 'npm'
+
+      # The input reaches the shell only through the environment, and must look like a version
+      - name: Determine release version tag
+        id: get_version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          TAG="${INPUT_VERSION:-v$(node -p "require('./package.json').version")}"
+          [[ "$TAG" =~ ^v ]] || TAG="v$TAG"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Version must look like v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $TAG"
 
       - name: Install dependencies
         run: npm ci
@@ -49,54 +64,48 @@ jobs:
       - name: Frontend tests (Vitest)
         run: npm run test:web
 
-      - name: Determine release version tag
-        id: get_version
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            TAG="${{ inputs.version }}"
-          else
-            PKG_VERSION=$(node -p "require('./package.json').version")
-            TAG="v${PKG_VERSION}"
-          fi
-          if [[ ! "$TAG" =~ ^v ]]; then
-            TAG="v$TAG"
-          fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Resolved release tag: $TAG"
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Build Docker Image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           push: false
           tags: anagroove:${{ steps.get_version.outputs.tag }},anagroove:latest
 
+  release:
+    name: Tag & GitHub Release
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
       - name: Extract Changelog Section
-        id: changelog
         run: |
-          TAG="${{ steps.get_version.outputs.tag }}"
-          CLEAN_VER="${TAG#v}"
-          python3 -c "
-          import re, sys
-          ver = '${CLEAN_VER}'
+          python3 - <<'PY'
+          import os, re
+          tag = os.environ['TAG']
+          version = tag[1:]
+          notes = f'Anagroove Release {tag}'
           try:
-              with open('CHANGELOG.md', 'r') as f:
+              with open('CHANGELOG.md', encoding='utf-8') as f:
                   content = f.read()
-              pattern = rf'## \[{re.escape(ver)}\][^\n]*\n(.*?)(?=\n## \[|\Z)'
-              match = re.search(pattern, content, re.DOTALL)
+              match = re.search(rf'## \[{re.escape(version)}\][^\n]*\n(.*?)(?=\n## \[|\Z)', content, re.DOTALL)
               if match:
                   notes = match.group(1).strip()
-                  with open('release_notes.md', 'w') as out:
-                      out.write(notes)
-                  sys.exit(0)
-          except Exception:
+          except OSError:
               pass
-          with open('release_notes.md', 'w') as out:
-              out.write('Anagroove Release ' + '${TAG}')
-          "
+          with open('release_notes.md', 'w', encoding='utf-8') as out:
+              out.write(notes)
+          PY
           echo "Release notes prepared in release_notes.md"
 
       - name: Configure Git User
@@ -106,7 +115,6 @@ jobs:
 
       - name: Create and Push Git Tag
         run: |
-          TAG="${{ steps.get_version.outputs.tag }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists locally."
           else
@@ -115,10 +123,10 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          name: "Anagroove ${{ steps.get_version.outputs.tag }}"
+          tag_name: ${{ env.TAG }}
+          name: "Anagroove ${{ env.TAG }}"
           body_path: release_notes.md
           prerelease: ${{ inputs.prerelease }}
           draft: false

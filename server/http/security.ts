@@ -68,39 +68,47 @@ export function securityHeaders({ production }: { production: boolean }): Reques
   };
 }
 
-// CORS_ALLOWED_ORIGINS (comma-separated) in production; localhost origins otherwise
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+/** CORS_ALLOWED_ORIGINS as a list, or null when unset. */
+export function parseAllowedOrigins(value = process.env.CORS_ALLOWED_ORIGINS): string[] | null {
+  return value ? value.split(',').map(s => s.trim()).filter(Boolean) : null;
+}
+
+/**
+ * Browsers send Origin on same-origin POST/DELETE too, so the page's own origin (Origin's host
+ * equals Host) is always allowed. Otherwise: CORS_ALLOWED_ORIGINS, or local dev origins when
+ * it is unset. Requests without Origin (curl, same-origin GET) are allowed.
+ */
+export function isAllowedOrigin(origin: string | undefined, host: string | undefined, allowedOrigins: string[] | null): boolean {
+  if (!origin) return true;
+  try {
+    if (host && new URL(origin).host === host) return true;
+  } catch {
+    return false;
+  }
+  return allowedOrigins ? allowedOrigins.includes(origin) : LOCAL_ORIGIN.test(origin);
+}
+
 export function corsPolicy(allowedOriginsEnv = process.env.CORS_ALLOWED_ORIGINS) {
-  const allowedOrigins = allowedOriginsEnv ? allowedOriginsEnv.split(',').map(s => s.trim()) : null;
+  const allowedOrigins = parseAllowedOrigins(allowedOriginsEnv);
   const corsRejection = (): Error => Object.assign(new Error('Origin not allowed by CORS policy'), { status: 403 });
 
-  return cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins) {
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(corsRejection());
-      }
-      if (
-        origin.startsWith('http://localhost:') ||
-        origin.startsWith('http://127.0.0.1:') ||
-        origin.startsWith('https://localhost:')
-      ) {
-        return callback(null, true);
-      }
-      return callback(corsRejection());
-    },
-    credentials: true,
+  // The API authenticates with the X-User-Id header, never cookies, so no credentials mode
+  return cors((req, callback) => {
+    const allowed = isAllowedOrigin(req.headers.origin, req.headers.host, allowedOrigins);
+    callback(allowed ? null : corsRejection(), { origin: allowed });
   });
 }
 
 export const requestLogger: RequestHandler = (req, res, next) => {
   const start = Date.now();
-  res.on('finish', () => {
-    if (req.path.startsWith('/api')) {
-      const user = req.userId || req.headers['x-user-id'];
-      logger.http(req.method, req.originalUrl || req.url, res.statusCode, Date.now() - start, user ? `user: ${user}` : '');
-    }
-  });
+  // Read before routing: inside a router mounted on /api, req.path loses its /api prefix.
+  // Path only: the query string carries prompts, and the user id is a bearer secret.
+  const path = req.path;
+  if (path.startsWith('/api')) {
+    res.on('finish', () => logger.http(req.method, path, res.statusCode, Date.now() - start));
+  }
   next();
 };
 

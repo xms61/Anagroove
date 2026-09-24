@@ -19,6 +19,8 @@ export interface LiveCrosswordOptions {
   maxAnswerLength?: number;
   trials?: number;
   trialsCount?: number;
+  /** Random source in [0, 1); a seeded one makes the layout reproducible. Default Math.random. */
+  rng?: () => number;
 }
 
 type Grid = (string | null)[][];
@@ -47,7 +49,49 @@ interface PlacementOptions {
   maxSmallBounds?: number;
 }
 
-function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, row: number, col: number, direction: Direction, options: PlacementOptions = {}): Placement | null {
+interface Bounds {
+  minRow: number;
+  maxRow: number;
+  minCol: number;
+  maxCol: number;
+}
+
+/**
+ * One trial's layout. `across` and `down` record which word covers each cell, so a crossing is
+ * found in O(1); `bounds` is the placed words' bounding box, kept up to date as words are placed.
+ */
+interface Layout {
+  grid: Grid;
+  across: (PlacedWord | null)[][];
+  down: (PlacedWord | null)[][];
+  words: PlacedWord[];
+  placedIds: Set<string>;
+  bounds: Bounds | null;
+}
+
+function emptyLayout(size: number): Layout {
+  const cells = <T>(value: T): T[][] => Array.from({ length: size }, () => Array(size).fill(value));
+  return { grid: cells(null), across: cells(null), down: cells(null), words: [], placedIds: new Set(), bounds: null };
+}
+
+function wordBounds(row: number, col: number, length: number, direction: Direction): Bounds {
+  return direction === 'across'
+    ? { minRow: row, maxRow: row, minCol: col, maxCol: col + length - 1 }
+    : { minRow: row, maxRow: row + length - 1, minCol: col, maxCol: col };
+}
+
+function mergeBounds(a: Bounds | null, b: Bounds): Bounds {
+  if (!a) return b;
+  return {
+    minRow: Math.min(a.minRow, b.minRow),
+    maxRow: Math.max(a.maxRow, b.maxRow),
+    minCol: Math.min(a.minCol, b.minCol),
+    maxCol: Math.max(a.maxCol, b.maxCol),
+  };
+}
+
+function evaluatePlacement(layout: Layout, word: string, row: number, col: number, direction: Direction, options: PlacementOptions = {}): Placement | null {
+  const { grid } = layout;
   const size = grid.length;
   const horizontal = direction === 'across';
   if (row < 0 || col < 0) return null;
@@ -55,6 +99,8 @@ function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, 
   if (horizontal && ((col > 0 && grid[row][col - 1] !== null) || (col + word.length < size && grid[row][col + word.length] !== null))) return null;
   if (!horizontal && ((row > 0 && grid[row - 1][col] !== null) || (row + word.length < size && grid[row + word.length][col] !== null))) return null;
 
+  // A crossed letter belongs to the word running the other way through that cell
+  const crossing = horizontal ? layout.down : layout.across;
   let intersections = 0;
   const crossedWords: PlacedWord[] = [];
 
@@ -65,17 +111,8 @@ function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, 
     if (current !== null) {
       if (current !== word[index]) return null;
       intersections++;
-      const matchingWord = placedWords.find(pw => {
-        if (pw.direction === direction) return false;
-        if (pw.direction === 'across') {
-          return pw.row === targetRow && targetCol >= pw.col && targetCol < pw.col + pw.length;
-        } else {
-          return pw.col === targetCol && targetRow >= pw.row && targetRow < pw.row + pw.length;
-        }
-      });
-      if (matchingWord) {
-        crossedWords.push(matchingWord);
-      }
+      const crossedWord = crossing[targetRow][targetCol];
+      if (crossedWord) crossedWords.push(crossedWord);
     } else if (
       (horizontal && ((targetRow > 0 && grid[targetRow - 1][targetCol] !== null) || (targetRow < size - 1 && grid[targetRow + 1][targetCol] !== null))) ||
       (!horizontal && ((targetCol > 0 && grid[targetRow][targetCol - 1] !== null) || (targetCol < size - 1 && grid[targetRow][targetCol + 1] !== null)))
@@ -84,7 +121,7 @@ function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, 
     }
   }
 
-  if (placedWords.length > 0 && intersections === 0) return null;
+  if (layout.words.length > 0 && intersections === 0) return null;
 
   // Crossword words cross 1-3 times each other (prevent solitary single-spines and over-saturation)
   if (intersections > 3) return null;
@@ -96,19 +133,8 @@ function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, 
     }
   }
 
-  // Calculate bounding box if this word is placed
-  let minRow = row;
-  let maxRow = horizontal ? row : row + word.length - 1;
-  let minCol = col;
-  let maxCol = horizontal ? col + word.length - 1 : col;
-
-  for (const pw of placedWords) {
-    minRow = Math.min(minRow, pw.row);
-    maxRow = Math.max(maxRow, pw.direction === 'down' ? pw.row + pw.length - 1 : pw.row);
-    minCol = Math.min(minCol, pw.col);
-    maxCol = Math.max(maxCol, pw.direction === 'across' ? pw.col + pw.length - 1 : pw.col);
-  }
-
+  // Bounding box if this word is placed
+  const { minRow, maxRow, minCol, maxCol } = mergeBounds(layout.bounds, wordBounds(row, col, word.length, direction));
   const boundingArea = (maxRow - minRow + 1) * (maxCol - minCol + 1);
   const aspectPenalty = Math.abs((maxRow - minRow + 1) - (maxCol - minCol + 1)) * 3;
 
@@ -139,11 +165,8 @@ function evaluatePlacement(grid: Grid, placedWords: PlacedWord[], word: string, 
   return { row, col, direction, intersections, crossedWords, score };
 }
 
-function placeWord(grid: Grid, placedWords: PlacedWord[], item: LiveSong, row: number, col: number, direction: Direction, crossedWords: PlacedWord[] = []): void {
+function placeWord(layout: Layout, item: LiveSong, row: number, col: number, direction: Direction, crossedWords: PlacedWord[] = []): void {
   const answer = item.answer.toUpperCase();
-  for (let index = 0; index < answer.length; index++) {
-    grid[direction === 'across' ? row : row + index][direction === 'across' ? col + index : col] = answer[index];
-  }
   const newWord: PlacedWord = {
     item,
     row,
@@ -153,10 +176,19 @@ function placeWord(grid: Grid, placedWords: PlacedWord[], item: LiveSong, row: n
     answer,
     currentCrossings: crossedWords.length,
   };
+  const owners = direction === 'across' ? layout.across : layout.down;
+  for (let index = 0; index < answer.length; index++) {
+    const cellRow = direction === 'across' ? row : row + index;
+    const cellCol = direction === 'across' ? col + index : col;
+    layout.grid[cellRow][cellCol] = answer[index];
+    owners[cellRow][cellCol] = newWord;
+  }
   for (const cw of crossedWords) {
     cw.currentCrossings = (cw.currentCrossings || 0) + 1;
   }
-  placedWords.push(newWord);
+  layout.words.push(newWord);
+  layout.placedIds.add(String(item.id));
+  layout.bounds = mergeBounds(layout.bounds, wordBounds(row, col, answer.length, direction));
 }
 
 function createPuzzle(grid: Grid, placedWords: PlacedWord[], puzzleId: string, title: string, difficulty: string): Puzzle {
@@ -175,15 +207,19 @@ function createPuzzle(grid: Grid, placedWords: PlacedWord[], puzzleId: string, t
 
   const rows = maxRow - minRow + 1;
   const cols = maxCol - minCol + 1;
-  const adjusted = placedWords.map(word => ({ ...word, row: word.row - minRow, col: word.col - minCol }));
+  // Words by start cell and direction: one lookup per cell instead of a scan of every word
+  const wordAt = new Map<string, PlacedWord>();
+  for (const word of placedWords) {
+    wordAt.set(`${word.row - minRow},${word.col - minCol},${word.direction}`, { ...word, row: word.row - minRow, col: word.col - minCol });
+  }
   const cellNumbers: (number | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null));
   const clues: Clue[] = [];
   let number = 1;
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      const across = adjusted.find(word => word.row === row && word.col === col && word.direction === 'across');
-      const down = adjusted.find(word => word.row === row && word.col === col && word.direction === 'down');
+      const across = wordAt.get(`${row},${col},across`);
+      const down = wordAt.get(`${row},${col},down`);
       if (!across && !down) continue;
       const cellNumber = number++;
       cellNumbers[row][col] = cellNumber;
@@ -259,6 +295,7 @@ export function generateLiveCrossword(
   const archetype = options.archetype || 'standard';
   const maxSmallBounds = options.maxSmallBounds || 9;
   const placementOpts = { archetype, maxSmallBounds };
+  const rng = options.rng || Math.random;
 
   let eligible = (songs || []).filter(song => /^[A-Z0-9]{2,20}$/.test(song.answer || ''));
   if (archetype === 'small') {
@@ -274,27 +311,26 @@ export function generateLiveCrossword(
   const requiredMin = archetype === 'small' ? 5 : 6;
   if (eligible.length < requiredMin) return null;
 
-  let bestPuzzle: Puzzle | null = null;
+  let best: Layout | null = null;
   let bestTrialScore = -Infinity;
   const defaultTrials = archetype === 'dense' ? 300 : (archetype === 'small' ? 150 : 150);
   const trialsCount = options.trialsCount || options.trials || defaultTrials;
 
   for (let trial = 0; trial < trialsCount; trial++) {
     const size = archetype === 'small' ? 16 : 24;
-    const grid: Grid = Array.from({ length: size }, () => Array(size).fill(null));
-    const placedWords: PlacedWord[] = [];
+    const layout = emptyLayout(size);
+    const placedWords = layout.words;
 
     // Varied starter word seed across trials: mix top longest and randomized selection
-    const pool = shuffleArray([...eligible]);
+    const pool = shuffleArray(eligible, rng);
     if (trial % 2 === 0) {
       pool.sort((a, b) => b.answer.length - a.answer.length);
     }
-    const firstIdx = Math.floor(Math.random() * Math.min(3, pool.length));
+    const firstIdx = Math.floor(rng() * Math.min(3, pool.length));
     const first = pool[firstIdx];
-    const direction: Direction = Math.random() > 0.5 ? 'across' : 'down';
+    const direction: Direction = rng() > 0.5 ? 'across' : 'down';
     placeWord(
-      grid,
-      placedWords,
+      layout,
       first,
       Math.floor((size - (direction === 'down' ? first.answer.length : 1)) / 2),
       Math.floor((size - (direction === 'across' ? first.answer.length : 1)) / 2),
@@ -305,7 +341,8 @@ export function generateLiveCrossword(
     const remaining = pool.filter(p => p.id !== first.id);
 
     for (let attempts = 0; attempts < 350 && placedWords.length < targetWords; attempts++) {
-      const candidateList = shuffleArray(remaining.filter(item => !placedWords.some(pw => pw.item.id === item.id)));
+      const placedBefore = placedWords.length;
+      const candidateList = shuffleArray(remaining.filter(item => !layout.placedIds.has(String(item.id))), rng);
 
       for (const item of candidateList) {
         const validPlacements: Placement[] = [];
@@ -319,7 +356,7 @@ export function generateLiveCrossword(
               if (item.answer[itemIndex] !== existing.answer[existingIndex]) continue;
               const row = existing.direction === 'across' ? existing.row - itemIndex : existing.row + existingIndex;
               const col = existing.direction === 'across' ? existing.col + existingIndex : existing.col - itemIndex;
-              const evaluation = evaluatePlacement(grid, placedWords, item.answer, row, col, targetDirection, placementOpts);
+              const evaluation = evaluatePlacement(layout, item.answer, row, col, targetDirection, placementOpts);
               if (evaluation) {
                 validPlacements.push(evaluation);
               }
@@ -331,32 +368,28 @@ export function generateLiveCrossword(
           // Sort placements: highest score (optimal crossings, balanced compact grid) first
           validPlacements.sort((a, b) => b.score - a.score);
           // Introduce slight temperature for placement diversity
-          const pickIdx = (validPlacements.length > 1 && Math.random() < 0.2) ? 1 : 0;
+          const pickIdx = (validPlacements.length > 1 && rng() < 0.2) ? 1 : 0;
           const chosen = validPlacements[pickIdx];
-          placeWord(grid, placedWords, item, chosen.row, chosen.col, chosen.direction, chosen.crossedWords);
+          placeWord(layout, item, chosen.row, chosen.col, chosen.direction, chosen.crossedWords);
         }
 
         if (placedWords.length >= targetWords) break;
       }
+
+      // Nothing fit in a whole pass: the grid is unchanged, so no later pass can place a word
+      if (placedWords.length === placedBefore) break;
     }
 
     const minWords = archetype === 'small' ? Math.min(5, targetWords, eligible.length) : Math.min(6, targetWords, eligible.length);
-    if (placedWords.length >= minWords) {
+    if (placedWords.length >= minWords && layout.bounds) {
       const crossingCounts = placedWords.map(w => w.currentCrossings);
       const count1 = crossingCounts.filter(c => c === 1).length;
       const count2 = crossingCounts.filter(c => c === 2).length;
       const count3 = crossingCounts.filter(c => c === 3).length;
       const countOver3 = crossingCounts.filter(c => c > 3).length;
 
-      let minR = size, maxR = 0, minC = size, maxC = 0;
-      for (const pw of placedWords) {
-        minR = Math.min(minR, pw.row);
-        maxR = Math.max(maxR, pw.direction === 'down' ? pw.row + pw.length - 1 : pw.row);
-        minC = Math.min(minC, pw.col);
-        maxC = Math.max(maxC, pw.direction === 'across' ? pw.col + pw.length - 1 : pw.col);
-      }
-      const currentRows = maxR - minR + 1;
-      const currentCols = maxC - minC + 1;
+      const currentRows = layout.bounds.maxRow - layout.bounds.minRow + 1;
+      const currentCols = layout.bounds.maxCol - layout.bounds.minCol + 1;
 
       // Crossing variety distribution score:
       // Reward healthy, randomized mix of 1, 2, and 3 crossings
@@ -390,13 +423,13 @@ export function generateLiveCrossword(
         }
       }
 
+      // Each trial builds a new layout, so the best one can be kept by reference and rendered once
       if (trialScore > bestTrialScore) {
         bestTrialScore = trialScore;
-        bestPuzzle = createPuzzle(grid, placedWords, `live-${Date.now()}`, title, 'Dynamic');
+        best = layout;
       }
     }
   }
 
-  return bestPuzzle;
+  return best ? createPuzzle(best.grid, best.words, `live-${Date.now()}`, title, 'Dynamic') : null;
 }
-

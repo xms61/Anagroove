@@ -1,18 +1,20 @@
 /**
  * fetch with an AbortController timeout, retrying 5xx responses and network errors with
- * exponential backoff (backoffMs, 2×, 4×, …).
+ * exponential backoff (backoffMs, 2×, 4×, …). A caller's `options.signal` cancels the fetch
+ * and every retry.
  */
 export async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 6000, retries = 2, backoffMs = 500): Promise<Response> {
   let attempt = 0;
 
   while (true) {
+    options.signal?.throwIfAborted();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, {
         ...options,
-        signal: controller.signal
+        signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
       });
 
       clearTimeout(timer);
@@ -29,7 +31,7 @@ export async function fetchWithTimeout(url: string, options: RequestInit = {}, t
     } catch (err) {
       clearTimeout(timer);
 
-      if (attempt < retries) {
+      if (attempt < retries && !options.signal?.aborted) {
         attempt++;
         const waitTime = backoffMs * Math.pow(2, attempt - 1);
         await new Promise(resolve => setTimeout(resolve, waitTime));

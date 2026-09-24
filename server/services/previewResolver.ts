@@ -1,5 +1,5 @@
 import { sqliteCatalog } from '../db/sqliteCatalog.ts';
-import { deezerRateLimiter, itunesRateLimiter, politeFetch, type TokenBucketRateLimiter } from '../crawler/rateLimiter.ts';
+import { deezerRateLimiter, itunesRateLimiter, politeFetch, ProviderBudgetError, type PoliteFetchOptions, type TokenBucketRateLimiter } from '../crawler/rateLimiter.ts';
 import { logger } from '../logger.ts';
 import { isOfflineMode } from '../offline.ts';
 import { baseTitleKey, stripVersionTags } from '../db/trackNormalization.ts';
@@ -35,7 +35,7 @@ interface DeezerTrackJson {
 }
 
 interface ItunesJson {
-  results?: { previewUrl?: string; trackId?: number }[];
+  results?: { previewUrl?: string; trackId?: number; artistName?: string; trackName?: string }[];
 }
 
 /** The catalog calls this module makes (SqliteCatalog). */
@@ -51,7 +51,7 @@ interface PreviewCatalog {
   }): void;
 }
 
-type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: TokenBucketRateLimiter; maxRetries: number }) => Promise<Response | null>;
+type Fetch = (url: string, options: RequestInit, retry: PoliteFetchOptions & { rateLimiter: TokenBucketRateLimiter }) => Promise<Response | null>;
 
 const defaultCatalog: PreviewCatalog = sqliteCatalog;
 const defaultFetch: Fetch = politeFetch;
@@ -62,6 +62,15 @@ const MAX_CACHE_SIZE = 1000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour upper bound (stable iTunes URLs)
 // Treat signed URLs as stale this long before their real expiry so playback never starts on a dying link
 const EXPIRY_MARGIN_MS = 60 * 1000;
+
+// Lookups run while a player waits: a stalled provider or an exhausted budget fails fast
+const REQUEST_PATH_FETCH = { maxRetries: 2, timeoutMs: 5000, maxWaitMs: 3000 };
+
+// A ref the providers answered without a preview is not looked up again for a while, and
+// concurrent requests for one ref share a single lookup: unknown refs cannot drain the budget
+const MISS_TTL_MS = 10 * 60 * 1000;
+const recentMisses = new Map<string, number>();
+const inFlightRefs = new Map<string, Promise<string | null>>();
 
 let fetchImpl: Fetch = defaultFetch;
 
@@ -109,6 +118,23 @@ function cacheSet(key: string, value: CachedPreview): void {
 
 export function clearPreviewCacheForTesting() {
   inMemoryPreviewCache.clear();
+  recentMisses.clear();
+}
+
+function isRecentMiss(ref: string): boolean {
+  const until = recentMisses.get(ref);
+  if (until === undefined) return false;
+  if (until > Date.now()) return true;
+  recentMisses.delete(ref);
+  return false;
+}
+
+function recordMiss(ref: string): void {
+  if (recentMisses.size >= MAX_CACHE_SIZE) {
+    const oldest = recentMisses.keys().next().value;
+    if (oldest !== undefined) recentMisses.delete(oldest);
+  }
+  recentMisses.set(ref, Date.now() + MISS_TTL_MS);
 }
 
 export function extractNumericCatalogTrackId(track: PreviewTrack | null | undefined): number | null {
@@ -179,28 +205,33 @@ export function previewRefForTrack(track: PreviewTrack | null | undefined): stri
 
 async function fetchJson<T>(url: string, rateLimiter: TokenBucketRateLimiter): Promise<T | null> {
   if (isOfflineMode() && fetchImpl === defaultFetch) return null;
-  const res = await fetchImpl(url, {}, { rateLimiter, maxRetries: 2 });
+  const res = await fetchImpl(url, {}, { rateLimiter, ...REQUEST_PATH_FETCH });
   if (!res || !res.ok) return null;
   return res.json() as Promise<T>;
 }
 
-async function lookupDeezerTrack(deezerId: string | number): Promise<DeezerTrackJson | null> {
+/** Errors a lookup swallowed (timeouts, an exhausted budget): a null result then isn't a real miss. */
+type Failures = unknown[];
+
+async function lookupDeezerTrack(deezerId: string | number, failures?: Failures): Promise<DeezerTrackJson | null> {
   try {
     const data = await fetchJson<DeezerTrackJson>(`https://api.deezer.com/track/${deezerId}`, deezerRateLimiter);
     if (!data || data.error) return null;
     return data;
   } catch (err) {
+    failures?.push(err);
     logger.warn('preview_resolver', `Deezer track lookup failed for ${deezerId}: ${errorMessage(err)}`);
     return null;
   }
 }
 
-async function lookupItunesPreview(itunesId: string): Promise<string | null> {
+async function lookupItunesPreview(itunesId: string, failures?: Failures): Promise<string | null> {
   try {
     const data = await fetchJson<ItunesJson>(`https://itunes.apple.com/lookup?id=${itunesId}&entity=song`, itunesRateLimiter);
     const match = (data?.results || []).find(item => typeof item.previewUrl === 'string' && item.previewUrl.startsWith('http'));
     return match?.previewUrl ?? null;
   } catch (err) {
+    failures?.push(err);
     logger.warn('preview_resolver', `iTunes lookup failed for ${itunesId}: ${errorMessage(err)}`);
     return null;
   }
@@ -209,28 +240,39 @@ async function lookupItunesPreview(itunesId: string): Promise<string | null> {
 /**
  * Resolves a stable preview reference into a currently valid audio URL.
  * Used by GET /api/preview/:ref so puzzles never embed short-lived signed URLs.
+ * Concurrent requests for one ref share a lookup; a ref without a preview answers null for
+ * MISS_TTL_MS. Throws ProviderBudgetError when the providers' budget is exhausted.
  */
-export async function resolvePreviewRef(ref: unknown, { catalog = defaultCatalog }: { catalog?: Partial<PreviewCatalog> } = {}): Promise<string | null> {
+export function resolvePreviewRef(ref: unknown, { catalog = defaultCatalog }: { catalog?: Partial<PreviewCatalog> } = {}): Promise<string | null> {
   const parsed = parsePreviewRef(ref);
-  if (!parsed) return null;
+  if (!parsed) return Promise.resolve(null);
 
-  const cacheKey = `ref:${parsed.ref}`;
-  const cached = cacheGet(cacheKey);
-  if (cached) return cached.url;
+  const cached = cacheGet(`ref:${parsed.ref}`);
+  if (cached) return Promise.resolve(cached.url);
+  if (isRecentMiss(parsed.ref)) return Promise.resolve(null);
 
+  const pending = inFlightRefs.get(parsed.ref);
+  if (pending) return pending;
+  const lookup = lookupPreviewRef(parsed, catalog).finally(() => inFlightRefs.delete(parsed.ref));
+  inFlightRefs.set(parsed.ref, lookup);
+  return lookup;
+}
+
+async function lookupPreviewRef(parsed: { provider: string; id: string; ref: string }, catalog: Partial<PreviewCatalog>): Promise<string | null> {
+  const failures: Failures = [];
   let url: string | null = null;
 
   if (parsed.provider === 'deezer') {
-    const data = await lookupDeezerTrack(parsed.id);
+    const data = await lookupDeezerTrack(parsed.id, failures);
     if (typeof data?.preview === 'string' && data.preview.startsWith('http')) {
       url = data.preview;
     } else if (data?.title && data?.artist?.name) {
       // Deezer knows the track but has no preview (region/rights): fall back to search chains
-      const fallback = await resolveTrackPreview({ title: data.title, artist: data.artist.name, isrc: data.isrc });
+      const fallback = await resolveTrackPreview({ title: data.title, artist: data.artist.name, isrc: data.isrc }, { failures });
       url = fallback?.url || null;
     }
   } else if (parsed.provider === 'itunes') {
-    url = await lookupItunesPreview(parsed.id);
+    url = await lookupItunesPreview(parsed.id, failures);
   } else if (parsed.provider === 'catalog') {
     const row = typeof catalog?.getPreviewLookup === 'function' ? catalog.getPreviewLookup(Number(parsed.id)) : null;
     if (row) {
@@ -241,15 +283,18 @@ export async function resolvePreviewRef(ref: unknown, { catalog = defaultCatalog
         artist: row.artist,
         isrc: row.isrc,
         deezer_id: row.deezer_id,
-      });
+      }, { failures });
       url = resolved?.url || null;
     }
   }
 
   if (url && isPreviewUrlFresh(url)) {
-    cacheSet(cacheKey, { url });
+    cacheSet(`ref:${parsed.ref}`, { url });
     return url;
   }
+  if (failures.some(err => err instanceof ProviderBudgetError)) throw new ProviderBudgetError();
+  // Only a complete answer without a preview is a miss; a timeout is retried on the next play
+  if (failures.length === 0) recordMiss(parsed.ref);
   return null;
 }
 
@@ -263,7 +308,7 @@ export async function resolvePreviewRef(ref: unknown, { catalog = defaultCatalog
  *
  * When resolved, persists the sample into SQLite for future lookups.
  */
-export async function resolveTrackPreview(track: PreviewTrack | null | undefined): Promise<CachedPreview | null> {
+export async function resolveTrackPreview(track: PreviewTrack | null | undefined, { failures }: { failures?: Failures } = {}): Promise<CachedPreview | null> {
   if (!track) return null;
 
   // 1. Instant hit: track already has a playable, unexpired sample URL
@@ -289,7 +334,7 @@ export async function resolveTrackPreview(track: PreviewTrack | null | undefined
 
   // 2. Fast-Path: Deezer Track API lookup by ID
   if (deezerId && /^\d{1,20}$/.test(String(deezerId))) {
-    const data = await lookupDeezerTrack(String(deezerId));
+    const data = await lookupDeezerTrack(String(deezerId), failures);
     if (data && typeof data.preview === 'string' && data.preview.startsWith('http')) {
       const result = {
         url: data.preview,
@@ -352,6 +397,7 @@ export async function resolveTrackPreview(track: PreviewTrack | null | undefined
         return result;
       }
     } catch (err) {
+      failures?.push(err);
       logger.warn('preview_resolver', `Deezer search fallback failed for ${track.artist} - ${track.title}: ${errorMessage(err)}`);
     }
   }
@@ -364,7 +410,11 @@ export async function resolveTrackPreview(track: PreviewTrack | null | undefined
 
     const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(itunesTerm)}&entity=song&limit=3`;
     const data = await fetchJson<ItunesJson>(itunesUrl, itunesRateLimiter);
-    const match = (data?.results || []).find(item => item.previewUrl && item.previewUrl.startsWith('http'));
+    const wantedArtist = canonicalArtistKey(track.artist);
+    const wantedTitle = baseTitleKey(track.title || '');
+    // An ISRC search is exact; a text search must return the same artist and base title
+    const match = (data?.results || []).find(item => item.previewUrl?.startsWith('http') && (Boolean(track.isrc) ||
+      (canonicalArtistKey(item.artistName || '') === wantedArtist && baseTitleKey(item.trackName || '') === wantedTitle)));
     if (match?.previewUrl) {
       const result = {
         url: match.previewUrl,
@@ -389,6 +439,7 @@ export async function resolveTrackPreview(track: PreviewTrack | null | undefined
       return result;
     }
   } catch (err) {
+    failures?.push(err);
     logger.warn('preview_resolver', `iTunes fallback failed for ${track.artist} - ${track.title}: ${errorMessage(err)}`);
   }
 

@@ -298,6 +298,39 @@ function schemaV7(db: DatabaseSync) {
   }
 }
 
+/**
+ * Genre and artist-name lookups for song selection use indexes instead of scanning:
+ * `artist_genres` (one row per artist and genre, kept in sync with artists.genres_json by
+ * triggers; NOCASE, as the old LIKE on the JSON was) and a NOCASE index on display_name for
+ * artist prompts.
+ */
+function schemaV8(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS artist_genres (
+      genre TEXT NOT NULL COLLATE NOCASE,
+      artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+      PRIMARY KEY (genre, artist_id)
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS idx_artist_genres_artist ON artist_genres(artist_id);
+
+    INSERT OR IGNORE INTO artist_genres (genre, artist_id)
+      SELECT j.value, a.id FROM artists a, json_each(a.genres_json) j
+      WHERE json_valid(a.genres_json) AND j.type = 'text';
+
+    CREATE TRIGGER IF NOT EXISTS artist_genres_ai AFTER INSERT ON artists WHEN json_valid(new.genres_json) BEGIN
+      INSERT OR IGNORE INTO artist_genres (genre, artist_id)
+        SELECT value, new.id FROM json_each(new.genres_json) WHERE type = 'text';
+    END;
+    CREATE TRIGGER IF NOT EXISTS artist_genres_au AFTER UPDATE OF genres_json ON artists BEGIN
+      DELETE FROM artist_genres WHERE artist_id = new.id;
+      INSERT OR IGNORE INTO artist_genres (genre, artist_id)
+        SELECT value, new.id FROM json_each(CASE WHEN json_valid(new.genres_json) THEN new.genres_json ELSE '[]' END) WHERE type = 'text';
+    END;
+
+    CREATE INDEX IF NOT EXISTS idx_artists_display_nocase ON artists(display_name COLLATE NOCASE);
+  `);
+}
+
 export const CATALOG_MIGRATIONS: readonly CatalogMigration[] = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
@@ -306,6 +339,7 @@ export const CATALOG_MIGRATIONS: readonly CatalogMigration[] = Object.freeze([
   { version: 5, name: 'schema v5: rand_key index for song selection', up: schemaV5 },
   { version: 6, name: 'schema v6: Deezer placeholder rank dropped, popularity as a per-language percentile', up: schemaV6 },
   { version: 7, name: 'schema v7: localized Deezer genre names in English', up: schemaV7 },
+  { version: 8, name: 'schema v8: indexed artist genres and case-insensitive artist names', up: schemaV8 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;

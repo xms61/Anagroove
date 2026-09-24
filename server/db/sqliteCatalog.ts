@@ -7,6 +7,7 @@ import { errorMessage } from '../errors.ts';
 import { DATA_DIR } from '../paths.ts';
 import { runCatalogMigrations, type MigrationResult } from './catalogMigrations.ts';
 import { lazySingleton } from './lazySingleton.ts';
+import { catalogBusyTimeout } from './busyTimeout.ts';
 import { isAuthenticMetadata } from '../policy/authenticityRules.ts';
 import type { YearRange } from '../types.ts';
 import {
@@ -106,6 +107,8 @@ export interface CatalogRow {
   popularity: number | null;
   rand_key: number;
   deezer_id: string | null;
+  /** The artist's Deezer id, so artist blacklist entries made from live songs match catalog rows. */
+  artist_deezer_id: number | string | null;
   spotify_id: string | null;
   itunes_id: string | null;
   sample_url: string | null;
@@ -260,15 +263,21 @@ function countOf(db: DatabaseSync, sql: string): number {
   return Number(db.prepare(sql).get()?.count);
 }
 
+// How collaboration credits continue an artist's name ("Drake & Future", "Drake feat. Future")
+const COLLABORATION_JOINERS = [' & ', ', ', ' x ', ' and ', ' with ', ' feat. ', ' ft. '];
+// Sorts after any text that continues a prefix, so [prefix, prefix + PREFIX_END) is "starts with prefix"
+const PREFIX_END = '\u{10FFFF}';
+
 export class SqliteCatalog {
   readonly dbPath: string;
   /** Open until close(); a closed catalog throws "database is not open" on use. */
   readonly db: DatabaseSync;
   readonly migration: MigrationResult;
   private readonly statements: ReturnType<typeof prepareStatements>;
+  private readonly statementCache = new Map<string, StatementSync>();
   private rejectionStats: Record<RejectionReason, number> = { missingFields: 0, title: 0, language: 0, version: 0, inauthentic: 0, duration: 0 };
 
-  constructor(dbPath = DEFAULT_DB_PATH) {
+  constructor(dbPath = DEFAULT_DB_PATH, { busyTimeoutMs = catalogBusyTimeout() }: { busyTimeoutMs?: number } = {}) {
     this.dbPath = dbPath;
     if (dbPath !== ':memory:') {
       fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -280,7 +289,7 @@ export class SqliteCatalog {
     try {
       this.db.exec('PRAGMA journal_mode = WAL;');
       this.db.exec('PRAGMA synchronous = NORMAL;');
-      this.db.exec('PRAGMA busy_timeout = 10000;');
+      this.db.exec(`PRAGMA busy_timeout = ${Math.trunc(busyTimeoutMs)};`);
       this.db.exec('PRAGMA foreign_keys = ON;');
       this.db.exec('PRAGMA mmap_size = 2147483648;'); // 2GB memory-mapped I/O
       this.db.exec('PRAGMA cache_size = -64000;');    // 64MB memory page cache
@@ -614,7 +623,9 @@ export class SqliteCatalog {
    * track (best sample chosen by subquery), never one per sample.
    *
    * `start` in [0, 1) comes from the caller's (seeded) RNG, which makes the window reproducible.
-   * A theme (`ftsQuery`) matches through the trigram index, or LIKE when that finds < 10 rows.
+   * A theme (`ftsQuery`) matches through the trigram index. Genres go through `artist_genres`
+   * and artist names through a NOCASE index, and every list is one JSON parameter, so the SQL
+   * text depends only on which filters are present and its statements are prepared once.
    */
   sampleCatalogTracks({
     ftsQuery = '',
@@ -633,23 +644,18 @@ export class SqliteCatalog {
 
     if (artist && typeof artist === 'string' && artist.trim()) {
       // Resolve the artist rows first so the track lookup uses the artist_id index
-      const name = artist.trim();
-      const collaborations = ['&', ',', 'x', 'and', 'with', 'feat.', 'ft.'].map(joiner => `${name}${joiner === ',' ? ',' : ` ${joiner}`} %`);
-      const artistRows = this.db.prepare(
-        `SELECT id FROM artists WHERE canonical_name = ? OR display_name = ? OR ${collaborations.map(() => 'display_name LIKE ?').join(' OR ')}`
-      ).all(normalizeDedupeArtist(name), name, ...collaborations) as { id: number }[];
-      const artistIds = artistRows.map(r => r.id);
+      const artistIds = this.artistIdsForName(artist.trim());
       if (artistIds.length === 0) return [];
-      conditions.push(`t.artist_id IN (${artistIds.map(() => '?').join(', ')})`);
-      params.push(...artistIds);
+      conditions.push('t.artist_id IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(artistIds));
     }
     if (Array.isArray(genres) && genres.length > 0) {
-      conditions.push(`(${genres.map(() => 'a.genres_json LIKE ?').join(' OR ')})`);
-      params.push(...genres.map(g => `%"${String(g).trim()}"%`));
+      conditions.push('t.artist_id IN (SELECT artist_id FROM artist_genres WHERE genre IN (SELECT value FROM json_each(?)))');
+      params.push(JSON.stringify(genres.map(g => String(g).trim())));
     }
     if (Array.isArray(languages) && languages.length > 0) {
-      conditions.push(`t.language IN (${languages.map(() => '?').join(', ')})`);
-      params.push(...languages);
+      conditions.push('t.language IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(languages));
     }
     if (yearRange && typeof yearRange === 'object') {
       if (yearRange.start !== undefined) {
@@ -670,12 +676,12 @@ export class SqliteCatalog {
       params.push(maxPopularity);
     }
     if (Array.isArray(excludeTrackIds) && excludeTrackIds.length > 0) {
-      conditions.push(`t.id NOT IN (${excludeTrackIds.map(() => '?').join(', ')})`);
-      params.push(...excludeTrackIds);
+      conditions.push('t.id NOT IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(excludeTrackIds));
     }
 
     const select = `
-      SELECT t.id, t.isrc, t.language, t.display_title AS title, a.display_name AS artist,
+      SELECT t.id, t.isrc, t.language, t.display_title AS title, a.display_name AS artist, a.deezer_id AS artist_deezer_id,
              t.album_name AS album, t.duration_ms, t.release_year, t.release_date, t.popularity, t.rand_key,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
@@ -687,25 +693,50 @@ export class SqliteCatalog {
 
     const windowed = (extraCondition: string | null, extraParams: SQLInputValue[]): CatalogRow[] => {
       const where = [...conditions, extraCondition].filter(Boolean).join(' AND ');
-      const head = this.db.prepare(`${select} WHERE ${where} AND t.rand_key >= ? ORDER BY t.rand_key LIMIT ?`)
+      const head = this.prepareCached(`${select} WHERE ${where} AND t.rand_key >= ? ORDER BY t.rand_key LIMIT ?`)
         .all(...params, ...extraParams, startKey, poolSize) as unknown as CatalogRow[];
       if (head.length >= poolSize) return head;
-      const tail = this.db.prepare(`${select} WHERE ${where} AND t.rand_key < ? ORDER BY t.rand_key LIMIT ?`)
+      const tail = this.prepareCached(`${select} WHERE ${where} AND t.rand_key < ? ORDER BY t.rand_key LIMIT ?`)
         .all(...params, ...extraParams, startKey, poolSize - head.length) as unknown as CatalogRow[];
       return [...head, ...tail];
     };
 
     if (ftsQuery && typeof ftsQuery === 'string' && ftsQuery.trim()) {
+      // The trigram index covers title, artist and album, so its matches are the whole answer
       try {
-        const matched = windowed('t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)', [ftsQuery]);
-        if (matched.length >= 10) return matched;
+        return windowed('t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)', [ftsQuery]);
       } catch {
-        // FTS syntax error (e.g. a token under 3 characters): fall back to LIKE
+        // Malformed FTS input (toFtsQuery emits quoted tokens of 3+ characters): match each token as a substring
       }
-      const term = `%${ftsQuery.replace(/['"*]/g, '').trim()}%`;
-      return windowed('(t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)', [term, term, term]);
+      const terms = [...ftsQuery.matchAll(/"([^"]+)"/g)].map(match => `%${match[1]}%`);
+      if (terms.length === 0) return [];
+      const like = terms.map(() => '(t.display_title LIKE ? OR t.album_name LIKE ? OR a.display_name LIKE ?)').join(' OR ');
+      return windowed(`(${like})`, terms.flatMap(term => [term, term, term]));
     }
     return windowed(null, []);
+  }
+
+  /**
+   * Artists an artist prompt names: the same canonical name, the same display name (any case),
+   * or a collaboration credit starting with it ("Drake & …", "Drake, …", "Drake feat. …").
+   * Prefixes are NOCASE ranges on an index, so "%" or "_" in a prompt are plain characters.
+   */
+  private artistIdsForName(name: string): number[] {
+    const prefixes = COLLABORATION_JOINERS.map(joiner => `${name}${joiner}`);
+    const ranges = prefixes.map(() => '(display_name >= ? COLLATE NOCASE AND display_name < ? COLLATE NOCASE)').join(' OR ');
+    const rows = this.prepareCached(`SELECT id FROM artists WHERE canonical_name = ? OR display_name = ? COLLATE NOCASE OR ${ranges}`)
+      .all(normalizeDedupeArtist(name), name, ...prefixes.flatMap(prefix => [prefix, `${prefix}${PREFIX_END}`])) as { id: number }[];
+    return rows.map(row => row.id);
+  }
+
+  /** Statements keyed by SQL text; the window queries only have a few dozen shapes. */
+  private prepareCached(sql: string): StatementSync {
+    let statement = this.statementCache.get(sql);
+    if (!statement) {
+      statement = this.db.prepare(sql);
+      this.statementCache.set(sql, statement);
+    }
+    return statement;
   }
 
   countSummary(): { tracks: number; artists: number } {

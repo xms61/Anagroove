@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.29.0] - 2026-09-24
+
+### Security
+- **WebSocket frames over 64 KiB are refused while they arrive** (`maxPayload`, close 1009). The old check ran after `ws` had buffered up to its 100 MiB default, and an oversized frame's `error` event, which had no listener, crashed the process.
+- **Dead sockets are dropped:** a socket that misses a 30 s ping is terminated, which frees its seat and its per-IP connection slot.
+- **Room codes can't be guessed in bulk:** `join_room` allows 10 unknown codes per minute per IP.
+- **The anonymous user id stays out of logs and URLs.** It is read from `X-User-Id` only, the request log records the path without the query string, and free text (prompt, artist, album, decade, player name) loses control characters.
+- **Workflows run with read-only tokens** unless a job needs more. The release version input is validated, a separate job holds the write token, third-party actions are pinned to commit SHAs, and Dependabot proposes updates for them.
+- **The runtime image's code is read-only to the app user**, which owns only `server/data`. A `HEALTHCHECK` is added.
+
+### Fixed
+- **Hidden artists stay hidden.** An artist hidden from a live Deezer song came back in catalog songs, which carry no provider artist id. Catalog rows now carry the artist's Deezer id, and when a song has no comparable id, the name decides.
+- **Theme prompts keep their full-text matches.** Under 10 trigram matches were replaced by a `LIKE` for the literal text "tok1 OR tok2", which found nothing for prompts with two keywords (8 matches became 0 tracks).
+- **English live candidates are no longer rejected as foreign:** "Die With A Smile", "Son of a Preacher Man" and "Don’t Start Now". From 3 words the language classifier decides, and typographic punctuation counts as Latin text.
+- **"Drake" no longer covers "Nick Drake"** in the one-track-per-artist rule for artist prompts.
+- **A production deployment accepts its own POST and DELETE requests.** Browsers send `Origin` on them, and without `CORS_ALLOWED_ORIGINS` they got 403. The page's own origin is now always allowed, for HTTP and WebSocket.
+- **API requests handled by the routers are logged.** The request log read `req.path` after routing had removed the `/api` prefix.
+- **A crawl no longer freezes the server.** The server opens the catalogs with a 250 ms busy timeout (scripts keep 10 s), so its best-effort writes give up instead of blocking the event loop for up to 10 s.
+- **The iTunes text search only plays a result by the same artist** with the same base title.
+- **A seed reproduces the grid layout too**, not only the songs.
+
+### Changed
+- **Preview lookups stay within the provider budget.** Concurrent requests for one ref share a lookup, a ref without a preview is not looked up again for 10 minutes, outbound calls time out, and an exhausted budget answers 503 with `Retry-After`. The 10 s live-fallback timeout now also stops the Deezer and iTunes requests still running.
+- **Per-user limits:** up to 500 hidden artists and songs (the next add answers 409 with a message the client shows), and the newest 1,000 solved puzzles.
+- **Catalog schema v8:** `artist_genres` (kept in sync by triggers) and a NOCASE index on artist names. On a 500k-track test catalog, a genre without matching artists went from 415 ms to 0.2 ms and an artist prompt from 16 ms to 0.2 ms. Artist prompts treat `%` and `_` as plain characters.
+- **Faster grids:** a trial stops once a pass places nothing, crossings are looked up through owner grids, and the best trial is rendered once. 15-word grids: 51 → 12 ms; a target that can't be reached: 171 → 10 ms.
+- **Selection policy per request:** `createLanguagePolicy` and `createThematicPolicy` resolve the request's rules once. The homonym guards are rows of `THEMATIC_RULES`. `canonicalMusicKey` memoizes its result.
+- Docker compose mounts the anime clips and documents `TRUST_PROXY` and `CORS_ALLOWED_ORIGINS`.
+
+### Added
+- **Race wins are checked by the server:** `puzzle_solved` carries the player's grid, and only the first correct claim in a started room counts.
+
+---
+
 ## [1.28.12] - 2026-09-24
 
 ### Fixed
@@ -58,14 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.8] - 2026-09-24
-
-### Changed
-- **Server tests are TypeScript:** `cli`, `crawler`, `fixtureCatalog`, `languageCorpus`, `popularity`, `sqliteCatalog`, `trackNormalization` and `unicodeDedupe`, plus the `setup_env.ts` preload. `npm test` and the single-file command in `AGENTS.md` and `TESTING.md` use `--import ./scripts/tests/setup_env.ts`.
-- **`routedFetch` returns a typed fake `fetch`**, with the requested URLs in `calls`.
-- **Waiting for the catalog module:** `catalogWindow`, `coverage` and `musicMoveArr` stay JavaScript until `sqliteCatalog` moves. Their type errors come from its inferred JavaScript types.
-- **Docs name the `.ts` test files.**
-
 ---
 
-Older releases (1.28.7 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.8 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
