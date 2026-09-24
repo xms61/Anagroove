@@ -5,7 +5,7 @@
 import cors from 'cors';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import type { IncomingMessage } from 'http';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 
 /** Express' "trust proxy" value: off, on, a hop count or a named range. */
 export type TrustProxy = boolean | number | string;

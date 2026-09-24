@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, describe, test } from 'node:test';
-import { blacklistMatchesTrack, type BlacklistIdentityItem, type MusicIdentityTrack } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.ts';
 import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { server } from '../../server/server.ts';
@@ -91,16 +91,14 @@ test('generic blacklist entries match canonically; provider-scoped ones match th
   }, { nb_fan: 900000 });
   assert.equal(track?.artist, 'Beyoncé');
   assert.equal(track.providerTrackId, '99');
-  // musicIdentity.d.ts types ids as strings; the matcher compares String(id) (T7 widens the type)
-  const identity = track as MusicIdentityTrack;
   assert.equal(track.providerArtistId, '42');
 
   const generic: BlacklistIdentityItem = { type: 'artist', name: 'beyonce', canonicalKey: 'beyonce' };
   const scoped: BlacklistIdentityItem = { type: 'artist', name: 'Beyoncé', canonicalKey: 'beyonce', provider: 'deezer', providerArtistId: '42' };
-  assert.ok(blacklistMatchesTrack([generic], { ...identity, artist: 'BEYONCE', providerArtistId: '43' }));
-  assert.ok(blacklistMatchesTrack([scoped], { ...identity, artist: 'BEYONCE' }));
-  assert.ok(!blacklistMatchesTrack([scoped], { ...identity, artist: 'BEYONCE', providerArtistId: '43' }));
-  assert.ok(!blacklistMatchesTrack([scoped], { ...identity, provider: 'other', artist: 'BEYONCE' }));
+  assert.ok(blacklistMatchesTrack([generic], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
+  assert.ok(blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE' }));
+  assert.ok(!blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
+  assert.ok(!blacklistMatchesTrack([scoped], { ...track, provider: 'other', artist: 'BEYONCE' }));
   assert.ok(!blacklistMatchesTrack(
     [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '1' }],
     { provider: 'deezer', providerTrackId: '2', title: 'Hello', artist: 'Different Artist' }

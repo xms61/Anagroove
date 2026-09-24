@@ -11,7 +11,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { validateWsMessage, type WsMessage } from '../validators.ts';
 import { wsRateLimiter } from '../middleware/rateLimiter.ts';
 import { clientIpFromUpgrade } from '../http/security.ts';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 import type { LivePuzzleStore } from '../http/livePuzzleStore.ts';
 import type { Puzzle } from '../../shared/types.ts';

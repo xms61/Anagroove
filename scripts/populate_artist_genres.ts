@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { sqliteCatalog, normalizeDedupeArtist } from '../server/db/sqliteCatalog.js';
+import { sqliteCatalog, normalizeDedupeArtist } from '../server/db/sqliteCatalog.ts';
 import { loadStreamedArtists } from '../server/crawler/artistBaseline.ts';
 
 const GENRE_CLUSTERS = {
@@ -132,7 +132,7 @@ function main() {
 
   console.log(`Mapped ${artistGenreMap.size} distinct artists across genres.`);
 
-  const db = sqliteCatalog.db!;
+  const db = sqliteCatalog.db;
   const updateStmt = db.prepare('UPDATE artists SET genres_json = ? WHERE canonical_name = ?');
   let updated = 0;
 

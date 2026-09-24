@@ -5,18 +5,37 @@
  * SPOTYSPICE_SKIP_DB_BACKUP=1).
  */
 import path from 'path';
-import { logger } from '../logger.js';
+import type { DatabaseSync } from 'node:sqlite';
+import { logger } from '../logger.ts';
+import { errorMessage } from '../errors.ts';
 import {
   baseTitleKey,
   classifyVersion,
   DEEZER_PLACEHOLDER_RANK,
   detectTrackLanguage,
-} from './trackNormalization.js';
-import { recomputeCatalogLanguages } from './catalogLanguages.js';
-import { recomputeCatalogPopularity } from './catalogPopularity.js';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
+} from './trackNormalization.ts';
+import { recomputeCatalogLanguages } from './catalogLanguages.ts';
+import { recomputeCatalogPopularity } from './catalogPopularity.ts';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
 
-function baselineSchema(db) {
+export interface CatalogMigration {
+  version: number;
+  name: string;
+  up: (db: DatabaseSync) => void;
+}
+
+export interface MigrationResult {
+  from: number;
+  to: number;
+  applied: string[];
+  backupPath: string | null;
+}
+
+function columnNames(db: DatabaseSync, table: string): Set<string> {
+  return new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(column => column.name));
+}
+
+function baselineSchema(db: DatabaseSync) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS artists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +115,7 @@ function baselineSchema(db) {
   `);
 
   // Columns added to early catalogs after their creation
-  const trackColumns = new Set(db.prepare('PRAGMA table_info(tracks)').all().map(c => c.name));
+  const trackColumns = columnNames(db, 'tracks');
   if (!trackColumns.has('country_code')) db.exec('ALTER TABLE tracks ADD COLUMN country_code TEXT;');
   if (!trackColumns.has('language')) db.exec("ALTER TABLE tracks ADD COLUMN language TEXT DEFAULT 'en';");
 
@@ -113,7 +132,7 @@ function baselineSchema(db) {
 }
 
 /** FTS5 trigram index over title/artist/album, kept in sync by triggers. */
-export function createTracksFts(db) {
+export function createTracksFts(db: DatabaseSync) {
   db.exec(`
     DROP TRIGGER IF EXISTS tracks_fts_ai;
     DROP TRIGGER IF EXISTS tracks_fts_ad;
@@ -151,24 +170,25 @@ export function createTracksFts(db) {
   `);
 }
 
-function registerNormalizationFunctions(db) {
+function registerNormalizationFunctions(db: DatabaseSync) {
   db.function('ss_base_title', { deterministic: true }, (title) => baseTitleKey(title || ''));
   db.function('ss_version_type', { deterministic: true }, (title, album) => classifyVersion(title || '', album || ''));
-  db.function('ss_language', { deterministic: true }, (title, artist, isrc) => detectTrackLanguage(title || '', artist || '', { isrc }));
+  db.function('ss_language', { deterministic: true }, (title, artist, isrc) =>
+    detectTrackLanguage(String(title || ''), String(artist || ''), { isrc: typeof isrc === 'string' ? isrc : null }));
   db.function('ss_deezer_score', { deterministic: true }, (rank) => legacyDeezerScore(rank));
 }
 
 /** The 0-100 mapping of a Deezer rank used before v6 (20 * log10(rank) - 39). Kept so v2 replays unchanged. */
-function legacyDeezerScore(rank) {
+function legacyDeezerScore(rank: unknown): number {
   const value = Number(rank);
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round(20 * Math.log10(value) - 39)));
 }
 
-function schemaV2(db) {
+function schemaV2(db: DatabaseSync) {
   registerNormalizationFunctions(db);
 
-  const trackColumns = new Set(db.prepare('PRAGMA table_info(tracks)').all().map(c => c.name));
+  const trackColumns = columnNames(db, 'tracks');
   if (!trackColumns.has('version_type')) db.exec("ALTER TABLE tracks ADD COLUMN version_type TEXT NOT NULL DEFAULT 'original';");
   if (!trackColumns.has('deezer_rank')) db.exec('ALTER TABLE tracks ADD COLUMN deezer_rank INTEGER;');
   if (!trackColumns.has('spotify_popularity')) db.exec('ALTER TABLE tracks ADD COLUMN spotify_popularity INTEGER;');
@@ -206,12 +226,12 @@ function schemaV2(db) {
   createTracksFts(db);
 }
 
-function schemaV3(db) {
-  const artistColumns = new Set(db.prepare('PRAGMA table_info(artists)').all().map(c => c.name));
+function schemaV3(db: DatabaseSync) {
+  const artistColumns = columnNames(db, 'artists');
   if (!artistColumns.has('primary_language')) db.exec('ALTER TABLE artists ADD COLUMN primary_language TEXT;');
   if (!artistColumns.has('enriched_at')) db.exec('ALTER TABLE artists ADD COLUMN enriched_at TEXT;');
 
-  const trackColumns = new Set(db.prepare('PRAGMA table_info(tracks)').all().map(c => c.name));
+  const trackColumns = columnNames(db, 'tracks');
   // Set once a provider lookup has been attempted, so enrichment passes are resumable and never loop
   if (!trackColumns.has('enriched_at')) db.exec('ALTER TABLE tracks ADD COLUMN enriched_at TEXT;');
   if (!trackColumns.has('itunes_checked_at')) db.exec('ALTER TABLE tracks ADD COLUMN itunes_checked_at TEXT;');
@@ -235,19 +255,19 @@ function schemaV3(db) {
   recomputeCatalogLanguages(db);
 }
 
-function schemaV4(db) {
-  const trackColumns = new Set(db.prepare('PRAGMA table_info(tracks)').all().map(c => c.name));
+function schemaV4(db: DatabaseSync) {
+  const trackColumns = columnNames(db, 'tracks');
   // Set once the track's Deezer album has been looked up for its release date (catalog:enrich --albums)
   if (!trackColumns.has('album_checked_at')) db.exec('ALTER TABLE tracks ADD COLUMN album_checked_at TEXT;');
 }
 
-function schemaV5(db) {
+function schemaV5(db: DatabaseSync) {
   // Song selection reads a window in rand_key order (sampleCatalogTracks); without this index
   // every request sorts all matching rows
   db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_rand ON tracks(rand_key);');
 }
 
-function schemaV6(db) {
+function schemaV6(db: DatabaseSync) {
   db.exec(`
     UPDATE tracks SET deezer_rank = NULL WHERE deezer_rank = ${DEEZER_PLACEHOLDER_RANK};
     -- The cleanup's cover-act check looks up other artists' songs by base title
@@ -257,7 +277,7 @@ function schemaV6(db) {
 }
 
 // Genre names the Deezer API returned in German before enrichment asked by genre id
-const LOCALIZED_GENRES = {
+const LOCALIZED_GENRES: Record<string, string> = {
   'Filme/Videospiele': 'Films/Games',
   Filmmusik: 'Films/Games',
   'Asiatische Musik': 'Asian Music',
@@ -266,9 +286,11 @@ const LOCALIZED_GENRES = {
   'Deutsch-Rap': 'Rap/Hip Hop',
 };
 
-function schemaV7(db) {
+function schemaV7(db: DatabaseSync) {
   const update = db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?');
-  for (const { id, genres_json: json } of db.prepare("SELECT id, genres_json FROM artists WHERE genres_json IS NOT NULL AND json_valid(genres_json)").all()) {
+  const rows = db.prepare("SELECT id, genres_json FROM artists WHERE genres_json IS NOT NULL AND json_valid(genres_json)").all() as
+    { id: number; genres_json: string }[];
+  for (const { id, genres_json: json } of rows) {
     const genres = JSON.parse(json);
     if (!Array.isArray(genres)) continue;
     const english = [...new Set(genres.map(genre => LOCALIZED_GENRES[genre] || genre))];
@@ -276,7 +298,7 @@ function schemaV7(db) {
   }
 }
 
-export const CATALOG_MIGRATIONS = Object.freeze([
+export const CATALOG_MIGRATIONS: readonly CatalogMigration[] = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
   { version: 3, name: 'schema v3: artist languages, enrichment markers, ELD language classifier', up: schemaV3 },
@@ -292,29 +314,29 @@ function timestamp() {
   return new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 }
 
-function hasCatalogData(db) {
+function hasCatalogData(db: DatabaseSync) {
   const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tracks'").get();
   if (!table) return false;
   return Boolean(db.prepare('SELECT 1 FROM tracks LIMIT 1').get());
 }
 
-/**
- * Applies pending migrations.
- * @returns {{ from: number, to: number, applied: string[], backupPath: string | null }}
- */
-export function runCatalogMigrations(db, { dbPath = ':memory:', backup = process.env.SPOTYSPICE_SKIP_DB_BACKUP !== '1' } = {}) {
-  const from = Number(db.prepare('PRAGMA user_version').get().user_version) || 0;
+/** Applies pending migrations. */
+export function runCatalogMigrations(
+  db: DatabaseSync,
+  { dbPath = ':memory:', backup = process.env.SPOTYSPICE_SKIP_DB_BACKUP !== '1' }: { dbPath?: string; backup?: boolean } = {},
+): MigrationResult {
+  const from = Number(db.prepare('PRAGMA user_version').get()?.user_version) || 0;
   const pending = CATALOG_MIGRATIONS.filter(m => m.version > from);
   if (pending.length === 0) return { from, to: from, applied: [], backupPath: null };
 
-  let backupPath = null;
+  let backupPath: string | null = null;
   if (backup && dbPath !== ':memory:' && hasCatalogData(db)) {
     backupPath = path.join(path.dirname(dbPath), `${path.basename(dbPath, '.sqlite')}.backup-v${from}-${timestamp()}.sqlite`);
     logger.info('migrations', `Backing up catalog before migrating v${from} -> v${LATEST_CATALOG_VERSION}: ${backupPath}`);
     db.prepare('VACUUM INTO ?').run(backupPath);
   }
 
-  const applied = [];
+  const applied: string[] = [];
   for (const migration of pending) {
     const started = Date.now();
     db.exec('BEGIN IMMEDIATE;');
@@ -324,7 +346,7 @@ export function runCatalogMigrations(db, { dbPath = ':memory:', backup = process
       db.exec('COMMIT;');
     } catch (err) {
       db.exec('ROLLBACK;');
-      throw new Error(`Catalog migration v${migration.version} (${migration.name}) failed: ${err.message}`, { cause: err });
+      throw new Error(`Catalog migration v${migration.version} (${migration.name}) failed: ${errorMessage(err)}`, { cause: err });
     }
     applied.push(migration.name);
     if (dbPath !== ':memory:') {

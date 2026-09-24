@@ -10,7 +10,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
 - `candidates.ts`: candidate sources, `POPULARITY_SAMPLING`, and catalog learning.
 - `trackPicker.ts`: the variety/policy/answer loop (`createTrackPicker`, `createRecentCounter`).
 - `random.ts`: `createRng(seed)` (sfc32 seeded from SHA-256 of the seed, hashed once) and `weightedOrder` (Efraimidis–Spirakis).
-- Policy: `server/policy/selectionPolicy.ts` (`isLanguagePermitted`, `allowedLanguagesForContext`, `isThematicallyPermitted`, `isAuthenticTrack`, `isTemporalPermitted`/`resolveReleaseYear`, anime/Japanese affinity). Authenticity rules: `server/policy/authenticityRules.js`.
+- Policy: `server/policy/selectionPolicy.ts` (`isLanguagePermitted`, `allowedLanguagesForContext`, `isThematicallyPermitted`, `isAuthenticTrack`, `isTemporalPermitted`/`resolveReleaseYear`, anime/Japanese affinity). Authenticity rules: `server/policy/authenticityRules.ts`.
 
 ## Pipeline
 1. **Query plan:** `queryBuilder.buildQueryPlan` handles the prompt, genre, decade, artist and popularity. `genresForPrompt` (`shared/themes.ts`) maps a theme id, or the words of the genre and prompt, to artist genre clusters.

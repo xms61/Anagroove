@@ -3,9 +3,9 @@ import https from 'https';
 import http from 'http';
 import fs from 'fs';
 import type { Readable } from 'stream';
-import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
+import { sqliteCatalog } from '../server/db/sqliteCatalog.ts';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.ts';
-import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 
 const ANNAS_ARCHIVE_URL =
   'https://annas-archive.gl/blog/spotify/spotify-top-10k-songs-table.html';

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
-import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../../server/db/catalogMigrations.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
+import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.ts';
+import { runCatalogMigrations, LATEST_CATALOG_VERSION } from '../../server/db/catalogMigrations.ts';
 
 const GET_LUCKY_DEEZER = {
   title: 'Get Lucky (feat. Pharrell Williams)',

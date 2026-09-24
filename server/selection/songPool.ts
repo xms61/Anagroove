@@ -14,10 +14,10 @@ import { itunesMusicProvider } from '../services/itunesMusicProvider.ts';
 import { buildQueryPlan, extractAnimeKeyphrase } from '../services/queryBuilder.ts';
 import { resolveAnimeCoverImages } from '../services/animeImageService.ts';
 import { batchResolvePreviews, previewRefForTrack, toPreviewPath } from '../services/previewResolver.ts';
-import { sqliteCatalog } from '../db/sqliteCatalog.js';
+import { sqliteCatalog } from '../db/sqliteCatalog.ts';
 import { animeCatalog } from '../db/animeCatalog.ts';
 import { getAnimeThemeType, isAnimeTarget } from '../policy/selectionPolicy.ts';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import { isOfflineMode } from '../offline.ts';
 import { createRng, weightedOrder } from './random.ts';
 import {
@@ -32,12 +32,11 @@ import {
 import { createRecentCounter, createTrackPicker, type PickedSong } from './trackPicker.ts';
 import type { CatalogSource, MusicProvider } from './candidates.ts';
 import type { QueryPlan } from '../services/queryBuilder.ts';
-import type { BlacklistIdentityItem } from '../../shared/musicIdentity.js';
+import type { BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 import type { SongCandidate } from '../types.ts';
 import { errorMessage } from '../errors.ts';
 
-// sqliteCatalog.js is still JavaScript; its inferred method types are narrower than the code (T7)
-const catalog = sqliteCatalog as unknown as CatalogSource;
+const catalog: CatalogSource = sqliteCatalog;
 
 /** What a puzzle asks for (GET /api/music/random, POST /api/puzzles/live). */
 export interface SongPoolRequest {

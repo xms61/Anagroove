@@ -3,7 +3,9 @@
  * and contextual subsystem tagging (HTTP, MUSIC, PUZZLE, WS, STORE).
  */
 
-const LOG_LEVELS = {
+type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
+
+const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
   warn: 2,
@@ -11,7 +13,7 @@ const LOG_LEVELS = {
   none: 4,
 };
 
-const currentLevelName = (process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'info' : 'info')).toLowerCase();
+const currentLevelName = (process.env.LOG_LEVEL || 'info').toLowerCase() as LogLevel;
 const currentLevel = LOG_LEVELS[currentLevelName] ?? LOG_LEVELS.info;
 
 const isColorSupported = Boolean(
@@ -44,33 +46,33 @@ function formatTimestamp() {
   return new Date().toISOString();
 }
 
-function shouldLog(level) {
+function shouldLog(level: LogLevel) {
   return LOG_LEVELS[level] >= currentLevel;
 }
 
 export const logger = {
-  debug(category, message, ...meta) {
+  debug(category: string, message: string, ...meta: unknown[]) {
     if (!shouldLog('debug')) return;
     const ts = COLORS.dim + formatTimestamp() + COLORS.reset;
     const cat = COLORS.cyan + `[${category.toUpperCase()}]` + COLORS.reset;
     console.log(`${ts} ${COLORS.blue}[DEBUG]${COLORS.reset} ${cat} ${message}`, ...meta);
   },
 
-  info(category, message, ...meta) {
+  info(category: string, message: string, ...meta: unknown[]) {
     if (!shouldLog('info')) return;
     const ts = COLORS.dim + formatTimestamp() + COLORS.reset;
     const cat = COLORS.green + `[${category.toUpperCase()}]` + COLORS.reset;
     console.log(`${ts} ${COLORS.green}[INFO]${COLORS.reset} ${cat} ${message}`, ...meta);
   },
 
-  warn(category, message, ...meta) {
+  warn(category: string, message: string, ...meta: unknown[]) {
     if (!shouldLog('warn')) return;
     const ts = COLORS.dim + formatTimestamp() + COLORS.reset;
     const cat = COLORS.yellow + `[${category.toUpperCase()}]` + COLORS.reset;
     console.warn(`${ts} ${COLORS.yellow}[WARN]${COLORS.reset} ${cat} ${message}`, ...meta);
   },
 
-  error(category, message, ...meta) {
+  error(category: string, message: string, ...meta: unknown[]) {
     if (!shouldLog('error')) return;
     const ts = COLORS.dim + formatTimestamp() + COLORS.reset;
     const cat = COLORS.red + `[${category.toUpperCase()}]` + COLORS.reset;
@@ -80,7 +82,7 @@ export const logger = {
   /**
    * HTTP request logging matching standard format with extended context
    */
-  http(method, path, status, latencyMs, details = '') {
+  http(method: string, path: string, status: number, latencyMs: number, details = '') {
     if (!shouldLog('info')) return;
     const statusColor = status >= 500 ? COLORS.red : status >= 400 ? COLORS.yellow : COLORS.green;
     const suffix = details ? ` ${COLORS.dim}(${details})${COLORS.reset}` : '';
@@ -90,7 +92,7 @@ export const logger = {
   /**
    * WebSocket event logging
    */
-  ws(event, details = '') {
+  ws(event: string, details = '') {
     if (!shouldLog('info')) return;
     console.log(`[WS] ${event}${details ? ` ${details}` : ''}`);
   },
@@ -98,7 +100,7 @@ export const logger = {
   /**
    * Music harvesting diagnostics
    */
-  harvest(source, count, latencyMs, query = '') {
+  harvest(source: string, count: number, latencyMs: number, query = '') {
     if (!shouldLog('info')) return;
     const qStr = query ? ` for "${query}"` : '';
     logger.info('harvest', `${source} returned ${count} candidate tracks${qStr} in ${latencyMs}ms`);
@@ -107,7 +109,7 @@ export const logger = {
   /**
    * Rejection sampling breakdown
    */
-  sampling(total, accepted, clueStats, rejections) {
+  sampling(total: number, accepted: number, clueStats: { title?: number; artist?: number; keyword?: number }, rejections: Record<string, number>) {
     if (!shouldLog('info')) return;
     const clueBreakdown = `${clueStats.title || 0} Title, ${clueStats.artist || 0} Artist, ${clueStats.keyword || 0} Keyword`;
     const rejList = Object.entries(rejections)
@@ -120,7 +122,7 @@ export const logger = {
   /**
    * Live crossword layout generation metrics
    */
-  puzzle(title, wordsPlaced, targetWords, gridSize, latencyMs) {
+  puzzle(title: string, wordsPlaced: number, targetWords: number, gridSize: string, latencyMs: number) {
     if (!shouldLog('info')) return;
     logger.info('crossword', `Layout generated for "${title}": ${wordsPlaced}/${targetWords} words placed across ${gridSize} in ${latencyMs}ms`);
   },
@@ -128,7 +130,7 @@ export const logger = {
   /**
    * Live puzzle token lifecycle
    */
-  store(action, token, details = '') {
+  store(action: string, token: string | null | undefined, details = '') {
     if (!shouldLog('debug')) return;
     logger.debug('store', `Token ${action}: ${token ? `${token.slice(0, 8)}...` : ''} ${details}`);
   }

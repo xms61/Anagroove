@@ -7,7 +7,7 @@ import {
   splitArtistNames,
   type ExtractKeywordOptions,
 } from '../../shared/musicKeywords.ts';
-import { blacklistIdentityKey, canonicalArtistKey, toCrosswordAnswer, type BlacklistIdentityItem } from '../../shared/musicIdentity.js';
+import { blacklistIdentityKey, canonicalArtistKey, toCrosswordAnswer, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 
 // [title, artist, options, answer, clue type, why]
 const KEYWORDS: [title: string, artist: string, options: ExtractKeywordOptions, answer: string, clueType: string, why: string][] = [

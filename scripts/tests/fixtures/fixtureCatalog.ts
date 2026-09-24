@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SqliteCatalog } from '../../../server/db/sqliteCatalog.js';
+import { SqliteCatalog } from '../../../server/db/sqliteCatalog.ts';
 
 const ADJECTIVES = ['Golden', 'Silver', 'Midnight', 'Electric', 'Velvet', 'Broken', 'Summer', 'Winter', 'Neon', 'Crystal',
   'Wild', 'Distant', 'Burning', 'Frozen', 'Hidden', 'Lonely', 'Endless', 'Paper', 'Northern', 'Crimson'];

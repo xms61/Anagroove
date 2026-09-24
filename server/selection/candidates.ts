@@ -8,49 +8,21 @@
  *             catalog through upsertTrack so the next request finds them locally.
  *   anime     the isolated anime OP/ED catalog.
  */
-import { normalizeDeezerRank, provisionalPopularity } from '../db/trackNormalization.js';
+import { normalizeDeezerRank, provisionalPopularity } from '../db/trackNormalization.ts';
 import { toFtsQuery } from '../services/queryBuilder.ts';
 import { allowedLanguagesForContext } from '../policy/selectionPolicy.ts';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import { weightedOrder } from './random.ts';
 import { genresForPrompt } from '../../shared/themes.ts';
 import type { QueryPlan } from '../services/queryBuilder.ts';
 import type { Rng } from './random.ts';
-import type { SongCandidate, YearRange } from '../types.ts';
-
-/** A row of sqliteCatalog.sampleCatalogTracks. */
-export interface CatalogRow {
-  id: number;
-  isrc: string | null;
-  language: string | null;
-  title: string;
-  artist: string;
-  album: string | null;
-  duration_ms: number | null;
-  release_year: number | null;
-  release_date: string | null;
-  popularity: number | null;
-  deezer_id: string | null;
-  spotify_id: string | null;
-  itunes_id: string | null;
-  sample_url: string | null;
-}
+import type { SongCandidate } from '../types.ts';
+import type { CatalogRow, CatalogWindowQuery, TrackInput } from '../db/sqliteCatalog.ts';
 
 /** The catalog methods song selection uses (implemented by SqliteCatalog). */
 export interface CatalogSource {
-  sampleCatalogTracks(query: {
-    ftsQuery?: string;
-    genres?: string[];
-    artist?: string;
-    languages?: string[] | null;
-    yearRange?: YearRange | null;
-    minPopularity?: number;
-    maxPopularity?: number;
-    excludeTrackIds?: number[];
-    poolSize?: number;
-    start?: number;
-  }): CatalogRow[];
-  upsertBatch(batch: object[]): { inserted: number; merged: number; total: number };
+  sampleCatalogTracks(query: CatalogWindowQuery): CatalogRow[];
+  upsertBatch(batch: TrackInput[]): { inserted: number; merged: number; total: number };
 }
 
 /** A live provider (Deezer, iTunes, or a test double). */
@@ -59,8 +31,6 @@ export interface MusicProvider {
   getCandidateTracks(query: Record<string, unknown>): Promise<SongCandidate[]>;
 }
 
-// trackNormalization.js is still JavaScript: its inferred parameter types are narrower than the code
-const provisional = provisionalPopularity as (input: { deezerRank?: number | null }) => number;
 
 /**
  * Popularity setting -> window on the catalog's percentile score and weighting exponent
@@ -206,5 +176,5 @@ export function learnFromExternal(catalog: CatalogSource, candidates: readonly S
 
 /** Popularity of an external candidate: its own score, else the provisional catalog score. */
 export function externalPopularity(candidate: SongCandidate): number {
-  return Number(candidate.popularity) || provisional({ deezerRank: normalizeDeezerRank(candidate.rank) });
+  return Number(candidate.popularity) || provisionalPopularity({ deezerRank: normalizeDeezerRank(candidate.rank) });
 }

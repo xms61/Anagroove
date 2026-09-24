@@ -3,7 +3,7 @@
  * redeems the token once (create_room), so every participant gets the same grid.
  */
 import crypto from 'crypto';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import type { Puzzle } from '../../shared/types.ts';
 
 interface StoredPuzzle {

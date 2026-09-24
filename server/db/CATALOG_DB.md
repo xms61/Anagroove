@@ -1,16 +1,16 @@
 # Catalog DB
 
-Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` (`server/paths.js`, override with `SPOTYSPICE_DATA_DIR`):
-- `catalog.sqlite` — main music catalog (`sqliteCatalog.js`)
+Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` (`server/paths.ts`, override with `SPOTYSPICE_DATA_DIR`):
+- `catalog.sqlite` — main music catalog (`sqliteCatalog.ts`)
 - `anime_catalog.sqlite` — isolated anime OP/ED catalog (`animeCatalog.ts`)
 - `users.sqlite` — user progress/history/blacklist (`server/db/userStore.ts`, see `server/API_SECURITY.md`); imports the old `store.json` once
 
-`sqliteCatalog` and `animeCatalog` are **lazy singletons** (`lazySingleton.js`): importing a module opens nothing, and the first property access opens (and migrates) the file. Scripts and tests that must not touch real data need `SPOTYSPICE_DATA_DIR`, or `new SqliteCatalog(':memory:')`.
+`sqliteCatalog` and `animeCatalog` are **lazy singletons** (`lazySingleton.ts`): importing a module opens nothing, and the first property access opens (and migrates) the file. Scripts and tests that must not touch real data need `SPOTYSPICE_DATA_DIR`, or `new SqliteCatalog(':memory:')`.
 
 ## Pragmas
 WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
 
-## Migrations (`catalogMigrations.js`)
+## Migrations (`catalogMigrations.ts`)
 - Versions are tracked in `PRAGMA user_version` (currently **v7**). Each migration runs in its own transaction.
 - They're applied automatically on first catalog use, or explicitly with `npm run db:migrate`.
 - Before migrating a populated file DB, a `VACUUM INTO` copy is written next to it: `catalog.backup-v<from>-<timestamp>.sqlite`, gitignored. Set `SPOTYSPICE_SKIP_DB_BACKUP=1` or pass `--no-backup` to skip it.
@@ -22,7 +22,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long i
   - `isrc` UNIQUE (validated format), `display_title`, `artist_id`, `album_name`, `duration_ms`, `release_year`/`release_date`, `is_explicit`.
   - `canonical_title`: the Unicode **base title** key from `baseTitleKey`. Credits and version tags are removed; kana (including dakuten), hangul and kanji are kept.
   - `version_type`: `original` or `remaster` (the cleanup deletes every other class).
-  - `language`: from `languageClassifier.js` (script, artist vote, ELD title detection); `country_code` is the ISRC **registrant** prefix, not a language.
+  - `language`: from `languageClassifier.ts` (script, artist vote, ELD title detection); `country_code` is the ISRC **registrant** prefix, not a language.
   - `enriched_at` / `itunes_checked_at` / `album_checked_at`: set once `catalog:enrich` has attempted the Deezer track, iTunes, or Deezer album lookup.
   - `popularity`: the **percentile within the track's language**, 0–100 (see Popularity). Raw inputs are kept in `deezer_rank` and `spotify_popularity`.
   - `rand_key`: a random number in [0, 1) for song selection windows (`sampleCatalogTracks`, index `idx_tracks_rand`).
@@ -31,10 +31,10 @@ WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. After long i
 - `crawl_queue`: crawl tasks.
 - `tracks_fts`: contentless FTS5 with the `trigram` tokenizer (substring matching, works for CJK), kept in sync by the `tracks_fts_ai/ad/au` triggers. Never write to it by hand. MATCH terms need at least 3 characters.
 
-## Admission policy (`upsertTrack`, rules in `trackNormalization.js`)
+## Admission policy (`upsertTrack`, rules in `trackNormalization.ts`)
 A track is rejected (returns `null`; counted in `getRejectionStats()`) unless it is:
 - **Language** `en`, `ja` or `ko` (`detectTrackLanguage` → `languageClassifier.resolveTrackLanguage`, using the known artist's `primary_language`).
-- **Authentic** per `server/policy/authenticityRules.js`: no covers, karaoke, utility audio, or audiobooks/radio plays.
+- **Authentic** per `server/policy/authenticityRules.ts`: no covers, karaoke, utility audio, or audiobooks/radio plays.
 - **Original version**: `classifyVersion` returns `original` or `remaster`. Live, remix, edit, extended, acoustic, instrumental, demo, re-recorded, sped-up, cover, and language versions are refused.
 - **Duration** 45 s–20 min. There are no made-up defaults.
 
@@ -49,11 +49,11 @@ The catalog read path (`sampleCatalogTracks`) only returns `original`/`remaster`
 A match merges provider links, samples, raw popularity, and missing metadata into the existing row. A plain original replaces a remaster as the displayed release. Use `upsertBatch` (one transaction) for bulk writes.
 
 ## Languages after crawls
-`recomputeCatalogLanguages(db)` (`catalogLanguages.js`, also `npm run catalog:recompute`) re-votes every artist's language and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
+`recomputeCatalogLanguages(db)` (`catalogLanguages.ts`, also `npm run catalog:recompute`) re-votes every artist's language and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
 
 Known limit: without an artist vote, about 2.5% of plain two-word English titles read as es/it ("Quiet Shadow", "Neon Anchor"), so a new artist's first such track can be refused. The vote fixes it once the artist has 3+ titles. A per-word check was measured on the 498k-track catalog and rejected: it would have kept ~1,900 two-word titles as English, and most of them are genuinely foreign.
 
-## Popularity (`catalogPopularity.js`)
+## Popularity (`catalogPopularity.ts`)
 - **Score:** `recomputeCatalogPopularity(db)` sets `popularity` to the track's percentile by Deezer rank **within its language** (90 = more popular than 90% of that language's tracks). Deezer under-ranks Japanese and Korean music, so each language is ranked on its own. A Spotify popularity can only raise the score. Tracks with neither score 0. Run it after crawls and enrichment: `npm run catalog:recompute` (it also re-votes languages). The cleanup's `fields` step and migration v6 run it too.
 - **New rows** get a provisional score until then (`provisionalPopularity`): the Spotify popularity, else 50 for a Deezer-ranked track, else 0.
 - **Deezer placeholder rank:** Deezer returns exactly `100000` for tracks without play data. `normalizeDeezerRank` turns it into `NULL`, so stock music without plays doesn't score as mid-popular.

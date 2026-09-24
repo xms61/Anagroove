@@ -1,4 +1,4 @@
-import { logger } from './logger.js';
+import { logger } from './logger.ts';
 
 /**
  * Single owner of process signal handling. Modules register synchronous cleanup

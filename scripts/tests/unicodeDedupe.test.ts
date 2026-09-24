@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { baseTitleKey } from '../../server/db/trackNormalization.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
+import { baseTitleKey } from '../../server/db/trackNormalization.ts';
 import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
 
 const FULLWIDTH_LOVE = String.fromCharCode(0xff2c, 0xff2f, 0xff36, 0xff25);

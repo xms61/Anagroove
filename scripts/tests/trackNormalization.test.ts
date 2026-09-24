@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizeDedupeArtist, normalizeDedupeTitle } from '../../server/db/sqliteCatalog.js';
+import { normalizeDedupeArtist, normalizeDedupeTitle } from '../../server/db/sqliteCatalog.ts';
 import {
   baseTitleKey,
   classifyVersion,
@@ -8,7 +8,7 @@ import {
   detectTrackLanguage,
   normalizeIsrc,
   normalizeReleaseYear,
-} from '../../server/db/trackNormalization.js';
+} from '../../server/db/trackNormalization.ts';
 
 const VERSIONS = [
   ['Levels (Original Mix)', 'original'],

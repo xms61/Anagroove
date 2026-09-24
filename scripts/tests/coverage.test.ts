@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import path from 'node:path';
-import { DATA_DIR } from '../../server/paths.js';
+import { DATA_DIR } from '../../server/paths.ts';
 import { buildFixtureCatalog } from './fixtures/fixtureCatalog.ts';
 import { averageOverlap, measureTarget } from '../../server/selection/coverage.ts';
-import { sqliteCatalog } from '../../server/db/sqliteCatalog.js';
+import { sqliteCatalog } from '../../server/db/sqliteCatalog.ts';
 
 before(() => {
   process.env.SPOTYSPICE_OFFLINE = '1';

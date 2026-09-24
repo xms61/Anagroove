@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import '../server/config.js';
-import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
-import { catalogEnricher } from '../server/crawler/enricher.js';
-import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import type { ParseArgsOptionsConfig } from 'node:util';
+import '../server/config.ts';
+import { sqliteCatalog } from '../server/db/sqliteCatalog.ts';
+import { catalogEnricher, type EnrichProgress } from '../server/crawler/enricher.ts';
+import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 
 const USAGE = `
 Fills catalog metadata from provider APIs. Resumable: rerun to continue.
@@ -17,17 +18,21 @@ Fills catalog metadata from provider APIs. Resumable: rerun to continue.
 Steps can be combined. Flags must follow "--". Afterwards run \`npm run catalog:recompute\`.`;
 
 export const DEFAULT_LIMITS = Object.freeze({ albums: 2000, deezer: 2000, artists: 500, itunes: 100 });
-const LIMIT_STEPS = Object.keys(DEFAULT_LIMITS);
+type Step = keyof typeof DEFAULT_LIMITS;
+const LIMIT_STEPS = Object.keys(DEFAULT_LIMITS) as Step[];
 
-const OPTIONS = {
+/** A limit per step; null skips the step. */
+export type EnrichPlan = Record<Step, number | null>;
+
+const OPTIONS: ParseArgsOptionsConfig = {
   all: { type: 'boolean' },
   ...Object.fromEntries(LIMIT_STEPS.map(step => [step, { type: 'string' }])),
 };
 
 /** Steps and limits to run. A step is skipped when its value is null/false. */
-export function buildEnrichPlan(argv, env = {}) {
+export function buildEnrichPlan(argv: string[], env: NodeJS.ProcessEnv = {}): EnrichPlan {
   const flags = parseFlags(OPTIONS, { argv, env });
-  const plan = {};
+  const plan = {} as EnrichPlan;
   for (const step of LIMIT_STEPS) {
     plan[step] = intFlag(flags, step) ?? (flags.all ? DEFAULT_LIMITS[step] : null);
   }
@@ -37,12 +42,12 @@ export function buildEnrichPlan(argv, env = {}) {
   return plan;
 }
 
-const progress = (p) => {
+const progress = (p: EnrichProgress) => {
   const counts = Object.entries(p).filter(([key]) => !['step', 'checked', 'total'].includes(key));
   process.stdout.write(`\r  [${p.step}] ${p.checked}/${p.total} checked ${JSON.stringify(Object.fromEntries(counts))}   `);
 };
 
-async function main(plan) {
+async function main(plan: EnrichPlan) {
   const started = Date.now();
   console.log(`Catalog enrichment plan: ${JSON.stringify(plan)}`);
 

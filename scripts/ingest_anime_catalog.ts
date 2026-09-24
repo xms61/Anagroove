@@ -5,7 +5,7 @@ import { AnimeCatalog } from '../server/db/animeCatalog.ts';
 import { scanSourceOggFiles, generateSamplesForFile, type SampleRecord } from './generate_anime_samples.ts';
 import { normalizeAnimeSlugKey, type AnimeMetadataIndex, type AnimeThemeMetadata } from './sync_anime_metadata.ts';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.ts';
-import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

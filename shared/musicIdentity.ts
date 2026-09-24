@@ -1,14 +1,32 @@
+/** The fields a blacklist entry is matched against; ids may arrive as numbers from providers. */
+export interface MusicIdentityTrack {
+  provider?: string;
+  providerTrackId?: string | number | null;
+  providerArtistId?: string | number | null;
+  title: string;
+  artist: string;
+}
+
+export interface BlacklistIdentityItem {
+  type: 'artist' | 'song';
+  name: string;
+  canonicalKey?: string;
+  provider?: string;
+  providerTrackId?: string;
+  providerArtistId?: string;
+}
+
 const TRANSLITERATIONS = new Map([
   ['ß', 'ss'], ['ẞ', 'SS'], ['æ', 'ae'], ['Æ', 'AE'], ['œ', 'oe'], ['Œ', 'OE'],
   ['ø', 'o'], ['Ø', 'O'], ['đ', 'd'], ['Đ', 'D'], ['ð', 'd'], ['Ð', 'D'],
   ['ł', 'l'], ['Ł', 'L'], ['þ', 'th'], ['Þ', 'TH'], ['ı', 'i'], ['İ', 'I'],
 ]);
 
-function asString(value) {
+function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function transliterate(value) {
+function transliterate(value: string): string {
   return Array.from(value, character => TRANSLITERATIONS.get(character) || character).join('');
 }
 
@@ -17,7 +35,7 @@ function transliterate(value) {
  * provider-supplied display value. Letters and numbers (including "21") remain
  * significant; whitespace and punctuation become a single separator.
  */
-export function canonicalMusicKey(value) {
+export function canonicalMusicKey(value: unknown): string {
   const input = asString(value);
   if (!input) return '';
 
@@ -37,7 +55,7 @@ export function canonicalMusicKey(value) {
 export const canonicalArtistKey = canonicalMusicKey;
 export const canonicalTrackKey = canonicalMusicKey;
 
-export function blacklistIdentityKey(item) {
+export function blacklistIdentityKey(item: BlacklistIdentityItem | null | undefined): string {
   if (!item || (item.type !== 'artist' && item.type !== 'song')) return '';
 
   const provider = asString(item.provider).toLocaleLowerCase();
@@ -61,7 +79,7 @@ export function blacklistIdentityKey(item) {
  * Unsupported scripts, empty values, and answers outside the grid limits are
  * rejected instead of being silently mangled.
  */
-export function toCrosswordAnswer(displayName, { minLength = 2, maxLength = 20 } = {}) {
+export function toCrosswordAnswer(displayName: unknown, { minLength = 2, maxLength = 20 } = {}): string | null {
   const input = asString(displayName);
   if (!input) return null;
 
@@ -92,7 +110,7 @@ export function toCrosswordAnswer(displayName, { minLength = 2, maxLength = 20 }
   return answer.length >= minLength && answer.length <= maxLength ? answer : null;
 }
 
-export function blacklistMatchesTrack(blacklist, track) {
+export function blacklistMatchesTrack(blacklist: BlacklistIdentityItem[] | null | undefined, track: MusicIdentityTrack): boolean {
   const artistKey = canonicalArtistKey(track.artist);
   const titleKey = canonicalTrackKey(track.title);
 
@@ -117,6 +135,6 @@ export function blacklistMatchesTrack(blacklist, track) {
 
 // Whole-word match on canonical keys: "drake" blocks "drake feat future" and "hey jude" blocks
 // "hey jude remastered 2015", but "iu" does not block "julius" and "queen latifah" not "queen".
-function containsWords(candidateKey, blacklistKey) {
+function containsWords(candidateKey: string, blacklistKey: string): boolean {
   return ` ${candidateKey} `.includes(` ${blacklistKey} `);
 }

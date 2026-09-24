@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { classifyVersion, baseTitleKey } from '../../server/db/trackNormalization.js';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
+import { classifyVersion, baseTitleKey } from '../../server/db/trackNormalization.ts';
 import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
 import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
 

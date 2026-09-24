@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyArtistLanguage, resolveTrackLanguage, scriptLanguage } from '../../server/db/languageClassifier.js';
+import { classifyArtistLanguage, resolveTrackLanguage, scriptLanguage } from '../../server/db/languageClassifier.ts';
 
 // Deleting a track is irreversible, so the corpus leans on English titles that n-gram
 // detectors misread. Each row: [title, artist, expected, extra input, why].

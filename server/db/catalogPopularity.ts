@@ -11,9 +11,10 @@
  * The floors are fixed ranks, not percentiles: a percentile floor would prune a new bottom 30%
  * on every cleanup run.
  */
+import type { DatabaseSync } from 'node:sqlite';
 
 /** Deezer rank at the 30th percentile of each language, measured on the catalog on 2026-09-23. */
-export const MIN_DEEZER_RANK = Object.freeze({ en: 60000, ja: 32000, ko: 110000 });
+export const MIN_DEEZER_RANK: Readonly<Record<string, number>> = Object.freeze({ en: 60000, ja: 32000, ko: 110000 });
 export const MIN_SPOTIFY_POPULARITY = 30;
 export const MIN_ARTIST_FANS = 5000;
 
@@ -24,13 +25,17 @@ export const MIN_ARTIST_FANS = 5000;
 export const COVER_ACT = Object.freeze({ minTracks: 5, maxFans: 50000, copiedShare: 0.6 });
 
 /** True when a track's own numbers reach the floor (the artist's fans are checked separately). */
-export function isAbovePopularityFloor({ language, deezerRank = null, spotifyPopularity = null }) {
+export function isAbovePopularityFloor({ language, deezerRank = null, spotifyPopularity = null }: {
+  language: string | null | undefined;
+  deezerRank?: number | null;
+  spotifyPopularity?: number | null;
+}): boolean {
   return (spotifyPopularity ?? -1) >= MIN_SPOTIFY_POPULARITY
-    || (deezerRank ?? 0) >= (MIN_DEEZER_RANK[language] ?? Infinity);
+    || (deezerRank ?? 0) >= (MIN_DEEZER_RANK[language ?? ''] ?? Infinity);
 }
 
-/** Recomputes every track's percentile score. Idempotent. @returns number of rows changed */
-export function recomputeCatalogPopularity(db) {
+/** Recomputes every track's percentile score. Idempotent. Returns the number of rows changed. */
+export function recomputeCatalogPopularity(db: DatabaseSync): number {
   const ranked = db.prepare(`
     WITH ranked AS (
       SELECT id, MAX(
@@ -61,23 +66,22 @@ const BELOW_FLOOR = `
 /**
  * Tracks under the popularity floor, split by whether their artist has been enriched. Without
  * enrichment the artist's fans are unknown, so those tracks are left alone.
- * @returns {{ below: number[], unjudged: number }}
  */
-export function findTracksBelowFloor(db) {
-  const below = db.prepare(`
+export function findTracksBelowFloor(db: DatabaseSync): { below: number[]; unjudged: number } {
+  const below = (db.prepare(`
     SELECT t.id FROM tracks t JOIN artists a ON a.id = t.artist_id
     WHERE a.enriched_at IS NOT NULL AND ${BELOW_FLOOR}
-  `).all().map(row => row.id);
+  `).all() as { id: number }[]).map(row => row.id);
   const unjudged = db.prepare(`
     SELECT COUNT(*) AS c FROM tracks t JOIN artists a ON a.id = t.artist_id
     WHERE a.enriched_at IS NULL AND ${BELOW_FLOOR}
-  `).get().c;
+  `).get()?.c;
   return { below, unjudged: Number(unjudged) };
 }
 
 /** Enriched artists that look like cover or stock-music acts (see COVER_ACT). */
-export function findCoverActs(db) {
-  return db.prepare(`
+export function findCoverActs(db: DatabaseSync): { id: number; name: string; tracks: number; copied: number }[] {
+  return (db.prepare(`
     SELECT a.id, a.display_name AS name, COUNT(*) AS tracks,
            SUM(EXISTS (
              SELECT 1 FROM tracks o JOIN artists oa ON oa.id = o.artist_id
@@ -88,5 +92,6 @@ export function findCoverActs(db) {
     WHERE a.enriched_at IS NOT NULL AND COALESCE(a.fans_count, 0) < ${COVER_ACT.maxFans}
     GROUP BY a.id
     HAVING COUNT(*) >= ${COVER_ACT.minTracks} AND copied >= ${COVER_ACT.copiedShare} * COUNT(*)
-  `).all().map(row => ({ id: row.id, name: row.name, tracks: Number(row.tracks), copied: Number(row.copied) }));
+  `).all() as { id: number; name: string; tracks: number; copied: number }[])
+    .map(row => ({ id: row.id, name: row.name, tracks: Number(row.tracks), copied: Number(row.copied) }));
 }

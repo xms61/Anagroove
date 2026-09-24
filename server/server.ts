@@ -1,4 +1,4 @@
-import './config.js';
+import './config.ts';
 import express from 'express';
 import http from 'http';
 import path from 'path';
@@ -17,9 +17,9 @@ import {
 import { createMusicRouter } from './routes/music.ts';
 import { createUserRouter } from './routes/user.ts';
 import { attachMultiplayer } from './ws/rooms.ts';
-import { peekSqliteCatalog } from './db/sqliteCatalog.js';
+import { peekSqliteCatalog } from './db/sqliteCatalog.ts';
 import { onShutdown } from './shutdown.ts';
-import { logger } from './logger.js';
+import { logger } from './logger.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

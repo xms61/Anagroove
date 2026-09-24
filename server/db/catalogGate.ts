@@ -2,7 +2,7 @@
  * Catalog validation gate (`npm run db:validate -- --ci`): hard checks that a cleaned catalog
  * must pass. Every check reports its measured value so a failing run shows what to fix.
  */
-import { checkAuthenticity } from '../policy/authenticityRules.js';
+import { checkAuthenticity } from '../policy/authenticityRules.ts';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   ACCEPTED_VERSION_TYPES,
@@ -12,7 +12,7 @@ import {
   classifyVersion,
   cleanDisplayText,
   isAcceptedVersion,
-} from './trackNormalization.js';
+} from './trackNormalization.ts';
 
 export interface GateThresholds {
   minYearCoverage: number;

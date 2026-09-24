@@ -6,8 +6,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
-import { blacklistIdentityKey, canonicalArtistKey, canonicalTrackKey } from '../../shared/musicIdentity.js';
-import { logger } from '../logger.js';
+import { blacklistIdentityKey, canonicalArtistKey, canonicalTrackKey } from '../../shared/musicIdentity.ts';
+import { logger } from '../logger.ts';
 
 const USER_ID_MAX = 64;
 

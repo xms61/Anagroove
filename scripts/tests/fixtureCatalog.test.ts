@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { buildFixtureCatalog } from './fixtures/fixtureCatalog.ts';
 import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
 
 test('the CI fixture catalog is fully admitted, passes the gate and serves puzzles', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anagroove-fixture-'));

@@ -9,7 +9,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 /**
  * Loads environment variables from .env if present, without overwriting existing process.env.
  */
-export function loadEnv() {
+function loadEnv() {
   try {
     const envPath = path.resolve(ROOT_DIR, '.env');
     if (fs.existsSync(envPath)) {

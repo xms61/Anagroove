@@ -1,11 +1,12 @@
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 
+/** `refillRatePerSec` tokens are added per second, up to a burst of `maxTokens`. */
 export class TokenBucketRateLimiter {
-  /**
-   * @param {Object} options
-   * @param {number} options.refillRatePerSec - Tokens added per second
-   * @param {number} options.maxTokens - Burst capacity
-   */
+  refillRatePerSec: number;
+  maxTokens: number;
+  tokens: number;
+  lastRefill: number;
+
   constructor({ refillRatePerSec = 5, maxTokens = 10 } = {}) {
     this.refillRatePerSec = refillRatePerSec;
     this.maxTokens = maxTokens;
@@ -13,7 +14,7 @@ export class TokenBucketRateLimiter {
     this.lastRefill = Date.now();
   }
 
-  _refill() {
+  private refill() {
     const now = Date.now();
     const elapsedSec = (now - this.lastRefill) / 1000;
     if (elapsedSec > 0) {
@@ -24,7 +25,7 @@ export class TokenBucketRateLimiter {
 
   async acquireToken() {
     while (true) {
-      this._refill();
+      this.refill();
       if (this.tokens >= 1) {
         this.tokens -= 1;
         return;
@@ -55,10 +56,14 @@ const DEFAULT_USER_AGENT = 'Anagroove-MusicIndexer/1.0 (+https://github.com/xms6
 /**
  * Executes a polite fetch with rate limiting and retry on 429/503.
  */
-export async function politeFetch(url, options = {}, { rateLimiter = null, maxRetries = 3 } = {}) {
+export async function politeFetch(
+  url: string,
+  options: RequestInit = {},
+  { rateLimiter = null, maxRetries = 3 }: { rateLimiter?: TokenBucketRateLimiter | null; maxRetries?: number } = {},
+): Promise<Response> {
   const headers = {
     'User-Agent': DEFAULT_USER_AGENT,
-    ...(options.headers || {}),
+    ...(options.headers as Record<string, string> | undefined),
   };
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {

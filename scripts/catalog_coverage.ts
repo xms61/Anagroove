@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import path from 'path';
-import { parseFlags, parseOrExit } from './lib/cli.js';
-import type { CatalogSource } from '../server/selection/candidates.ts';
+import { parseFlags, parseOrExit } from './lib/cli.ts';
 
 const USAGE = `
 Measures whether every theme and a set of typical custom prompts can be served from the local
@@ -23,12 +22,11 @@ process.env.SPOTYSPICE_OFFLINE = '1';
 process.env.LOG_LEVEL ??= 'warn';
 if (flags['data-dir']) process.env.SPOTYSPICE_DATA_DIR = path.resolve(flags['data-dir']);
 
-const { sqliteCatalog } = await import('../server/db/sqliteCatalog.js');
+const { sqliteCatalog } = await import('../server/db/sqliteCatalog.ts');
 const { measureCoverage, COVERAGE_TARGETS } = await import('../server/selection/coverage.ts');
 
 const started = Date.now();
-// sqliteCatalog.js is still JavaScript; its inferred method types are narrower than the code (T7)
-const results = await measureCoverage({ catalog: sqliteCatalog as unknown as CatalogSource });
+const results = await measureCoverage({ catalog: sqliteCatalog });
 
 if (flags.json) {
   console.log(JSON.stringify(results, null, 2));

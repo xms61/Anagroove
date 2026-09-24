@@ -4,18 +4,12 @@ import path from 'path';
 import readline from 'readline';
 import zlib from 'zlib';
 import type { Readable } from 'stream';
-import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.js';
-import { normalizeDeezerRank, provisionalPopularity } from '../server/db/trackNormalization.js';
-import { isAbovePopularityFloor } from '../server/db/catalogPopularity.js';
+import { sqliteCatalog, detectTrackLanguage, extractIsrcCountryCode } from '../server/db/sqliteCatalog.ts';
+import { normalizeDeezerRank, provisionalPopularity } from '../server/db/trackNormalization.ts';
+import { isAbovePopularityFloor } from '../server/db/catalogPopularity.ts';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.ts';
-import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 import { errorMessage } from '../server/errors.ts';
-
-// sqliteCatalog.js, trackNormalization.js and catalogPopularity.js are still JavaScript; their inferred parameter types are narrower than the code (T7)
-const provisional = provisionalPopularity as (input: { deezerRank: number | null; spotifyPopularity: number | null }) => number;
-const isrcCountry = extractIsrcCountryCode as (isrc: string | null) => string | null;
-const trackLanguage = detectTrackLanguage as (title: string, artist: string, options: { isrc: string | null }) => ReturnType<typeof detectTrackLanguage>;
-const aboveFloor = isAbovePopularityFloor as (track: { language: unknown; deezerRank: number | null }) => boolean;
 
 const USAGE = `
 Stream-ingests MusicMoveArr dumps (one source per run):
@@ -83,7 +77,7 @@ const batchSize = flags.batchSize || 2000;
 /** Spotify popularity from the dump reaches --min-popularity, or the Deezer rank reaches its language's floor. */
 function passesPopularityFloor(candidate: TrackCandidate) {
   return (candidate.spotifyPopularity ?? -1) >= minPopularity
-    || aboveFloor({ language: candidate.language, deezerRank: candidate.deezerRank });
+    || isAbovePopularityFloor({ language: candidate.language, deezerRank: candidate.deezerRank });
 }
 
 /**
@@ -152,14 +146,14 @@ export function mapRowToCandidate(row: (string | null)[], headers: string[] = []
   // Values above 100 are Deezer ranks (0 - ~1,000,000); 1-100 is a Spotify popularity
   const deezerRank = rawValue > 100 ? normalizeDeezerRank(rawValue) : null;
   const spotifyPopularity = rawValue > 0 && rawValue <= 100 ? rawValue : null;
-  const popularity = provisional({ deezerRank, spotifyPopularity });
+  const popularity = provisionalPopularity({ deezerRank, spotifyPopularity });
 
   const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
   const isExplicit = explicitVal === '1' || String(explicitVal).toLowerCase() === 'true';
 
   const cleanIsrc = isrc ? String(isrc).trim().toUpperCase() : null;
-  const countryCode = isrcCountry(cleanIsrc);
-  const language = trackLanguage(title, artist, { isrc: cleanIsrc });
+  const countryCode = extractIsrcCountryCode(cleanIsrc);
+  const language = detectTrackLanguage(title, artist, { isrc: cleanIsrc });
 
   return {
     provider: defaultProvider,
@@ -275,7 +269,7 @@ export async function streamIngestCsv(filePath: string, provider = 'deezer', sta
 
       // Periodic WAL Compaction every 100k tracks
       if (stats.qualifiedCandidates % 100000 === 0 && !isDryRun) {
-        sqliteCatalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+        sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
       }
 
       if (stats.qualifiedCandidates % 10000 === 0) {
@@ -360,7 +354,7 @@ export async function streamIngestSql(filePath: string, provider = 'deezer', sta
         batch = [];
 
         if (stats.qualifiedCandidates % 100000 === 0 && !isDryRun) {
-          sqliteCatalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+          sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
         }
 
         if (stats.qualifiedCandidates % 10000 === 0) {
@@ -434,7 +428,7 @@ async function main() {
     }
 
     if (!isDryRun) {
-      sqliteCatalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+      sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     }
 
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);

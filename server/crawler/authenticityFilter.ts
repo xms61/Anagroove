@@ -3,7 +3,7 @@
  * Strictly disqualifies covers, karaoke, tributes, fanmade versions,
  * soundalike tribute ensembles, and tracks lacking valid audio previews.
  */
-import { isAuthenticMetadata } from '../policy/authenticityRules.js';
+import { isAuthenticMetadata } from '../policy/authenticityRules.ts';
 
 /** A provider track in any of the shapes the crawlers see (Deezer, iTunes, catalog rows). */
 export interface RawTrack {

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import type { ParseArgsOptionsConfig } from 'node:util';
-import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
+import { sqliteCatalog } from '../server/db/sqliteCatalog.ts';
 import { musicHarvester } from '../server/crawler/harvester.ts';
-import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 
 const USAGE = `
 Crawls Apple charts and Deezer into the catalog. Every vector is off unless named.

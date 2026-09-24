@@ -5,9 +5,9 @@
  */
 import type { TrackLike, YearRange } from '../types.ts';
 import { splitArtistNames } from '../../shared/musicKeywords.ts';
-import { toCrosswordAnswer } from '../../shared/musicIdentity.js';
-import { isAuthenticMetadata } from './authenticityRules.js';
-import { resolveTrackLanguage } from '../db/languageClassifier.js';
+import { toCrosswordAnswer } from '../../shared/musicIdentity.ts';
+import { isAuthenticMetadata } from './authenticityRules.ts';
+import { resolveTrackLanguage } from '../db/languageClassifier.ts';
 import { themeById } from '../../shared/themes.ts';
 
 /**

@@ -11,10 +11,24 @@
  */
 import { eld } from 'eld/medium';
 
+export interface TitleDetection {
+  language: string | null;
+  reliable: boolean;
+  words: number;
+  margin: number;
+}
+
+export interface TrackLanguageInput {
+  title?: string;
+  artist?: string;
+  isrc?: string | null;
+  artistLanguage?: string | null;
+}
+
 const HANGUL = /[가-힯ᄀ-ᇿ㄰-㆏]/;
 const KANA = /[぀-ヿㇰ-ㇿｦ-ﾟ]/;
 const HAN = /[㐀-䶿一-鿿]/;
-const OTHER_SCRIPTS = [
+const OTHER_SCRIPTS: [string, RegExp][] = [
   ['ru', /[Ѐ-ӿ]/],
   ['ar', /[؀-ۿ]/],
   ['he', /[֐-׿]/],
@@ -34,7 +48,7 @@ const LETTER = /\p{L}/gu;
 // A Flame" sq 0.702 vs en 0.698) and two words can be far off ("Cutie Pie" lv +0.67), while
 // real foreign titles lead clearly ("Te Quería Ver" es +0.81). Deleting is irreversible, so
 // doubtful titles stay English.
-export function requiredMargin(words) {
+export function requiredMargin(words: number): number {
   if (words >= 4) return 0.15;
   return words === 3 ? 0.2 : 0.3;
 }
@@ -47,11 +61,11 @@ const ARTIST_MIN_WORDS = 6;
 const ARTIST_MARGIN = 0.15;
 
 /** Title text used for language detection: bracketed credits/versions removed. */
-export function languageText(title = '') {
+export function languageText(title: string | null = ''): string {
   return String(title || '').replace(DECORATION, ' ').replace(/\s[-–—]\s.*$/, ' ').trim();
 }
 
-function isrcRegistrant(isrc) {
+function isrcRegistrant(isrc: unknown): string | null {
   return typeof isrc === 'string' && /^[A-Z]{2}/i.test(isrc.trim()) ? isrc.trim().slice(0, 2).toUpperCase() : null;
 }
 
@@ -59,9 +73,9 @@ function isrcRegistrant(isrc) {
  * Script-level language of a string, or null for Latin/neutral text.
  * Any hangul/kana/Han character decides; other scripts must be at least half of the letters,
  * so a stylized letter ("KoЯn", "DISCIPLΞS") doesn't make a name Russian or Greek.
- * @returns {'ko'|'ja'|'han'|string|null}
+ * Returns 'ko', 'ja', 'han' (Han-only), another ISO 639-1 code, or null.
  */
-export function scriptLanguage(text = '') {
+export function scriptLanguage(text = ''): string | null {
   if (HANGUL.test(text)) return 'ko';
   if (KANA.test(text)) return 'ja';
   if (HAN.test(text)) return 'han';
@@ -77,9 +91,8 @@ export function scriptLanguage(text = '') {
 /**
  * Language of a (Latin-script) title from the n-gram detector.
  * `margin` is how far the verdict's score leads English (0 when the verdict is English).
- * @returns {{ language: string|null, reliable: boolean, words: number, margin: number }}
  */
-export function detectTitleLanguage(title = '') {
+export function detectTitleLanguage(title = ''): TitleDetection {
   const text = languageText(title);
   const words = text.match(TITLE_WORD)?.length || 0;
   if (words === 0) return { language: null, reliable: false, words, margin: 0 };
@@ -94,26 +107,24 @@ export function detectTitleLanguage(title = '') {
 }
 
 /** Whether a title detection is strong enough to call the title non-English. */
-export function isClearlyForeign(detected) {
+export function isClearlyForeign(detected: TitleDetection | null | undefined): boolean {
   if (!detected?.reliable || !detected.language || detected.language === 'en') return false;
   if (detected.words < 2) return false;
   if (detected.words === 2 && !SHORT_TEXT_LANGUAGES.has(detected.language)) return false;
   return detected.margin >= requiredMargin(detected.words);
 }
 
-/**
- * Votes an artist's language over its catalog titles and ISRC registrants.
- * @param {{ titles?: string[], isrcs?: (string|null)[], name?: string }} input
- * @returns {{ language: string|null, basis: string }}
- */
-export function classifyArtistLanguage({ titles = [], isrcs = [], name = '' } = {}) {
+/** Votes an artist's language over its catalog titles and ISRC registrants. */
+export function classifyArtistLanguage(
+  { titles = [], isrcs = [], name = '' }: { titles?: string[]; isrcs?: (string | null)[]; name?: string } = {},
+): { language: string | null; basis: string } {
   const cleaned = titles.map(languageText).filter(Boolean);
   const total = cleaned.length;
 
   let hangul = 0;
   let kana = 0;
   let hanOnly = 0;
-  const otherScripts = new Map();
+  const otherScripts = new Map<string, number>();
   for (const text of cleaned) {
     const script = scriptLanguage(text);
     if (script === 'ko') hangul++;
@@ -127,7 +138,7 @@ export function classifyArtistLanguage({ titles = [], isrcs = [], name = '' } = 
   const kr = registrants.filter(r => r === 'KR').length;
   const nameScript = scriptLanguage(name);
 
-  const enough = (count) => count >= 2 || (total > 0 && count / total >= 0.1);
+  const enough = (count: number) => count >= 2 || (total > 0 && count / total >= 0.1);
   const koScore = hangul + (registrants.length >= 2 && kr / registrants.length >= 0.5 ? total : 0) + (nameScript === 'ko' ? total : 0);
   const jaScore = kana + (registrants.length >= 2 && jp / registrants.length >= 0.5 ? total : 0) + (nameScript === 'ja' ? total : 0);
   if ((enough(hangul) || koScore > hangul) && koScore >= jaScore && koScore > 0) return { language: 'ko', basis: 'script/isrc' };
@@ -149,12 +160,10 @@ export function classifyArtistLanguage({ titles = [], isrcs = [], name = '' } = 
   return margin >= ARTIST_MARGIN ? { language: result.language, basis: 'text' } : { language: 'en', basis: 'text-close' };
 }
 
-/**
- * Final language of one track.
- * @param {{ title: string, artist?: string, isrc?: string|null, artistLanguage?: string|null }} input
- * @returns {string} ISO 639-1 code
- */
-export function resolveTrackLanguage({ title = '', artist = '', isrc = null, artistLanguage = null } = {}) {
+/** Final language of one track, as an ISO 639-1 code. */
+export function resolveTrackLanguage(
+  { title = '', artist = '', isrc = null, artistLanguage = null }: TrackLanguageInput = {},
+): string {
   const registrant = isrcRegistrant(isrc);
   const titleScript = scriptLanguage(title);
   const nameScript = scriptLanguage(artist);
