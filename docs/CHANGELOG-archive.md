@@ -1,6 +1,19 @@
 # Changelog archive
 
-Releases before 1.28.3. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.4. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.3] - 2026-09-23
+
+### Changed
+- **`shared/` is TypeScript:** `clueGenerator`, `liveCrossword`, `musicKeywords`, `shuffle` and `themes` are `.ts` files, run by Node directly.
+  - Their hand-written `.d.ts` files are gone, so the declarations can't drift from the code any more.
+  - `musicIdentity.js` follows later: the running catalog enrichment loads it.
+- **`shared/types.ts`** holds the puzzle types (`Song`, `Clue`, `Puzzle`, `CellValidity`, …). It replaces `src/types/crossword.ts`, and the server and client now share it.
+- **New exported types:** `LiveSong` and `LiveCrosswordOptions` (grid generator), `AnswerCandidate`, `ExtractKeywordOptions` and `ClueType` (answer extraction), `ClueTrack`/`ClueKeyword` (clue formatting), `Theme` and `SongLanguage`.
+- **Removed unused call forms:** `extractAnswerKeyword` no longer accepts its options as a bare string, and `formatCrosswordClue` drops the options argument it never used. No caller used either.
+- **Tests:** the `themes`, `clueSystem`, `musicKeywords` and `crosswordEngine` tests are TypeScript.
+
+---
 
 ## [1.28.2] - 2026-09-23
 

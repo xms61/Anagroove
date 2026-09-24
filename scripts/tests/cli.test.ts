@@ -6,7 +6,7 @@ import { buildCrawlPlan, DEFAULT_VECTOR_LIMITS } from '../crawl_catalog.ts';
 
 const OFF = { albums: null, deezer: null, artists: null, itunes: null };
 
-const ENRICH_CASES = [
+const ENRICH_CASES: [string, Record<string, number | null>][] = [
   ['--albums=5', { ...OFF, albums: 5 }],
   ['--albums 30000', { ...OFF, albums: 30000 }],
   ['--artists=80000 --deezer=10', { ...OFF, artists: 80000, deezer: 10 }],
@@ -47,8 +47,10 @@ test('crawl plan: only named vectors run, --all uses the defaults', () => {
     status: false, targetTracks: 500000, charts: 0, playlists: 0, decades: 0, cjk: 0, artists: 250, lexicon: 0,
   });
   assert.deepEqual(buildCrawlPlan(['--all', '--target=1000']), { status: false, targetTracks: 1000, ...DEFAULT_VECTOR_LIMITS });
-  assert.equal(buildCrawlPlan(['--playlists-only']).playlists, DEFAULT_VECTOR_LIMITS.playlists);
-  assert.equal(buildCrawlPlan(['--playlists-only']).artists, 0);
+  const playlistsOnly = buildCrawlPlan(['--playlists-only']);
+  assert.ok(playlistsOnly.status === false);
+  assert.equal(playlistsOnly.playlists, DEFAULT_VECTOR_LIMITS.playlists);
+  assert.equal(playlistsOnly.artists, 0);
   assert.deepEqual(buildCrawlPlan(['--status']), { status: true });
 });
 

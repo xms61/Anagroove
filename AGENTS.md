@@ -16,7 +16,7 @@ Read only the doc(s) matching your task.
 | [scripts/tests/TESTING.md](scripts/tests/TESTING.md) | Running or writing tests |
 
 ## Always
-- One server test file: `node --import ./scripts/tests/setup_env.js --test --test-force-exit scripts/tests/<file>.test.js`. Without the preload, tests write to the real `server/data/`.
+- One server test file: `node --import ./scripts/tests/setup_env.ts --test --test-force-exit scripts/tests/<file>.test.ts`. Without the preload, tests write to the real `server/data/`.
 - Tests never use the network or `server/data/`. Use `new SqliteCatalog(':memory:')` and the `set*ForTesting` stubs.
 - Script flags go after `--`: `npm run catalog:enrich -- --albums=500`.
 - `server/data/*.sqlite` is the user's real data. Open it read-only (`new DatabaseSync(path, { readOnly: true })`) for analysis, and never run write scripts against it unless asked.

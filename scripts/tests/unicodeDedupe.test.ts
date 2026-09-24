@@ -25,7 +25,7 @@ test('base title keys fold version tags, spacing and width', () => {
 test('distinct CJK titles survive ingest and cleanup; true duplicates merge', () => {
   const catalog = new SqliteCatalog(':memory:');
   let nextId = 1;
-  const ingest = (title, artist, isrc) => catalog.upsertTrack({
+  const ingest = (title: string, artist: string, isrc?: string) => catalog.upsertTrack({
     title, artist, isrc, provider: 'deezer', providerTrackId: String(nextId++), album: 'Album', durationMs: 200000, releaseYear: 2020,
   });
 

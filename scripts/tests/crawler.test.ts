@@ -177,7 +177,7 @@ test('artist enrichment fills fans and album genres', async () => {
   const stats = await enricher.enrichArtists({ limit: 10 });
   const dua = catalog.db.prepare("SELECT fans_count, genres_json, enriched_at FROM artists WHERE canonical_name = 'dua lipa'").get();
   assert.equal(dua.fans_count, 12000000);
-  assert.ok(JSON.parse(dua.genres_json).includes('Dance'));
+  assert.ok(JSON.parse(String(dua.genres_json)).includes('Dance'));
   assert.ok(dua.enriched_at);
   assert.ok(stats.checked >= 1);
   catalog.close();
@@ -234,7 +234,7 @@ test('playlist seeds come from the themes; artists on a theme playlist get the t
   ]);
   const result = await new MusicHarvester(catalog, { fetchImpl }).harvestPlaylists('shoegaze dream pop', { genre: 'Alternative' });
   assert.equal(result.harvested, 2);
-  const genres = (name) => JSON.parse(catalog.db.prepare('SELECT genres_json FROM artists WHERE display_name = ?').get(name).genres_json);
+  const genres = (name: string) => JSON.parse(String(catalog.db.prepare('SELECT genres_json FROM artists WHERE display_name = ?').get(name).genres_json));
   assert.deepEqual(genres('Known Band'), ['Pop', 'Alternative'], 'merged into existing genres');
   assert.deepEqual(genres('New Band'), ['Alternative']);
   catalog.close();
@@ -254,7 +254,7 @@ test('artist enrichment stores English genre names by Deezer genre id, whatever 
   });
   await enricher.enrichArtists({ limit: 10 });
   const { genres_json: json } = catalog.db.prepare("SELECT genres_json FROM artists WHERE display_name = 'Score Composer'").get();
-  assert.deepEqual(JSON.parse(json), ['Films/Games', 'Asian Music']);
+  assert.deepEqual(JSON.parse(String(json)), ['Films/Games', 'Asian Music']);
   catalog.close();
 });
 
@@ -266,8 +266,8 @@ test('decade playlist seeds pair every decade with a style and tag the style gen
   assert.equal(seed('60s hits').genre, null);
 });
 
-/** A fake Deezer with artists by id: { id: { name, fans, related: [ids], titles } }. */
-function fakeDeezer(artists) {
+/** A fake Deezer with artists by id. */
+function fakeDeezer(artists: Record<number, { name: string; fans: number; related: number[]; titles: string[] }>) {
   const byName = (name) => Object.entries(artists).find(([, a]) => a.name === name);
   const artistJson = (id) => ({ id: Number(id), name: artists[id].name, nb_fan: artists[id].fans });
   return routedFetch([

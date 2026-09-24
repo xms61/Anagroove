@@ -83,7 +83,7 @@ test('upsertBatch inserts in one transaction and the year window filters on rele
   catalog.close();
 });
 
-const REJECTED = [
+const REJECTED: [string, Record<string, unknown>, string][] = [
   ['radio edit', { title: 'Get Lucky (Radio Edit)', artist: 'Daft Punk' }, 'version'],
   ['live recording', { title: 'Around The World - Live', artist: 'Daft Punk' }, 'version'],
   ['remix', { title: 'One More Time (Skrillex Remix)', artist: 'Daft Punk' }, 'version'],
@@ -144,7 +144,7 @@ test('the trigram FTS index follows inserts and deletes', () => {
   catalog.upsertTrack(GET_LUCKY_DEEZER);
 
   assert.equal(count('"駆ける"'), 1, 'Japanese substring');
-  assert.ok(catalog.sampleCatalogTracks({ ftsQuery: '"lucky"', start: 0 }).some(t => t.title.startsWith('Get Lucky')));
+  assert.ok(catalog.sampleCatalogTracks({ ftsQuery: '"lucky"', start: 0 }).some(t => String(t.title).startsWith('Get Lucky')));
 
   catalog.db.prepare('DELETE FROM tracks WHERE id = ?').run(ja.trackId);
   assert.equal(count('"駆ける"'), 0);
@@ -201,6 +201,6 @@ test('migration v7 translates German Deezer genre names already stored', () => {
   catalog.db.exec('PRAGMA user_version = 6');
   runCatalogMigrations(catalog.db, { backup: false });
   const { genres_json: json } = catalog.db.prepare("SELECT genres_json FROM artists WHERE display_name = 'Composer'").get();
-  assert.deepEqual(JSON.parse(json), ['Films/Games', 'Classical']);
+  assert.deepEqual(JSON.parse(String(json)), ['Films/Games', 'Classical']);
   catalog.close();
 });
