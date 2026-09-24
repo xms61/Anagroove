@@ -5,9 +5,9 @@
   - Vectors, in order, each bounded by its limit (0 = off); `runFullHarvest` also stops at the target track count:
     1. `charts`: **Apple Music "most played"** (`harvestAppleCharts`: us/gb/jp/kr), matched to Deezer tracks.
     2. `playlists`: theme playlists (`PLAYLIST_SEEDS`, the `seeds` in `shared/themes.ts`). Every artist on a theme playlist gets the theme's first genre.
-    3. `decades`: decade playlists (`DECADE_PLAYLIST_SEEDS`: 60s–2020s × hits/rock/pop/soul/hip hop/dance/country), tagged with the style's genre. They replaced the "1987 funk" text searches, which matched years in titles.
+    3. `decades`: decade playlists (`DECADE_PLAYLIST_SEEDS`: 60s–2020s × hits/rock/pop/soul/hip hop/dance/country), tagged with the style's genre. Text searches ("1987 funk") are not used, because they match years in titles.
     4. `cjk`: the Deezer Asian Music chart, then discographies of the catalog's Japanese/Korean artists (by Deezer id, most fans first) and their related artists (≥ 20,000 fans), keeping to artists that vote ja/ko.
-    5. `artists`: discographies of the foundation artists, then their related artists (≥ 100,000 fans). The limit counts every discography, related ones included (before, related artists kept the queue going until the target).
+    5. `artists`: discographies of the foundation artists, then their related artists (≥ 100,000 fans). The limit counts every discography, related ones included.
     6. `lexicon`: single-word title searches.
   - `harvestArtistDiscography` skips an artist with fewer than 5,000 fans (`MIN_ARTIST_FANS`: the cleanup would drop most of their tracks), and one whose top tracks vote a language outside the allowed ones, before any album or related-artist request.
   - Seeds target English, Japanese, and Korean music. There are no Spanish/French/German lexicon words and no Latin/reggaeton playlists.

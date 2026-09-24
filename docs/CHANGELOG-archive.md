@@ -1,6 +1,23 @@
 # Changelog archive
 
-Releases before 1.28.4. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.5. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.4] - 2026-09-23
+
+### Changed
+- **Server base and database modules are TypeScript:** `db`, `offline`, `shutdown`, and in `server/db/` `animeCatalog`, `catalogCleanup`, `catalogGate`, `catalogReport` and `userStore`.
+  - The modules loaded by the running catalog enrichment (`sqliteCatalog`, `catalogMigrations`, `trackNormalization`, …) follow once it finishes.
+- **New exported types:**
+  - `userStore`: `BlacklistEntry`, `BlacklistInput`, `Progress`, `SolvedItem`
+  - `catalogCleanup`: `CleanupResult`, `StepResult`, `CleanupExample`, `CatalogSummary`, `CleanupStep`
+  - `catalogGate`: `GateResult`, `GateCheck`, `GateThresholds`
+  - `catalogReport`: `CatalogStatistics`
+  - `animeCatalog`: `AnimeSong`, `AnimeTrackInput`, `AnimeTrackQuery`
+- **Private methods lose the underscore prefix and are marked `private`:** `UserStore.migrate`/`transaction`/`touchUser`/`insertBlacklistItem`, and `AnimeCatalog.initSchema`.
+- **Tests have their own config:** `tsconfig.tests.json` checks the server tests with implicit `any` and null checks relaxed, while source files stay fully strict. `npm run typecheck` runs all three configs.
+- **Tests:** `userStore`, `catalogCleanup` and `catalogReport` are TypeScript.
+
+---
 
 ## [1.28.3] - 2026-09-23
 
