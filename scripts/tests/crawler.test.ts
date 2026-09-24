@@ -267,10 +267,18 @@ test('decade playlist seeds pair every decade with a style and tag the style gen
 });
 
 /** A fake Deezer with artists by id. */
-function fakeDeezer(artists: Record<number, { name: string; fans: number; related: number[]; titles: string[] }>) {
+/**
+ * Deezer as the harvester sees it: top-track payloads without ISRCs, and `/track/{id}` with an
+ * ISRC from the artist's `registrant` country (US by default). Track ids are artist id * 100 + n.
+ */
+function fakeDeezer(artists: Record<number, { name: string; fans: number; related: number[]; titles: string[]; registrant?: string }>) {
   const byName = (name) => Object.entries(artists).find(([, a]) => a.name === name);
   const artistJson = (id) => ({ id: Number(id), name: artists[id].name, nb_fan: artists[id].fans });
   return routedFetch([
+    [/\/track\/\d+$/, url => {
+      const trackId = Number(url.match(/track\/(\d+)$/)[1]);
+      return { id: trackId, isrc: `${artists[Math.floor(trackId / 100)].registrant ?? 'US'}AB12${String(trackId).padStart(6, '0')}` };
+    }],
     [/search\/artist\?q=/, url => {
       const [id] = byName(decodeURIComponent(url.split('q=')[1].split('&')[0])) || [];
       return { data: id ? [artistJson(id)] : [] };
@@ -310,19 +318,23 @@ test('an artist under 5,000 fans is skipped before any track request', async () 
 });
 
 test('the ja/ko vector starts from Japanese and Korean catalog artists by Deezer id and keeps to ja/ko', async () => {
+  // Deezer romanizes Japanese titles, and a seed's top tracks can carry foreign ISRCs (BABYMETAL's are GB/US)
   const artists = {
-    21: { name: 'YOASOBI', fans: 800000, related: [22, 23], titles: ['夜に駆ける', 'アイドル', '群青'] },
-    22: { name: 'Ado', fans: 600000, related: [], titles: ['うっせぇわ', '新時代', '唱'] },
+    21: { name: 'BABYMETAL', fans: 800000, related: [22, 23], titles: ['Road of Resistance', 'Gimme Chocolate', 'Distortion', 'Shine', 'The One'] },
+    22: { name: 'Ado', fans: 600000, related: [], titles: ['Show', 'Usseewa', 'New Genesis', 'Tot Musica', 'Backlight', 'Fleeting Lullaby'], registrant: 'JP' },
     23: { name: 'Western Pop Act', fans: 900000, related: [], titles: ['Midnight Drive', 'Summer Love', 'Golden Hour', 'Heartbeat Again', 'Neon Skyline'] },
   };
   const catalog = new SqliteCatalog(':memory:');
-  catalog.upsertTrack({ title: '夜に駆ける', artist: 'YOASOBI', isrc: 'JPU901900001', durationMs: 260000, provider: 'deezer', providerTrackId: '2100', artistMetadata: { deezerId: 21 } });
+  catalog.upsertTrack({ title: 'ギミチョコ！！', artist: 'BABYMETAL', isrc: 'JPTF01400001', durationMs: 230000, provider: 'deezer', providerTrackId: '2100', artistMetadata: { deezerId: 21 } });
   catalog.db.prepare("UPDATE artists SET primary_language = 'ja'").run();
   const fetchImpl = fakeDeezer(artists);
   const stats = await new MusicHarvester(catalog, { fetchImpl }).runFullHarvest({ targetTracks: 1000, cjkLimit: 5 });
   assert.equal(stats.cjkArtistsCrawled, 3);
   assert.ok(!fetchImpl.calls.some(url => /search\/artist/.test(url)), 'catalog artists are fetched by id');
+  const isrcLookups = (artistId: number) => fetchImpl.calls.filter(url => new RegExp(`/track/${artistId}\\d{2}$`).test(url)).length;
+  assert.equal(isrcLookups(21), 0, 'a catalog artist keeps its stored language');
+  assert.equal(isrcLookups(22), 3, 'romanized titles alone vote outside ja/ko');
   const names = catalog.db.prepare('SELECT DISTINCT a.display_name FROM tracks t JOIN artists a ON a.id = t.artist_id ORDER BY 1').all().map(r => r.display_name);
-  assert.deepEqual(names, ['Ado', 'YOASOBI'], 'the English-voted related act is skipped');
+  assert.deepEqual(names, ['Ado', 'BABYMETAL'], 'the English-voted related act is skipped');
   catalog.close();
 });
