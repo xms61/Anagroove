@@ -18,5 +18,5 @@ Server-only events: `error`, `player_left` (includes `newHostId` when the host l
 - Every room plays the same server-generated puzzle. Clients never send their own puzzle.
 - **Identity is bound to the socket** on create/join. For every other action the server ignores the message's `playerId` and requires `currentRoomCode === roomCode` (`memberRoom()`).
 - Taking over a seat whose `playerId` is already in the room requires that seat's `resumeToken` (128-bit, compared in constant time).
-- A dropped socket keeps its seat for 30 s (`RECONNECT_GRACE_MS`). `socketService` resends `join_room` with the token on reconnect. After the grace period the player is removed, and the host passes to the next player.
-- Player colors cycle through `PLAYER_COLORS`. Room codes are `WORD-NNNN` (16 × 9,000), generated with `crypto.randomInt`.
+- A dropped socket keeps its seat for 30 s (`RECONNECT_GRACE_MS`). A socket that misses one 30 s ping (`HEARTBEAT_MS`) is terminated and counts as dropped, so half-open connections free their seat too. `socketService` resends `join_room` with the token on reconnect. After the grace period the player is removed, and the host passes to the next player.
+- Player colors cycle through `PLAYER_COLORS`. Room codes are `WORD-NNNN` (16 × 9,000), generated with `crypto.randomInt`. That space is small, so `join_room` allows 10 unknown codes per minute per IP (`FAILED_JOINS_PER_MINUTE`).

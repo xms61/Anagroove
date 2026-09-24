@@ -9,7 +9,7 @@ import { Buffer } from 'buffer';
 import type { Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { validateWsMessage, type WsMessage } from '../validators.ts';
-import { wsRateLimiter } from '../middleware/rateLimiter.ts';
+import { createFailureCounter, wsRateLimiter } from '../middleware/rateLimiter.ts';
 import { clientIpFromUpgrade } from '../http/security.ts';
 import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
@@ -38,6 +38,11 @@ export interface Room {
 
 const MAX_PLAYERS_PER_ROOM = 8;
 const RECONNECT_GRACE_MS = 30 * 1000;
+const MAX_MESSAGE_BYTES = 64 * 1024;
+// A socket that misses one ping is terminated, which releases its seat and IP slot
+const HEARTBEAT_MS = 30 * 1000;
+// Room codes are guessable in bulk (16 words x 9,000 numbers), so wrong codes are rate-limited per IP
+const FAILED_JOINS_PER_MINUTE = 10;
 const ROOM_WORDS = ['BEAT', 'GROOVE', 'SPICE', 'VINYL', 'BASS', 'CHORD', 'SOLO', 'FUNK',
   'TEMPO', 'RIFF', 'DROP', 'LOOP', 'VIBE', 'TUNE', 'WAVE', 'ECHO'];
 const PLAYER_COLORS = [
@@ -80,9 +85,28 @@ function emptyGrid(puzzle: Puzzle | undefined): string[][] | null {
 }
 
 /** Attaches the multiplayer WebSocket server to an HTTP server. */
-export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles: LivePuzzleStore }) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+export function attachMultiplayer(server: Server, { livePuzzles, heartbeatMs = HEARTBEAT_MS }: { livePuzzles: LivePuzzleStore; heartbeatMs?: number }) {
+  // Larger frames are refused while they arrive (close 1009); the library default is 100 MiB
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_MESSAGE_BYTES });
   const rooms = new Map<string, Room>();
+  const failedJoins = createFailureCounter({ windowMs: 60 * 1000, max: FAILED_JOINS_PER_MINUTE });
+
+  const alive = new WeakMap<WebSocket, boolean>();
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (!alive.get(client)) {
+        client.terminate();
+        continue;
+      }
+      alive.set(client, false);
+      client.ping();
+    }
+  }, heartbeatMs);
+  heartbeat.unref();
+  wss.on('close', () => {
+    clearInterval(heartbeat);
+    failedJoins.stop();
+  });
 
   // Friendly room codes with collision avoidance (16 words x 9,000 numbers)
   function generateRoomCode(): string {
@@ -134,6 +158,10 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
     }
 
     logger.ws(`Client connected: ${ip}`);
+    alive.set(ws, true);
+    ws.on('pong', () => alive.set(ws, true));
+    // Protocol errors (an oversized frame, bad UTF-8) close the socket; without a listener they would crash the process
+    ws.on('error', err => logger.warn('ws', `Closing connection from ${ip}: ${err.message}`));
     const allowMessage = wsRateLimiter.createMessageTracker(35);
     let currentPlayer: Player | null = null;
     let currentRoomCode: string | null = null;
@@ -192,9 +220,14 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
       },
 
       join_room(data) {
+        if (!failedJoins.allow(ip)) {
+          sendError('Too many attempts. Wait a minute, then check the code.');
+          return;
+        }
         const roomCode = (data.roomCode || '').toUpperCase().trim();
         const room = rooms.get(roomCode);
         if (!room) {
+          failedJoins.record(ip);
           sendError('Room not found. Check your code!');
           return;
         }
@@ -333,10 +366,6 @@ export function attachMultiplayer(server: Server, { livePuzzles }: { livePuzzles
       try {
         // ws delivers text frames as a Buffer (binaryType 'nodebuffer')
         const message = raw as Buffer;
-        if (message.length > 65536) {
-          sendError('Message payload too large (max 64KB)');
-          return;
-        }
         if (!allowMessage()) {
           sendError('Message rate limit exceeded');
           return;

@@ -48,6 +48,32 @@ export function createRateLimiter({ windowMs = 60000, max = 100, message = 'Too 
 }
 
 /**
+ * Failures per key (an IP) in a sliding window: `allow` is false once `max` failures are recent.
+ * Stale keys are swept every window; `stop` ends the sweep.
+ */
+export function createFailureCounter({ windowMs, max }: { windowMs: number; max: number }) {
+  const failures = new Map<string, number[]>();
+  const recent = (key: string): number[] => (failures.get(key) || []).filter(t => Date.now() - t < windowMs);
+
+  const sweep = setInterval(() => {
+    for (const key of failures.keys()) {
+      const kept = recent(key);
+      if (kept.length === 0) failures.delete(key);
+      else failures.set(key, kept);
+    }
+  }, windowMs);
+  sweep.unref();
+
+  return {
+    allow: (key: string): boolean => recent(key).length < max,
+    record: (key: string): void => {
+      failures.set(key, [...recent(key), Date.now()]);
+    },
+    stop: (): void => clearInterval(sweep),
+  };
+}
+
+/**
  * WebSocket IP connection tracker
  */
 const ipConnections = new Map<string, number>();

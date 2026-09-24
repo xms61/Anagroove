@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { IncomingMessage } from 'node:http';
+import http, { type IncomingMessage } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.ts';
@@ -15,6 +15,9 @@ import {
   resolvePreviewRef,
   setPreviewFetchForTesting,
 } from '../../server/services/previewResolver.ts';
+import { attachMultiplayer } from '../../server/ws/rooms.ts';
+import { createLivePuzzleStore } from '../../server/http/livePuzzleStore.ts';
+import WebSocket from 'ws';
 import { mockJsonResponse, wsTestClient, readJson } from './helpers.ts';
 
 const nowSec = Math.floor(Date.now() / 1000);
@@ -225,5 +228,55 @@ describe('HTTP and WebSocket server', () => {
     const cell = await guest.next(m => m.type === 'coop_cell_update');
     assert.equal(cell.playerId, hostId, 'the server-bound identity, not the claimed one');
     assert.equal(cell.playerColor, '#3de0ff');
+  });
+});
+
+describe('WebSocket limits', () => {
+  let limitServer;
+  let wsUrl;
+  const sockets = [];
+
+  before(async () => {
+    limitServer = http.createServer();
+    attachMultiplayer(limitServer, { livePuzzles: createLivePuzzleStore(), heartbeatMs: 50 });
+    await new Promise<void>(resolve => limitServer.listen(0, '127.0.0.1', resolve));
+    wsUrl = `ws://127.0.0.1:${limitServer.address().port}/ws`;
+  });
+
+  after(async () => {
+    for (const socket of sockets) socket.terminate();
+    await new Promise(resolve => limitServer.close(resolve));
+  });
+
+  const open = async (options = {}) => {
+    const socket = new WebSocket(wsUrl, options);
+    sockets.push(socket);
+    await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+    return socket;
+  };
+  const closeCode = (socket: WebSocket) => new Promise<number>(resolve => socket.once('close', code => resolve(code)));
+
+  test('a frame over 64 KiB closes the socket with 1009 before it is buffered', async () => {
+    const socket = await open();
+    const closed = closeCode(socket);
+    socket.send('x'.repeat(64 * 1024 + 1));
+    assert.equal(await closed, 1009);
+  });
+
+  test('a socket that stops answering pings is terminated', async () => {
+    const socket = await open({ autoPong: false });
+    assert.equal(await closeCode(socket), 1006);
+  });
+
+  test('wrong room codes are limited to 10 per minute per IP', async () => {
+    const client = wsTestClient(wsUrl);
+    sockets.push(client.ws);
+    await client.open;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      client.send({ action: 'join_room', roomCode: `BEAT-${1000 + attempt}`, playerId: 'guesser-1' });
+      assert.match((await client.next(m => m.type === 'error')).message, /not found/i);
+    }
+    client.send({ action: 'join_room', roomCode: 'BEAT-2000', playerId: 'guesser-1' });
+    assert.match((await client.next(m => m.type === 'error')).message, /too many attempts/i);
   });
 });

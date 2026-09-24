@@ -21,7 +21,7 @@ Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/w
 
 ## Validation & limits
 - All input goes through `server/validators.ts`. Add a validator there for any new payload.
-- JSON body limit 256 kb. General API: 120 req/min per IP (`middleware/rateLimiter.ts`). WS: max 20 connections per IP and 35 messages/s, 64 KB per message.
+- JSON body limit 256 kb. General API: 120 req/min per IP (`middleware/rateLimiter.ts`). WS: max 20 connections per IP and 35 messages/s. `maxPayload` refuses a frame over 64 KiB while it arrives (close 1009), and a socket that misses a 30 s ping is terminated. Wrong room codes are limited to 10 per minute per IP.
 - Client IP is `req.ip`, which follows `TRUST_PROXY`. WS upgrades use `clientIpFromUpgrade` with the same rule. Never read `X-Forwarded-For` directly.
 - CORS allows only origins in `CORS_ALLOWED_ORIGINS`, or localhost when that's unset. A rejected origin gets a 403 JSON response from `jsonErrorHandler` (`http/security.ts`), which also turns bad or oversized bodies into 400/413 JSON.
 - Every response gets `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and `Permissions-Policy`. Production also gets a CSP (`media-src https:` for preview redirects, `font-src 'self'`, since fonts are self-hosted).
