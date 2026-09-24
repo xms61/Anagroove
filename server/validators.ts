@@ -25,6 +25,7 @@ export type WsMessage = Body & {
   col?: number;
   char?: string;
   progress?: number;
+  grid?: string[][];
 };
 
 const USER_ID_REGEX = /^[a-zA-Z0-9_-]{3,64}$/;
@@ -310,6 +311,12 @@ export function validateMusicQuery(query: Record<string, unknown>) {
   };
 }
 
+/** A grid of single-character strings, at most 30x30 (the same bounds as saved progress). */
+function isLetterGrid(value: unknown): value is string[][] {
+  return Array.isArray(value) && value.length > 0 && value.length <= 30 &&
+    value.every(row => Array.isArray(row) && row.length <= 30 && row.every(cell => typeof cell === 'string' && cell.length <= 1));
+}
+
 /**
  * Validates WebSocket messages
  */
@@ -371,6 +378,10 @@ export function validateWsMessage(message: unknown): Validation<WsMessage> {
     data.row = row;
     data.col = col;
     data.char = typeof data.char === 'string' ? data.char.slice(0, 1) : '';
+  }
+
+  if (data.action === 'puzzle_solved' && !isLetterGrid(data.grid)) {
+    return { valid: false, error: 'puzzle_solved needs the solved grid (up to 30x30 single letters)' };
   }
 
   if (data.action === 'race_progress_update') {

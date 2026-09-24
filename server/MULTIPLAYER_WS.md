@@ -10,12 +10,13 @@ Server: `server/ws/rooms.ts` (`attachMultiplayer(server, { livePuzzles })`: `Web
 | `start_game` | `roomCode` | The sender's socket must hold the host seat. Broadcasts `game_started` with the puzzle and shared grid |
 | `coop_cell_update` | `roomCode`, `row`, `col` (0–30), `char` (1 char) | Co-op rooms only. Updates `sharedGrid` and broadcasts with the sender's server-assigned id, name, and color |
 | `race_progress_update` | `roomCode`, `progress` (0–100) | Broadcasts the leaderboard |
-| `puzzle_solved` | `roomCode` | Broadcasts the sender as the winner |
+| `puzzle_solved` | `roomCode`, `grid` (the player's letters, at most 30×30) | Only in a started room, and only when `grid` matches every answer letter: sets `winnerId` and broadcasts the sender as the winner. Later claims are ignored |
 
 Server-only events: `error`, `player_left` (includes `newHostId` when the host leaves). An empty room is deleted.
 
 ## Rules
 - Every room plays the same server-generated puzzle. Clients never send their own puzzle.
+- A win is the server's call: `puzzle_solved` carries the player's grid, which is checked against the room's puzzle. The puzzle payload still contains the answers (single-player checks them locally), so a modified client could fill the grid; keeping answers off race clients would close that.
 - **Identity is bound to the socket** on create/join. For every other action the server ignores the message's `playerId` and requires `currentRoomCode === roomCode` (`memberRoom()`).
 - Taking over a seat whose `playerId` is already in the room requires that seat's `resumeToken` (128-bit, compared in constant time).
 - A dropped socket keeps its seat for 30 s (`RECONNECT_GRACE_MS`). A socket that misses one 30 s ping (`HEARTBEAT_MS`) is terminated and counts as dropped, so half-open connections free their seat too. `socketService` resends `join_room` with the token on reconnect. After the grace period the player is removed, and the host passes to the next player.

@@ -195,8 +195,9 @@ class SocketService {
     return this.send('race_progress_update', { roomCode, progress, playerId });
   }
 
-  public sendPuzzleSolved(roomCode: string, playerId: string, playerName: string) {
-    return this.send('puzzle_solved', { roomCode, playerId, playerName });
+  /** Claims the win; the server checks `grid` against the puzzle before announcing it. */
+  public sendPuzzleSolved(roomCode: string, playerId: string, playerName: string, grid: string[][]) {
+    return this.send('puzzle_solved', { roomCode, playerId, playerName, grid });
   }
 }
 

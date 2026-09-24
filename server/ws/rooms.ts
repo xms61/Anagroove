@@ -34,6 +34,8 @@ export interface Room {
   sharedGrid: string[][] | null;
   isStarted: boolean;
   players: Player[];
+  /** The first player whose solved grid the server verified; later claims are ignored. */
+  winnerId: string | null;
 }
 
 const MAX_PLAYERS_PER_ROOM = 8;
@@ -76,6 +78,13 @@ function roomSnapshot(room: Room) {
     isStarted: room.isStarted,
     players: publicPlayers(room),
   };
+}
+
+/** True when every letter cell of the puzzle holds its answer letter in `grid`. */
+function isSolvedGrid(puzzle: Puzzle, grid: string[][] | undefined): boolean {
+  if (!Array.isArray(grid) || !Array.isArray(puzzle?.grid)) return false;
+  return puzzle.grid.every((row, r) => row.every(cell =>
+    cell.isBlock || !cell.char || String(grid[r]?.[cell.col] ?? '').toUpperCase() === cell.char.toUpperCase()));
 }
 
 function emptyGrid(puzzle: Puzzle | undefined): string[][] | null {
@@ -220,6 +229,7 @@ export function attachMultiplayer(server: Server, { livePuzzles, heartbeatMs = H
           sharedGrid: emptyGrid(livePuzzle.puzzle),
           isStarted: false,
           players: [player],
+          winnerId: null,
         };
         rooms.set(roomCode, room);
 
@@ -365,7 +375,15 @@ export function attachMultiplayer(server: Server, { livePuzzles, heartbeatMs = H
           sendError('You are not a member of this room.');
           return;
         }
-        broadcastToRoom(member.room.code, { type: 'puzzle_solved', winnerId: member.player.id, winnerName: member.player.name });
+        const { room, player } = member;
+        // Only a started game can be won, only once, and only with a grid the server checked
+        if (!room.isStarted || room.winnerId) return;
+        if (!isSolvedGrid(room.puzzle, data.grid)) {
+          sendError('That grid is not solved yet.');
+          return;
+        }
+        room.winnerId = player.id;
+        broadcastToRoom(room.code, { type: 'puzzle_solved', winnerId: player.id, winnerName: player.name });
       },
     };
 

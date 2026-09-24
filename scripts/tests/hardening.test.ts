@@ -356,6 +356,52 @@ describe('HTTP and WebSocket server', () => {
     assert.equal(cell.playerId, hostId, 'the server-bound identity, not the claimed one');
     assert.equal(cell.playerColor, '#3de0ff');
   });
+
+  test('a race is won once, after the start, and only with a grid the server checked', async () => {
+    const mockTracks = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({
+      id: `deezer:${index}`, provider: 'deezer', providerTrackId: String(index), providerArtistId: String(index),
+      title, artist: `Racer ${index}`, album: 'Mock Album', albumArt: '', audioUrl: `https://cdn.example.test/${index}.mp3`,
+      selection: { source: 'deezer', rank: 500000, artistFans: 900000 },
+    }));
+    setMusicProviderForTesting({ name: 'deezer', getCandidateTracks: async () => mockTracks });
+    const hostId = `racer-${Date.now()}`;
+    const live = await readJson(await fetch(`${baseUrl}/api/puzzles/live`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': hostId },
+      body: JSON.stringify({ genre: 'all', targetWords: 6 }),
+    }));
+    setMusicProviderForTesting();
+    const solved: string[][] = live.puzzle.grid.map(row => row.map(cell => cell.char || ''));
+    const wrong = solved.map(row => row.map(char => (char ? 'Z' : '')));
+
+    const connect = async () => {
+      const client = wsTestClient(wsUrl);
+      clients.push(client);
+      await client.open;
+      return client;
+    };
+    const host = await connect();
+    host.send({ action: 'create_room', playerId: hostId, playerName: 'Host', mode: 'race', livePuzzleToken: live.livePuzzleToken });
+    const roomCode = (await host.next(m => m.type === 'room_created')).room.code;
+    const guest = await connect();
+    guest.send({ action: 'join_room', roomCode, playerId: `${hostId}-guest`, playerName: 'Guest' });
+    await guest.next(m => m.type === 'room_joined');
+
+    guest.send({ action: 'puzzle_solved', roomCode, grid: solved });
+    guest.send({ action: 'puzzle_solved', roomCode });
+    assert.match((await guest.next(m => m.type === 'error')).message, /solved grid/, 'a claim without a grid is invalid');
+
+    host.send({ action: 'start_game', roomCode });
+    await guest.next(m => m.type === 'game_started');
+    guest.send({ action: 'puzzle_solved', roomCode, grid: wrong });
+    assert.match((await guest.next(m => m.type === 'error')).message, /not solved/);
+
+    guest.send({ action: 'puzzle_solved', roomCode, grid: solved });
+    const win = await host.next(m => m.type === 'puzzle_solved');
+    assert.equal(win.winnerName, 'Guest', 'the claim sent before the start was ignored, this one counts');
+    host.send({ action: 'puzzle_solved', roomCode, grid: solved });
+    await assert.rejects(host.next(m => m.type === 'puzzle_solved', 300), /Timed out/, 'a second claim is ignored');
+  });
 });
 
 describe('WebSocket limits', () => {

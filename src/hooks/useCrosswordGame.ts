@@ -212,7 +212,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
 
       // Notify multiplayer room of win
       if (multiplayerRoom && playerId) {
-        socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');
+        socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player', currentLetters);
       }
     } else {
       setIsCompleted(false);
@@ -526,7 +526,7 @@ export function useCrosswordGame(puzzle: Puzzle, options: UseCrosswordGameOption
       celebrate();
       apiClient.recordSolved(puzzle.id, puzzle.title, puzzle.clues.length, elapsedSeconds());
       if (multiplayerRoom && playerId) {
-        socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player');
+        socketService.sendPuzzleSolved(multiplayerRoom.code, playerId, playerName || 'Player', newLetters);
       }
     }
 
