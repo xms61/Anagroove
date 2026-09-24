@@ -1,6 +1,16 @@
 # Changelog archive
 
-Releases before 1.28.8. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.9. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.8] - 2026-09-24
+
+### Changed
+- **Server tests are TypeScript:** `cli`, `crawler`, `fixtureCatalog`, `languageCorpus`, `popularity`, `sqliteCatalog`, `trackNormalization` and `unicodeDedupe`, plus the `setup_env.ts` preload. `npm test` and the single-file command in `AGENTS.md` and `TESTING.md` use `--import ./scripts/tests/setup_env.ts`.
+- **`routedFetch` returns a typed fake `fetch`**, with the requested URLs in `calls`.
+- **Waiting for the catalog module:** `catalogWindow`, `coverage` and `musicMoveArr` stay JavaScript until `sqliteCatalog` moves. Their type errors come from its inferred JavaScript types.
+- **Docs name the `.ts` test files.**
+
+---
 
 ## [1.28.7] - 2026-09-24
 
