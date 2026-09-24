@@ -20,7 +20,7 @@
   - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
   - Languages and popularity are recomputed locally by `npm run catalog:recompute` (`recomputeCatalogLanguages`, `recomputeCatalogPopularity`).
 - `authenticityFilter.ts` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.ts`.
-- `rateLimiter.ts`: token buckets plus `politeFetch` (User-Agent, retry on 429/503). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3.
+- `rateLimiter.ts`: token buckets plus `politeFetch` (User-Agent, a 20 s timeout per attempt, retry on 429/5xx with `Retry-After` capped at 30 s). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3. The buckets are shared with the web server's preview lookups, which pass `maxWaitMs` and get `ProviderBudgetError` instead of queueing.
 
 ## Shared rules (`server/policy/authenticityRules.ts`)
 `checkAuthenticity({ title, artist, album })` → `{ authentic, reason }`, where the reason is `spoken_word`, `cover`, `utility`, `artist`, or `album`. It's the single source for the crawler, `upsertTrack` (`inauthentic` rejections), and song selection (`isAuthenticTrack`). It catches covers, karaoke, soundalikes, workout/sleep/utility audio, and audiobooks/radio plays ("Kapitel 12 - …", Gruselkabinett, Hörspiel, ungekürzt). **Add new junk patterns here.**

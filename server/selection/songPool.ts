@@ -66,15 +66,18 @@ const isLiveProvider = () => musicProvider === deezerMusicProvider;
 // Live fallbacks are best-effort: a slow provider must not stall puzzle generation
 const EXTERNAL_TIMEOUT_MS = 10000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+/** Runs `run` for at most `ms`, then aborts its signal (so its requests stop) and returns `fallback`. */
+function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: number, fallback: T): Promise<T> {
+  const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<T>(resolve => {
     timer = setTimeout(() => {
       logger.warn('music_service', `External providers timed out after ${ms}ms`);
+      controller.abort();
       resolve(fallback);
     }, ms);
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([run(controller.signal), timeout]).finally(() => clearTimeout(timer));
 }
 
 function animeCandidates({ queryPlan, prompt, animeKeyphrase, limit }: {
@@ -184,15 +187,16 @@ export async function getRandomSongPool({
   const fetchExternal = async (needed: number): Promise<SongCandidate[]> => {
     externalTried = true;
     if (isLiveProvider() && isOfflineMode()) return [];
-    const request = externalCandidates({
+    const request = (signal?: AbortSignal) => externalCandidates({
       provider: musicProvider,
       itunesProvider: itunesMusicProvider,
       queryPlan,
       limit,
       includeItunes: isLiveProvider(),
       needed,
+      signal,
     });
-    const external = isLiveProvider() ? await withTimeout(request, EXTERNAL_TIMEOUT_MS, []) : await request;
+    const external = isLiveProvider() ? await withTimeout(request, EXTERNAL_TIMEOUT_MS, []) : await request();
     if (isLiveProvider() && external.length > 0) {
       try {
         const learned = learnFromExternal(catalog, external);

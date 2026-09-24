@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import http, { type IncomingMessage } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.ts';
@@ -15,6 +16,8 @@ import {
   resolvePreviewRef,
   setPreviewFetchForTesting,
 } from '../../server/services/previewResolver.ts';
+import { politeFetch, ProviderBudgetError, TokenBucketRateLimiter } from '../../server/crawler/rateLimiter.ts';
+import { fetchWithTimeout } from '../../server/services/fetchWithTimeout.ts';
 import { attachMultiplayer } from '../../server/ws/rooms.ts';
 import { createLivePuzzleStore } from '../../server/http/livePuzzleStore.ts';
 import WebSocket from 'ws';
@@ -109,6 +112,72 @@ test('TRUST_PROXY parsing and the WebSocket client IP', () => {
   assert.equal(clientIpFromUpgrade(upgrade, 1), '203.0.113.9', 'one trusted hop: the entry it appended');
 });
 
+describe('preview lookups stay within the provider budget', () => {
+  after(() => { setPreviewFetchForTesting(); clearPreviewCacheForTesting(); });
+
+  /** A stub fetch that counts calls; `answer` decides each response. */
+  function countingFetch(answer: (url: string) => Promise<Response>) {
+    const calls: string[] = [];
+    setPreviewFetchForTesting(async (url) => { calls.push(url); return answer(url); });
+    clearPreviewCacheForTesting();
+    return calls;
+  }
+
+  test('concurrent requests for one ref share a single lookup', async () => {
+    const calls = countingFetch(async () => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return mockJsonResponse({ id: 1, preview: FRESH_URL });
+    });
+    const urls = await Promise.all(Array.from({ length: 10 }, () => resolvePreviewRef('deezer:1')));
+    assert.deepEqual(new Set(urls), new Set([FRESH_URL]));
+    assert.equal(calls.length, 1);
+  });
+
+  test('a ref without a preview is not looked up again, but a failed lookup is', async () => {
+    const missing = countingFetch(async () => mockJsonResponse({ error: { type: 'DataException' } }));
+    assert.equal(await resolvePreviewRef('deezer:2'), null);
+    assert.equal(await resolvePreviewRef('deezer:2'), null);
+    assert.equal(missing.length, 1);
+
+    const failing = countingFetch(async () => { throw new Error('socket hang up'); });
+    assert.equal(await resolvePreviewRef('deezer:3'), null);
+    assert.equal(await resolvePreviewRef('deezer:3'), null);
+    assert.equal(failing.length, 2);
+  });
+
+  test('an exhausted budget rejects instead of queueing', async () => {
+    countingFetch(async () => { throw new ProviderBudgetError(); });
+    await assert.rejects(resolvePreviewRef('deezer:4'), ProviderBudgetError);
+
+    const bucket = new TokenBucketRateLimiter({ refillRatePerSec: 1, maxTokens: 1 });
+    await bucket.acquireToken({ maxWaitMs: 100 });
+    await assert.rejects(bucket.acquireToken({ maxWaitMs: 100 }), ProviderBudgetError);
+  });
+
+  test('a text search only accepts an iTunes result by the same artist', async () => {
+    countingFetch(async (url) => mockJsonResponse(url.includes('itunes.apple.com')
+      ? { results: [{ previewUrl: 'https://itunes.test/cover.m4a', trackId: 9, artistName: 'Karaoke Stars', trackName: 'Rare Song' }] }
+      : { data: [] }));
+    assert.equal(await resolveTrackPreview({ id: 'x-2', title: 'Rare Song', artist: 'Rare Band' }), null);
+  });
+
+  test('provider fetches time out, and a caller abort stops the retries', async () => {
+    const silent = http.createServer(() => {});
+    await new Promise<void>(resolve => silent.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(silent.address() as AddressInfo).port}/`;
+    try {
+      await assert.rejects(politeFetch(url, {}, { maxRetries: 1, timeoutMs: 100 }));
+      const aborted = AbortSignal.abort();
+      const start = Date.now();
+      await assert.rejects(fetchWithTimeout(url, { signal: aborted }, 5000, 2, 500));
+      assert.ok(Date.now() - start < 400, 'no backoff after the caller aborted');
+    } finally {
+      silent.closeAllConnections();
+      await new Promise(resolve => silent.close(resolve));
+    }
+  });
+});
+
 describe('HTTP and WebSocket server', () => {
   let testServer;
   let baseUrl;
@@ -139,6 +208,18 @@ describe('HTTP and WebSocket server', () => {
     assert.equal(redirect.status, 302);
     assert.equal(redirect.headers.get('location'), FRESH_URL);
     assert.equal((await fetch(`${baseUrl}/api/preview/deezer:999`, { redirect: 'manual' })).status, 404);
+  });
+
+  test('GET /api/preview answers 503 with Retry-After when the provider budget is exhausted', async () => {
+    setPreviewFetchForTesting(async () => { throw new ProviderBudgetError(); });
+    clearPreviewCacheForTesting();
+    try {
+      const response = await fetch(`${baseUrl}/api/preview/deezer:4343`, { redirect: 'manual' });
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('retry-after'), '5');
+    } finally {
+      stubPreviewFetch();
+    }
   });
 
   test('security headers are set and X-Powered-By is removed', async () => {

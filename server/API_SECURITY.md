@@ -14,7 +14,7 @@ Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/w
 | `GET/POST /api/progress` | `X-User-Id` | `validateProgressPayload` (≤30×30 grid) |
 | `GET /api/history`, `POST /api/history/solved` | `X-User-Id` | |
 | `GET/POST /api/blacklist`, `DELETE /api/blacklist/:id` | `X-User-Id` | |
-| `GET /api/preview/:ref` | none | `ref` = `deezer:<id>`, `itunes:<id>`, or `catalog:<id>`. 302 to a fresh preview URL (404 if none). Own limit of 300/min and skips the general limiter |
+| `GET /api/preview/:ref` | none | `ref` = `deezer:<id>`, `itunes:<id>`, or `catalog:<id>`. 302 to a fresh preview URL (404 if none, 503 with `Retry-After` when the shared provider budget is exhausted). Own limit of 300/min and skips the general limiter. One lookup per ref at a time; misses are cached for 10 min |
 | `/audio/anime/*` | none | static anime clips |
 
 `X-User-Id` must match `^[A-Za-z0-9_-]{3,64}$`. It's an anonymous bearer id, so treat it as a secret.

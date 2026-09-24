@@ -6,6 +6,7 @@ import { db } from '../db.ts';
 import { getRandomSongPool } from '../selection/songPool.ts';
 import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.ts';
+import { ProviderBudgetError } from '../crawler/rateLimiter.ts';
 import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.ts';
 import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
@@ -31,6 +32,10 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
       res.setHeader('Cache-Control', 'private, max-age=60');
       return res.redirect(302, url);
     } catch (err) {
+      if (err instanceof ProviderBudgetError) {
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({ error: 'Audio previews are busy. Try again in a few seconds.' });
+      }
       logger.warn('preview', `Preview resolution failed for ${ref}: ${errorMessage(err)}`);
       return res.status(502).json({ error: 'Audio preview provider unavailable' });
     }
