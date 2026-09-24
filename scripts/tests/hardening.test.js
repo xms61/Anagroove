@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
-import { validatePreviewRef } from '../../server/validators.js';
-import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.js';
+import { validatePreviewRef } from '../../server/validators.ts';
+import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.ts';
 import { db } from '../../server/db.ts';
 import {
   resolveTrackPreview,
@@ -223,6 +223,6 @@ describe('HTTP and WebSocket server', () => {
     resumed.send({ action: 'coop_cell_update', roomCode, row: 0, col: 1, char: 'Q', playerId: 'someone-else', playerColor: '#000000' });
     const cell = await guest.next(m => m.type === 'coop_cell_update');
     assert.equal(cell.playerId, hostId, 'the server-bound identity, not the claimed one');
-    assert.equal(cell.playerColor, '#1db954');
+    assert.equal(cell.playerColor, '#3de0ff');
   });
 });

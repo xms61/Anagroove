@@ -4,12 +4,16 @@
 import express from 'express';
 import { db } from '../db.ts';
 import { getRandomSongPool } from '../selection/songPool.ts';
-import { generateLiveCrossword } from '../../shared/liveCrossword.ts';
+import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.ts';
-import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.js';
+import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.ts';
 import { logger } from '../logger.js';
+import { errorMessage } from '../errors.ts';
+import type { LivePuzzleStore } from '../http/livePuzzleStore.ts';
 
-export function createMusicRouter({ livePuzzles }) {
+const stackOf = (err: unknown) => (err instanceof Error ? err.stack : undefined);
+
+export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStore }) {
   const router = express.Router();
 
   // Stable audio preview redirect. Puzzles embed /api/preview/<provider>:<id> because Deezer's
@@ -27,7 +31,7 @@ export function createMusicRouter({ livePuzzles }) {
       res.setHeader('Cache-Control', 'private, max-age=60');
       return res.redirect(302, url);
     } catch (err) {
-      logger.warn('preview', `Preview resolution failed for ${ref}: ${err.message}`);
+      logger.warn('preview', `Preview resolution failed for ${ref}: ${errorMessage(err)}`);
       return res.status(502).json({ error: 'Audio preview provider unavailable' });
     }
   });
@@ -35,7 +39,7 @@ export function createMusicRouter({ livePuzzles }) {
   // Randomized recognizable music pool with input validation
   router.get('/music/random', async (req, res) => {
     try {
-      const validatedQuery = validateMusicQuery(req.query);
+      const validatedQuery = validateMusicQuery(req.query as Record<string, unknown>);
       const rawUserId = req.headers['x-user-id'] || req.query.userId;
       const userId = rawUserId ? validateUserId(rawUserId) : null;
 
@@ -56,7 +60,7 @@ export function createMusicRouter({ livePuzzles }) {
 
       res.json({ success: true, count: songs.length, songs });
     } catch (err) {
-      logger.error('music', `Error generating random music pool: ${err.message}`, err.stack);
+      logger.error('music', `Error generating random music pool: ${errorMessage(err)}`, stackOf(err));
       res.status(500).json({ error: 'Failed to generate recognizable song pool' });
     }
   });
@@ -110,7 +114,8 @@ export function createMusicRouter({ livePuzzles }) {
           ? `⚡ Live: ${artist}`
           : `⚡ Live: ${genre === 'all' ? (popularity === 'pure' ? 'Pure Universe' : 'Eclectic Hits') : genre}`;
 
-      const puzzle = generateLiveCrossword(songs, puzzleTitle, targetWords);
+      // Every picked song has its answer, clue and a preview path (songPool.attachPreviewRefs)
+      const puzzle = generateLiveCrossword(songs as LiveSong[], puzzleTitle, targetWords);
       if (!puzzle) {
         logger.warn('puzzle', `Crossword generator could not place words from ${songs.length} candidates`);
         return res.status(422).json({
@@ -141,7 +146,7 @@ export function createMusicRouter({ livePuzzles }) {
         },
       });
     } catch (err) {
-      logger.error('puzzle', `Error generating live puzzle: ${err.message}`, err.stack);
+      logger.error('puzzle', `Error generating live puzzle: ${errorMessage(err)}`, stackOf(err));
       res.status(503).json({ error: 'Live music discovery is temporarily unavailable. Please try again.' });
     }
   });

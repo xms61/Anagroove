@@ -1,6 +1,6 @@
 # Multiplayer WebSocket
 
-Server: `server/ws/rooms.js` (`attachMultiplayer(server, { livePuzzles })`: `WebSocketServer` on `/ws`, rooms kept in an in-memory `Map`, one handler per action). Client: `src/services/socketService.ts` (auto-reconnect with backoff up to a max). Validation: `validateWsMessage` in `server/validators.js`.
+Server: `server/ws/rooms.ts` (`attachMultiplayer(server, { livePuzzles })`: `WebSocketServer` on `/ws`, rooms kept in an in-memory `Map`, one handler per action). Client: `src/services/socketService.ts` (auto-reconnect with backoff up to a max). Validation: `validateWsMessage` in `server/validators.ts`.
 
 ## Client → server actions
 | Action | Payload | Effect |

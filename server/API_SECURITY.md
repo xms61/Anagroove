@@ -1,9 +1,9 @@
 # API & Security
 
-Entry: `server/server.js` composes the app (Express 4, plus a `ws` server on `/ws`). `server/config.js` loads `.env` without overriding real env.
-- `server/http/`: `security.js` (proxy trust, client IP, headers/CSP, CORS, request log, JSON error handler) and `livePuzzleStore.js`.
-- `server/routes/`: `music.js` (preview, random pool, live puzzle; public) and `user.js` (progress, history, blacklist, behind `requireUserId`).
-- `server/ws/rooms.js`: multiplayer (see `MULTIPLAYER_WS.md`).
+Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/ws`). `server/config.js` loads `.env` without overriding real env.
+- `server/http/`: `security.ts` (proxy trust, client IP, headers/CSP, CORS, request log, JSON error handler) and `livePuzzleStore.ts`.
+- `server/routes/`: `music.ts` (preview, random pool, live puzzle; public) and `user.ts` (progress, history, blacklist, behind `requireUserId`).
+- `server/ws/rooms.ts`: multiplayer (see `MULTIPLAYER_WS.md`).
 
 ## Endpoints
 | Route | Auth | Notes |
@@ -20,10 +20,10 @@ Entry: `server/server.js` composes the app (Express 4, plus a `ws` server on `/w
 `X-User-Id` must match `^[A-Za-z0-9_-]{3,64}$`. It's an anonymous bearer id, so treat it as a secret.
 
 ## Validation & limits
-- All input goes through `server/validators.js`. Add a validator there for any new payload.
-- JSON body limit 256 kb. General API: 120 req/min per IP (`middleware/rateLimiter.js`). WS: max 20 connections per IP and 35 messages/s, 64 KB per message.
+- All input goes through `server/validators.ts`. Add a validator there for any new payload.
+- JSON body limit 256 kb. General API: 120 req/min per IP (`middleware/rateLimiter.ts`). WS: max 20 connections per IP and 35 messages/s, 64 KB per message.
 - Client IP is `req.ip`, which follows `TRUST_PROXY`. WS upgrades use `clientIpFromUpgrade` with the same rule. Never read `X-Forwarded-For` directly.
-- CORS allows only origins in `CORS_ALLOWED_ORIGINS`, or localhost when that's unset. A rejected origin gets a 403 JSON response from `jsonErrorHandler` (`http/security.js`), which also turns bad or oversized bodies into 400/413 JSON.
+- CORS allows only origins in `CORS_ALLOWED_ORIGINS`, or localhost when that's unset. A rejected origin gets a 403 JSON response from `jsonErrorHandler` (`http/security.ts`), which also turns bad or oversized bodies into 400/413 JSON.
 - Every response gets `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and `Permissions-Policy`. Production also gets a CSP (`media-src https:` for preview redirects, `font-src 'self'`, since fonts are self-hosted).
 - **User store:** `server/db.ts` → `UserStore` (`server/db/userStore.ts`), SQLite `DATA_DIR/users.sqlite` (tables `users`, `progress`, `solved_history`, `blacklist`, `meta`), opened lazily.
   - The old `store.json` (or its `.bak`) is imported once on first open, recorded in `meta`, and then no longer read.

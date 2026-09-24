@@ -1,6 +1,13 @@
 # Changelog archive
 
-Releases before 1.28.1. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.2. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.1] - 2026-09-24
+
+### Changed
+- The crawler's, the anime sync script's and the anime image service's User-Agents now link to the renamed repository (`github.com/xms61/Anagroove`); the image service's had no contact URL before.
+
+---
 
 ## [1.28.0] - 2026-09-23
 

@@ -5,7 +5,8 @@ import {
   getDeezerCacheStatsForTesting,
   resetDeezerCachesForTesting,
 } from '../../server/services/deezerMusicProvider.ts';
-import { createLivePuzzleStore } from '../../server/server.js';
+import { createLivePuzzleStore } from '../../server/server.ts';
+import type { Puzzle } from '../../shared/types.ts';
 
 const CHART = {
   data: [
@@ -92,11 +93,12 @@ describe('Deezer candidate provider', () => {
 });
 
 test('the live puzzle store evicts the oldest payload at capacity and expires idle ones', async () => {
+  const storedPuzzle = (id: string) => ({ id }) as Puzzle;
   let tokenNumber = 0;
   const store = createLivePuzzleStore({ ttlMs: 10, maxEntries: 2, createToken: () => `token-${++tokenNumber}` });
-  store.add({ id: 1 });
-  store.add({ id: 2 });
-  store.add({ id: 3 });
+  store.add(storedPuzzle('puzzle-1'));
+  store.add(storedPuzzle('puzzle-2'));
+  store.add(storedPuzzle('puzzle-3'));
   assert.equal(store.size, 2);
   await new Promise(resolve => setTimeout(resolve, 25));
   assert.equal(store.size, 0);

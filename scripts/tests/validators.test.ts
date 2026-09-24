@@ -9,7 +9,7 @@ import {
   validateLivePuzzlePayload,
   validateWsMessage,
   parseLanguageFilter,
-} from '../../server/validators.js';
+} from '../../server/validators.ts';
 
 const USER_IDS = [
   ['valid_user-123', 'valid_user-123'],
@@ -24,7 +24,7 @@ for (const [id, expected] of USER_IDS) {
 }
 
 // [validator, payload, valid, why]
-const PAYLOADS = [
+const PAYLOADS: Array<[(body: unknown) => { valid: boolean }, unknown, boolean, string]> = [
   [validateProgressPayload, { puzzleId: 'puzzle-1', userLetters: [['A', 'B'], ['C', 'D']] }, true, 'progress grid'],
   [validateProgressPayload, { puzzleId: 'puzzle-1', userLetters: [['TOOLONG', 'B']] }, false, 'progress cell with several letters'],
   [validateBlacklistPayload, { name: 'Coldplay', type: 'artist' }, true, 'blacklisted artist'],

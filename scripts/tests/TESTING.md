@@ -24,7 +24,7 @@
 - **Catalogs:** use `new SqliteCatalog(':memory:')` or a temp path, never the singleton for writes.
   - Legacy rows that `upsertTrack` would refuse (other languages, live versions, entity-encoded titles) are inserted with raw SQL. The cleanup and gate tests (`catalogCleanup.test.js`) build their fixtures this way.
   - CLI tests run the script with `spawnSync` against a catalog in `os.tmpdir()`.
-- **HTTP/WS:** import `server` from `server/server.js` and `listen(0)`. `helpers.js` has `wsTestClient`, `mockJsonResponse` and `routedFetch`.
+- **HTTP/WS:** import `server` from `server/server.ts` and `listen(0)`. `helpers.js` has `wsTestClient`, `mockJsonResponse` and `routedFetch`.
 
 | File | Covers |
 | :-- | :-- |
