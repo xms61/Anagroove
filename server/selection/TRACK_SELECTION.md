@@ -62,7 +62,7 @@ For every theme (except anime, which has its own catalog) and about 40 benchmark
 - the catalog window at `balanced`: tracks (up to 5,000), distinct artists, languages
 - five seeded 12-song puzzles: whether they fill up, and their average overlap (Jaccard, 0 = all different)
 
-Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist prompts ≥ 15 tracks, and full puzzles. `-- --ci` exits 1 on a miss. The failing rows are the crawl to-do list. Baseline on 2026-09-23, before enrichment: 28 of 54 pass. Genre themes miss on artists (few have genres) and decade prompts on release years.
+Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist prompts ≥ 15 tracks, and full puzzles. `-- --ci` exits 1 on a miss. The failing rows are the crawl to-do list. Genre themes miss on artists until `catalog:enrich -- --artists=N` fills genres, and decade prompts miss on release years until `--albums=N` runs.
 
 ## Known limits
 - Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist, so they fall back to live providers.

@@ -27,7 +27,7 @@ React 19 + TypeScript + Vite (dev on :3000, proxying `/api`, `/ws`, and `/audio`
   - `ui.tsx`: `Button` (primary/secondary/ghost/danger), `IconButton` (`label` required), `Panel` and `cx`. Use them instead of restyling buttons and surfaces.
   - `Modal` (shared shell)
   - the modals: `LiveGenerator` ("Custom puzzle"), `Multiplayer`, `Blacklist` ("Hidden artists & songs"), `Hint`, `EndScreen` (the solved puzzle's tracklist), `History` (all solved puzzles), `Settings`, plus the room victory dialog in `App.tsx`.
-  - Dialogs share one layout: a `font-display` title and a one-line muted description, sections labelled in small caps, `Button`s in the footer. Labels are plain ("Hint", "Hidden artists & songs"), and actions that used to appear only on hover are always visible.
+  - Dialogs share one layout: a `font-display` title and a one-line muted description, sections labelled in small caps, `Button`s in the footer. Labels are plain ("Hint", "Hidden artists & songs"), and actions are always visible, never hover-only.
 - Puzzle types (`Song`, `Clue`, `Puzzle`, `CellValidity`, …) live in `shared/types.ts`, shared with the server that builds the puzzles. The client imports the shared modules directly (e.g. `canonicalArtistKey`, so recent-artist keys match the server).
 
 ## Styling

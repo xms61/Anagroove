@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.9] - 2026-09-24
+
+### Changed
+- **Agent docs state current rules only:** the crawler, catalog, track selection and frontend docs drop the notes that described earlier behaviour ("before, …", "used to", "replaced") and the dated coverage pass count, and keep the reasons.
+
+---
+
 ## [1.28.8] - 2026-09-24
 
 ### Changed
@@ -80,21 +87,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.4] - 2026-09-23
-
-### Changed
-- **Server base and database modules are TypeScript:** `db`, `offline`, `shutdown`, and in `server/db/` `animeCatalog`, `catalogCleanup`, `catalogGate`, `catalogReport` and `userStore`.
-  - The modules loaded by the running catalog enrichment (`sqliteCatalog`, `catalogMigrations`, `trackNormalization`, …) follow once it finishes.
-- **New exported types:**
-  - `userStore`: `BlacklistEntry`, `BlacklistInput`, `Progress`, `SolvedItem`
-  - `catalogCleanup`: `CleanupResult`, `StepResult`, `CleanupExample`, `CatalogSummary`, `CleanupStep`
-  - `catalogGate`: `GateResult`, `GateCheck`, `GateThresholds`
-  - `catalogReport`: `CatalogStatistics`
-  - `animeCatalog`: `AnimeSong`, `AnimeTrackInput`, `AnimeTrackQuery`
-- **Private methods lose the underscore prefix and are marked `private`:** `UserStore.migrate`/`transaction`/`touchUser`/`insertBlacklistItem`, and `AnimeCatalog.initSchema`.
-- **Tests have their own config:** `tsconfig.tests.json` checks the server tests with implicit `any` and null checks relaxed, while source files stay fully strict. `npm run typecheck` runs all three configs.
-- **Tests:** `userStore`, `catalogCleanup` and `catalogReport` are TypeScript.
-
 ---
 
-Older releases (1.28.3 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.4 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
