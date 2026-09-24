@@ -9,7 +9,7 @@ const USAGE = `
 Fills catalog metadata from provider APIs. Resumable: rerun to continue.
 
   npm run catalog:enrich -- --albums=5000             release dates by album (one request per album)
-  npm run catalog:enrich -- --deezer=5000             Deezer track lookups: ISRC, release date, rank
+  npm run catalog:enrich -- --deezer=5000             Deezer track lookups: ISRC, release date, rank; Spotify-only tracks get their Deezer link by ISRC
   npm run catalog:enrich -- --artists=1000            artist fans and genres
   npm run catalog:enrich -- --itunes=200              strict iTunes cross-reference (~15 req/min: keep it small)
   npm run catalog:enrich -- --all                     every step with default limits

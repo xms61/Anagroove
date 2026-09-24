@@ -1,6 +1,29 @@
 # Changelog archive
 
-Releases before 1.28.7. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.8. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.7] - 2026-09-24
+
+### Changed
+- **Scripts are TypeScript:** every CLI under `scripts/` except `enrich_catalog.js` and `lib/cli.js`, which stay JavaScript while the catalog enrichment runs. The `npm run` aliases point at the `.ts` files.
+- **Test support is TypeScript:** `helpers`, the fixture catalog, the CI gate fixture and the e2e server. Tests `apiIntegration`, `blacklist` and `hardening` are TypeScript.
+- **New `scripts/lib/cli.d.ts`:** types for the flag helpers in `cli.js`, so flag values are typed by their options. It goes when `cli.js` moves (T7).
+- **Typed script data:**
+  - `CrawlPlan`
+  - `SampleRecord` (anime clips)
+  - `AnimeThemeMetadata` and `AnimeMetadataIndex` (the anime metadata index)
+- **The harvester reports a typed `HarvestProgress`.**
+- **Selection takes blacklist identities:** `getRandomSongPool` and the track picker take `BlacklistIdentityItem[]` instead of stored entries.
+- **Test hooks reset with no argument:** `setMusicProviderForTesting()` and `setPreviewFetchForTesting()`.
+- **New test helper `readJson`:** reads a response body for assertions.
+
+### Removed
+- **`scripts/test_multiplayer_live_sync.js`:** it no longer matched the room protocol (rooms need a live puzzle token, cells send `char`). The same co-op flow is covered by `apiIntegration`.
+- **Dead code:**
+  - `generateAllSamples`' unused `onProgress` option
+  - the anime ingest's snake_case metadata fallbacks, which no index or fallback produces
+
+---
 
 ## [1.28.6] - 2026-09-24
 

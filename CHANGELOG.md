@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.12] - 2026-09-24
+
+### Fixed
+- **Tracks from the Spotify dumps get their Deezer link.** 1,739 catalog tracks came only from the Spotify dumps, which have no previews. `npm run catalog:enrich -- --deezer=N` skipped them, because it only looked up tracks that already had a Deezer id.
+  - It now looks them up with Deezer's `/track/isrc:{ISRC}` (1,723 have an ISRC).
+  - A match stores the Deezer link, the album id and the artist's Deezer id, then fills the year and rank as usual.
+  - Their previews then resolve without a live search, and `catalog:coverage` (offline) no longer drops them.
+  - A Deezer track already linked to another row is left for `db:sanitize` to merge (`linkConflicts`).
+
+### Changed
+- **One warning line per song pool** lists the tracks dropped for having no audio preview. It used to be one warning per track.
+
+---
+
 ## [1.28.11] - 2026-09-24
 
 ### Fixed
@@ -54,27 +68,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.7] - 2026-09-24
-
-### Changed
-- **Scripts are TypeScript:** every CLI under `scripts/` except `enrich_catalog.js` and `lib/cli.js`, which stay JavaScript while the catalog enrichment runs. The `npm run` aliases point at the `.ts` files.
-- **Test support is TypeScript:** `helpers`, the fixture catalog, the CI gate fixture and the e2e server. Tests `apiIntegration`, `blacklist` and `hardening` are TypeScript.
-- **New `scripts/lib/cli.d.ts`:** types for the flag helpers in `cli.js`, so flag values are typed by their options. It goes when `cli.js` moves (T7).
-- **Typed script data:**
-  - `CrawlPlan`
-  - `SampleRecord` (anime clips)
-  - `AnimeThemeMetadata` and `AnimeMetadataIndex` (the anime metadata index)
-- **The harvester reports a typed `HarvestProgress`.**
-- **Selection takes blacklist identities:** `getRandomSongPool` and the track picker take `BlacklistIdentityItem[]` instead of stored entries.
-- **Test hooks reset with no argument:** `setMusicProviderForTesting()` and `setPreviewFetchForTesting()`.
-- **New test helper `readJson`:** reads a response body for assertions.
-
-### Removed
-- **`scripts/test_multiplayer_live_sync.js`:** it no longer matched the room protocol (rooms need a live puzzle token, cells send `char`). The same co-op flow is covered by `apiIntegration`.
-- **Dead code:**
-  - `generateAllSamples`' unused `onProgress` option
-  - the anime ingest's snake_case metadata fallbacks, which no index or fallback produces
-
----
-
-Older releases (1.28.6 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.7 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

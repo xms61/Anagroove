@@ -172,6 +172,34 @@ test('Deezer track enrichment leaves ISRC conflicts for merging, stamps missing 
   catalog.close();
 });
 
+test('a track known only from the Spotify dumps gets its Deezer link by ISRC', async () => {
+  const catalog = new SqliteCatalog(':memory:');
+  const seed = (title, artist, fields) => catalog.upsertTrack({ title, artist, durationMs: 200000, ...fields });
+  const owner = seed('Owner Song', 'Owner Act', { provider: 'deezer', providerTrackId: '31', deezerRank: 1000 });
+  const spotifyOnly = (title, isrc) => seed(title, 'Tyler Childers', { provider: 'spotify', providerTrackId: `sp-${title}`, isrc, spotifyPopularity: 70 });
+  const linked = spotifyOnly('Whitehouse Road', 'USZXT1100001');
+  const duplicate = spotifyOnly('Owner Song Copy', 'USZXT1100002');
+  spotifyOnly('No Isrc Song', null);
+  const fetchImpl = routedFetch([
+    [/track\/isrc:USZXT1100001$/, { id: 30, rank: 400000, release_date: '2011-05-17', link: 'https://www.deezer.com/track/30', album: { id: 9030 }, artist: { id: 7030 } }],
+    [/track\/isrc:USZXT1100002$/, { id: 31, rank: 1000 }],
+    [/track\/31$/, { id: 31, rank: 1000 }],
+  ]);
+
+  const stats = await new CatalogEnricher(catalog, { fetchImpl }).enrichDeezerTracks({ limit: 10 });
+
+  const links = (trackId) => catalog.db.prepare("SELECT provider_track_id, raw_metadata_json FROM track_providers WHERE track_id = ? AND provider = 'deezer'").all(trackId);
+  assert.deepEqual(links(linked.trackId).map(l => [l.provider_track_id, JSON.parse(String(l.raw_metadata_json)).albumId]), [['30', 9030]]);
+  assert.equal(catalog.db.prepare('SELECT release_year FROM tracks WHERE id = ?').get(linked.trackId).release_year, 2011);
+  assert.equal(catalog.db.prepare("SELECT deezer_id FROM artists WHERE canonical_name = 'tyler childers'").get().deezer_id, 7030, 'the artist step can now reach the artist');
+  assert.deepEqual(links(duplicate.trackId), [], 'the Deezer track already belongs to another row');
+  assert.equal(links(owner.trackId).length, 1);
+  assert.equal(stats.linkedByIsrc, 1);
+  assert.equal(stats.linkConflicts, 1);
+  assert.ok(!fetchImpl.calls.some(url => /No%20Isrc|isrc:null/.test(url)), 'a track without ISRC or Deezer id is not requested');
+  catalog.close();
+});
+
 test('artist enrichment fills fans and album genres', async () => {
   const { catalog, enricher } = enrichmentFixture();
   const stats = await enricher.enrichArtists({ limit: 10 });

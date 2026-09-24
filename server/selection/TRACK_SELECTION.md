@@ -38,7 +38,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
    - It rejects duplicate track/title/answer, blacklisted items, language/thematic/authenticity/year policy failures, and non-original versions (`classifyVersion`, which also applies to live candidates).
    - One track per artist, unless the prompt targets the artist.
    - Answer and clue via `extractAnswerKeyword`, with clue-type and length-bucket rotation. See `shared/CROSSWORD_ENGINE.md`.
-7. **Previews:** `previewRefForTrack` checks the catalog Deezer id, then the iTunes id, then `catalog:<id>`, then the live provider id. `audioUrl` becomes `/api/preview/<ref>`. Only refless songs go through `batchResolvePreviews`. Songs with no ref are dropped. Anime clips keep `/audio/anime/...`.
+7. **Previews:** `previewRefForTrack` checks the catalog Deezer id, then the iTunes id, then `catalog:<id>`, then the live provider id. `audioUrl` becomes `/api/preview/<ref>`. Songs with no provider ref (none or `catalog:<id>`) go through `batchResolvePreviews`, which searches Deezer and iTunes. Songs it can't resolve are dropped, with one warning line per pool. With `SPOTYSPICE_OFFLINE=1` (as `catalog:coverage` runs) the search is off, so they are always dropped. Anime clips keep `/audio/anime/...`.
 8. **Serving:** `GET /api/preview/:ref` calls `resolvePreviewRef`, which tries Deezer `/track/{id}`, then Deezer search, then iTunes, and redirects (302). The URL is cached until 60 s before the signed URL's `exp`.
 
 ## Rules
