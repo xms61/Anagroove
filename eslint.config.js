@@ -36,7 +36,7 @@ export default [
     }
   },
   {
-    files: ['server/**/*.{js,ts}', 'scripts/**/*.{js,ts}', 'shared/**/*.{js,ts}'],
+    files: ['server/**/*.ts', 'scripts/**/*.ts', 'shared/**/*.ts'],
     languageOptions: {
       globals: {
         process: 'readonly',
@@ -78,6 +78,16 @@ export default [
     },
   },
   {
+    // Node runs server, shared and scripts as TypeScript directly; a .js file there would skip tsc
+    files: ['server/**/*.{js,mjs,cjs}', 'shared/**/*.{js,mjs,cjs}', 'scripts/**/*.{js,mjs,cjs}'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: 'Program',
+        message: 'server/, shared/ and scripts/ are TypeScript only: rename this file to .ts.',
+      }],
+    },
+  },
+  {
     // Runs in the browser before the app (index.html)
     files: ['public/**/*.js'],
     languageOptions: {
@@ -86,7 +96,7 @@ export default [
   },
   {
     // Crawlers and long-running scripts legitimately use while(true) event loops
-    files: ['server/crawler/**/*.{js,ts}', 'scripts/**/*.{js,ts}'],
+    files: ['server/crawler/**/*.ts', 'scripts/**/*.ts'],
     rules: {
       'no-constant-condition': ['warn', { checkLoops: false }]
     }

@@ -1,9 +1,9 @@
-import { sqliteCatalog } from '../db/sqliteCatalog.js';
-import { deezerRateLimiter, itunesRateLimiter, politeFetch } from '../crawler/rateLimiter.js';
-import { logger } from '../logger.js';
+import { sqliteCatalog } from '../db/sqliteCatalog.ts';
+import { deezerRateLimiter, itunesRateLimiter, politeFetch, type TokenBucketRateLimiter } from '../crawler/rateLimiter.ts';
+import { logger } from '../logger.ts';
 import { isOfflineMode } from '../offline.ts';
-import { baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
+import { baseTitleKey, stripVersionTags } from '../db/trackNormalization.ts';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
 import { errorMessage } from '../errors.ts';
 import type { SongCandidate } from '../types.ts';
 
@@ -51,11 +51,10 @@ interface PreviewCatalog {
   }): void;
 }
 
-type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: unknown; maxRetries: number }) => Promise<Response | null>;
+type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: TokenBucketRateLimiter; maxRetries: number }) => Promise<Response | null>;
 
-// sqliteCatalog.js and rateLimiter.js are still JavaScript; their inferred types are narrower than the code (T7)
-const defaultCatalog = sqliteCatalog as unknown as PreviewCatalog;
-const defaultFetch = politeFetch as unknown as Fetch;
+const defaultCatalog: PreviewCatalog = sqliteCatalog;
+const defaultFetch: Fetch = politeFetch;
 
 // Bounded in-memory preview cache to avoid duplicate network fetches during active gameplay
 const inMemoryPreviewCache = new Map<string, { value: CachedPreview; expiresAt: number }>();
@@ -178,7 +177,7 @@ export function previewRefForTrack(track: PreviewTrack | null | undefined): stri
 // Provider lookups
 // ---------------------------------------------------------------------------
 
-async function fetchJson<T>(url: string, rateLimiter: unknown): Promise<T | null> {
+async function fetchJson<T>(url: string, rateLimiter: TokenBucketRateLimiter): Promise<T | null> {
   if (isOfflineMode() && fetchImpl === defaultFetch) return null;
   const res = await fetchImpl(url, {}, { rateLimiter, maxRetries: 2 });
   if (!res || !res.ok) return null;

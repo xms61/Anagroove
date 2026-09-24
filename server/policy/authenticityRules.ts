@@ -2,7 +2,7 @@
  * Single source of truth for "is this an authentic music recording by the credited artist?".
  * Used by the crawler filter (isAuthenticCandidate), the catalog write path (upsertTrack)
  * and song selection (isAuthenticTrack). Version variants (live, remix, ...) are handled
- * separately by classifyVersion in server/db/trackNormalization.js.
+ * separately by classifyVersion in server/db/trackNormalization.ts.
  */
 
 const COVER_TITLE = [
@@ -63,13 +63,20 @@ const SPOKEN_WORD_ALBUM = [
   /^folge\s+\d+\b/i,
 ];
 
-const matches = (patterns, text) => Boolean(text) && patterns.some(pattern => pattern.test(text));
+export type InauthenticReason = 'spoken_word' | 'cover' | 'utility' | 'artist' | 'album';
 
-/**
- * @param {{ title?: string, artist?: string, album?: string }} track
- * @returns {{ authentic: boolean, reason: null | 'spoken_word' | 'cover' | 'utility' | 'artist' | 'album' }}
- */
-export function checkAuthenticity({ title = '', artist = '', album = '' } = {}) {
+/** The metadata the rules read; missing or null fields count as empty. */
+export interface AuthenticityInput {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+}
+
+const matches = (patterns: RegExp[], text: string) => Boolean(text) && patterns.some(pattern => pattern.test(text));
+
+export function checkAuthenticity(
+  { title = '', artist = '', album = '' }: AuthenticityInput = {},
+): { authentic: true; reason: null } | { authentic: false; reason: InauthenticReason } {
   const t = String(title || '').trim();
   const a = String(artist || '').trim();
   const al = String(album || '').trim();
@@ -84,6 +91,6 @@ export function checkAuthenticity({ title = '', artist = '', album = '' } = {}) 
   return { authentic: true, reason: null };
 }
 
-export function isAuthenticMetadata(track) {
+export function isAuthenticMetadata(track: AuthenticityInput): boolean {
   return checkAuthenticity(track).authentic;
 }

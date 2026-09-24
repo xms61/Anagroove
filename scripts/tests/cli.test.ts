@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { UsageError, intFlag, listFlag, parseFlags } from '../lib/cli.js';
-import { buildEnrichPlan, DEFAULT_LIMITS } from '../enrich_catalog.js';
+import { UsageError, intFlag, listFlag, parseFlags } from '../lib/cli.ts';
+import { buildEnrichPlan, DEFAULT_LIMITS } from '../enrich_catalog.ts';
 import { buildCrawlPlan, DEFAULT_VECTOR_LIMITS } from '../crawl_catalog.ts';
 
 const OFF = { albums: null, deezer: null, artists: null, itunes: null };
@@ -19,7 +19,7 @@ for (const [args, expected] of ENRICH_CASES) {
   });
 }
 
-const USAGE_ERRORS = [
+const USAGE_ERRORS: [name: string, argv: string[]][] = [
   ['no flags runs nothing instead of every step', []],
   ['a typo is an error, not "run everything"', ['--album=500']],
   ['a non-numeric limit', ['--albums=lots']],

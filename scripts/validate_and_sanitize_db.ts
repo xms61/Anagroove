@@ -3,12 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'url';
-import { DATA_DIR } from '../server/paths.js';
+import { DATA_DIR } from '../server/paths.ts';
 import { catalogStatistics, renderValidationReport } from '../server/db/catalogReport.ts';
 import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup, type CleanupResult, type StepResult } from '../server/db/catalogCleanup.ts';
 import { DEFAULT_GATE_THRESHOLDS, evaluateCatalogGate } from '../server/db/catalogGate.ts';
-import { LATEST_CATALOG_VERSION, runCatalogMigrations } from '../server/db/catalogMigrations.js';
-import { listFlag, numberFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { LATEST_CATALOG_VERSION, runCatalogMigrations } from '../server/db/catalogMigrations.ts';
+import { listFlag, numberFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 import { errorMessage } from '../server/errors.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

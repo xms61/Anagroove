@@ -2,7 +2,7 @@
  * Extracts candidate crossword answers (song title, artist name, title keyword or anime title),
  * capped at 14 characters, supporting variable clue distributions.
  */
-import { toCrosswordAnswer } from './musicIdentity.js';
+import { toCrosswordAnswer } from './musicIdentity.ts';
 
 export type ClueType = 'Song title' | 'Artist name' | 'Song title keyword' | 'Anime title';
 export type LengthBucket = 'short' | 'medium' | 'long';

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parseFlags, parseOrExit } from './lib/cli.js';
+import { parseFlags, parseOrExit } from './lib/cli.ts';
 import { errorMessage } from '../server/errors.ts';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -3,8 +3,8 @@
  * Used by the catalog upsert path, schema migrations, ingest scripts and the validator
  * so every writer applies identical rules.
  */
-import { canonicalMusicKey } from '../../shared/musicIdentity.js';
-import { resolveTrackLanguage } from './languageClassifier.js';
+import { canonicalMusicKey } from '../../shared/musicIdentity.ts';
+import { resolveTrackLanguage } from './languageClassifier.ts';
 
 /** Catalog language policy (decision 2026-09-23): only English, Japanese and Korean. */
 export const ALLOWED_LANGUAGES = Object.freeze(['en', 'ja', 'ko']);
@@ -20,8 +20,12 @@ export const MIN_RELEASE_YEAR = 1900;
 // Version classification
 // ---------------------------------------------------------------------------
 
+export type VersionType =
+  | 'original' | 'remaster' | 'cover' | 'instrumental' | 'altered' | 'live' | 'demo'
+  | 'rerecord' | 'remix' | 'extended' | 'edit' | 'acoustic' | 'alternate';
+
 // Ordered: the first matching rule wins for a segment.
-const VERSION_RULES = [
+const VERSION_RULES: [VersionType, RegExp][] = [
   // Tags naming the original release itself ("Single ver.", "Version originale 1981")
   ['original', /\b(original (mix|version|ver\.?)|album mix|version originale|versi[oó]n original|vers[aã]o original|(single|album|lp|main|full|vocal) (version|ver\.?)|full length)(?=\W|$)/i],
   ['cover', /\b(karaoke|tribute|cover|originally performed|in the style of|made famous by)\b/i],
@@ -48,8 +52,8 @@ const LIVE_ALBUM = /\b(live (at|in|from|on|@)|in concert|unplugged|mtv unplugged
 const COVER_ALBUM = /\b(karaoke|tribute|covers?|cover versions|in the style of)\b/i;
 const INSTRUMENTAL_ALBUM = /\b(instrumentals?|off vocal|backing tracks?)\b/i;
 
-function extractVersionSegments(title) {
-  const segments = [];
+function extractVersionSegments(title: unknown): string[] {
+  const segments: string[] = [];
   const text = String(title || '');
   for (const match of text.matchAll(/[([（【]([^)\]）】]+)[)\]）】]/g)) {
     segments.push(match[1].trim());
@@ -60,7 +64,7 @@ function extractVersionSegments(title) {
   return segments;
 }
 
-function classifySegment(segment) {
+function classifySegment(segment: string): VersionType | null {
   for (const [type, pattern] of VERSION_RULES) {
     if (pattern.test(segment)) return type;
   }
@@ -72,7 +76,7 @@ function classifySegment(segment) {
  * ('live', 'remix', 'edit', 'extended', 'acoustic', 'instrumental', 'demo',
  * 'rerecord', 'altered', 'cover', 'alternate').
  */
-export function classifyVersion(title = '', album = '') {
+export function classifyVersion(title: unknown = '', album: unknown = ''): VersionType {
   let remastered = false;
   for (const segment of extractVersionSegments(title)) {
     const type = classifySegment(segment);
@@ -95,8 +99,8 @@ export function classifyVersion(title = '', album = '') {
   return remastered ? 'remaster' : 'original';
 }
 
-export function isAcceptedVersion(versionType) {
-  return ACCEPTED_VERSION_TYPES.includes(versionType);
+export function isAcceptedVersion(versionType: unknown): boolean {
+  return typeof versionType === 'string' && ACCEPTED_VERSION_TYPES.includes(versionType);
 }
 
 /**
@@ -104,7 +108,7 @@ export function isAcceptedVersion(versionType) {
  * "Get Lucky (feat. Pharrell Williams) [Radio Edit]" -> "Get Lucky".
  * Unrecognised brackets and dash suffixes are part of the title and are kept.
  */
-export function stripVersionTags(title = '') {
+export function stripVersionTags(title: unknown = ''): string {
   let text = String(title || '');
   text = text.replace(/\s*[([（【]([^)\]）】]+)[)\]）】]/g, (whole, inner) => {
     const segment = inner.trim();
@@ -121,7 +125,7 @@ export function stripVersionTags(title = '') {
  * Unicode-aware dedupe key for a song title (no spaces). Keeps kana, hangul and kanji,
  * so non-Latin titles no longer collapse to an empty key.
  */
-export function baseTitleKey(title = '') {
+export function baseTitleKey(title: unknown = ''): string {
   const stripped = stripVersionTags(title) || String(title || '');
   return canonicalMusicKey(stripped).replace(/\s+/g, '');
 }
@@ -133,27 +137,31 @@ export function baseTitleKey(title = '') {
 /**
  * Detects a track's language (ISO 639-1). Script decides for CJK and other non-Latin text;
  * Latin titles use the ELD n-gram detector, deferring to the artist's catalog language when known.
- * See languageClassifier.js for the full rules.
+ * See languageClassifier.ts for the full rules.
  */
-export function detectTrackLanguage(title = '', artist = '', { isrc = null, artistLanguage = null } = {}) {
+export function detectTrackLanguage(
+  title = '',
+  artist = '',
+  { isrc = null, artistLanguage = null }: { isrc?: string | null; artistLanguage?: string | null } = {},
+): string {
   return resolveTrackLanguage({ title, artist, isrc, artistLanguage });
 }
 
-export function isAllowedLanguage(language) {
-  return ALLOWED_LANGUAGES.includes(language);
+export function isAllowedLanguage(language: unknown): boolean {
+  return typeof language === 'string' && ALLOWED_LANGUAGES.includes(language);
 }
 
 // ---------------------------------------------------------------------------
 // Field validation
 // ---------------------------------------------------------------------------
 
-const HTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const HTML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 const ENTITY = /&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{2,6});/gi;
 // Zero-width space, word joiner and BOM (built from code points to keep this file ASCII)
 const INVISIBLE = new RegExp(`[${String.fromCharCode(0x200b, 0x2060, 0xfeff)}]`, 'g');
 
-function decodeEntities(text) {
-  return text.replace(ENTITY, (match, code) => {
+function decodeEntities(text: string): string {
+  return text.replace(ENTITY, (match, code: string) => {
     if (code[0] !== '#') return HTML_ENTITIES[code.toLowerCase()] ?? match;
     const point = code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : match;
@@ -164,7 +172,7 @@ function decodeEntities(text) {
  * Display text as stored: HTML entities decoded (provider payloads carry "I&#039;m", sometimes
  * double-encoded), invisible characters removed, whitespace collapsed, NFC.
  */
-export function cleanDisplayText(value) {
+export function cleanDisplayText(value: unknown): string {
   if (value === null || value === undefined) return '';
   let text = String(value);
   for (let i = 0; i < 3; i++) {
@@ -183,32 +191,32 @@ export function cleanDisplayText(value) {
 
 const ISRC_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 
-export function normalizeIsrc(isrc) {
+export function normalizeIsrc(isrc: unknown): string | null {
   if (typeof isrc !== 'string') return null;
   const clean = isrc.replace(/[\s-]/g, '').toUpperCase();
   return ISRC_PATTERN.test(clean) ? clean : null;
 }
 
 /** 2-letter ISRC registrant prefix (who registered the recording, not its language). */
-export function extractIsrcCountryCode(isrc = '') {
+export function extractIsrcCountryCode(isrc: unknown = ''): string | null {
   const clean = normalizeIsrc(isrc);
   return clean ? clean.slice(0, 2) : null;
 }
 
-export function normalizeReleaseYear(year, now = new Date()) {
+export function normalizeReleaseYear(year: unknown, now = new Date()): number | null {
   const value = typeof year === 'string' ? parseInt(year.slice(0, 4), 10) : Number(year);
   if (!Number.isInteger(value)) return null;
   return value >= MIN_RELEASE_YEAR && value <= now.getFullYear() + 1 ? value : null;
 }
 
-export function normalizeReleaseDate(date) {
+export function normalizeReleaseDate(date: unknown): string | null {
   if (typeof date !== 'string') return null;
   const clean = date.trim();
   return /^\d{4}(-\d{2}(-\d{2})?)?$/.test(clean) && normalizeReleaseYear(clean) ? clean : null;
 }
 
-export function isValidDuration(durationMs) {
-  return Number.isFinite(durationMs) && durationMs >= MIN_DURATION_MS && durationMs <= MAX_DURATION_MS;
+export function isValidDuration(durationMs: unknown): boolean {
+  return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= MIN_DURATION_MS && durationMs <= MAX_DURATION_MS;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +230,7 @@ export function isValidDuration(durationMs) {
 export const DEEZER_PLACEHOLDER_RANK = 100000;
 
 /** A usable Deezer rank, or null (missing, invalid or the placeholder). */
-export function normalizeDeezerRank(rank) {
+export function normalizeDeezerRank(rank: unknown): number | null {
   const value = Math.round(Number(rank));
   return Number.isFinite(value) && value > 0 && value !== DEEZER_PLACEHOLDER_RANK ? value : null;
 }
@@ -234,7 +242,9 @@ export function normalizeDeezerRank(rank) {
  */
 export const PROVISIONAL_POPULARITY = 50;
 
-export function provisionalPopularity({ deezerRank = null, spotifyPopularity = null } = {}) {
+export function provisionalPopularity(
+  { deezerRank = null, spotifyPopularity = null }: { deezerRank?: unknown; spotifyPopularity?: unknown } = {},
+): number {
   const spotify = Number(spotifyPopularity);
   if (spotifyPopularity !== null && spotifyPopularity !== undefined && Number.isFinite(spotify)) {
     return Math.max(0, Math.min(100, Math.round(spotify)));

@@ -10,7 +10,8 @@
  *                              existing row (never creates tracks)
  *   languages local         -> recompute artist/track languages (no network)
  */
-import { sqliteCatalog } from '../db/sqliteCatalog.js';
+import type { DatabaseSync } from 'node:sqlite';
+import { sqliteCatalog, type SqliteCatalog } from '../db/sqliteCatalog.ts';
 import {
   ALLOWED_LANGUAGES,
   baseTitleKey,
@@ -19,10 +20,50 @@ import {
   normalizeIsrc,
   normalizeReleaseDate,
   normalizeReleaseYear,
-} from '../db/trackNormalization.js';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
-import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
-import { logger } from '../logger.js';
+} from '../db/trackNormalization.ts';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
+import { politeFetch, deezerRateLimiter, itunesRateLimiter, type TokenBucketRateLimiter } from './rateLimiter.ts';
+import { logger } from '../logger.ts';
+import { errorMessage } from '../errors.ts';
+
+type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: TokenBucketRateLimiter; maxRetries: number }) => Promise<Response>;
+
+/** A provider response: the parsed body, or why there is none ('missing' is stamped, 'error' retried). */
+type JsonResult<T> = { status: 'ok'; data: T } | { status: 'missing'; data?: undefined } | { status: 'error'; data?: undefined };
+
+/** Reported every N items of a step: its counters plus how far it got. */
+export type EnrichProgress = { step: string; checked: number; total: number } & Record<string, number | string>;
+
+type StepOptions = { limit?: number; onProgress?: (progress: EnrichProgress) => void };
+
+interface DeezerTrackJson {
+  isrc?: string;
+  release_date?: string;
+  rank?: number;
+}
+
+interface DeezerAlbumJson {
+  release_date?: string;
+  tracks?: { data?: { id: number }[] };
+  genres?: { data?: { id: number; name: string }[] };
+}
+
+interface DeezerArtistJson {
+  nb_fan?: number;
+}
+
+interface ItunesSearchJson {
+  results?: {
+    artistName?: string;
+    trackName?: string;
+    trackTimeMillis?: number;
+    trackId?: number;
+    trackViewUrl?: string;
+    previewUrl?: string;
+    artistId?: number;
+    collectionId?: number;
+  }[];
+}
 
 const IN_SCOPE = `t.language IN (${ALLOWED_LANGUAGES.map(l => `'${l}'`).join(', ')}) AND t.version_type IN ('original', 'remaster')`;
 const ITUNES_DURATION_TOLERANCE_MS = 3000;
@@ -31,7 +72,7 @@ const ITUNES_DURATION_TOLERANCE_MS = 3000;
  * Deezer genre ids -> English names. The API localizes genre names by the caller's location
  * ("Filme/Videospiele", "Asiatische Musik"), which theme genre filters would never match.
  */
-export const DEEZER_GENRE_NAMES = Object.freeze({
+export const DEEZER_GENRE_NAMES: Readonly<Record<number, string>> = Object.freeze({
   2: 'African Music', 12: 'Arabic Music', 16: 'Asian Music', 65: 'Traditional Mexicano', 67: 'Salsa',
   71: 'Cumbia', 75: 'Brazilian Music', 81: 'Indian Music', 84: 'Country', 85: 'Alternative', 95: 'Kids',
   98: 'Classical', 106: 'Electro', 113: 'Dance', 116: 'Rap/Hip Hop', 122: 'Reggaeton', 129: 'Jazz',
@@ -40,7 +81,11 @@ export const DEEZER_GENRE_NAMES = Object.freeze({
 });
 
 export class CatalogEnricher {
-  constructor(catalog = sqliteCatalog, { fetchImpl = politeFetch } = {}) {
+  catalog: SqliteCatalog;
+  fetch: Fetch;
+  abortRequested: boolean;
+
+  constructor(catalog: SqliteCatalog = sqliteCatalog, { fetchImpl = politeFetch }: { fetchImpl?: Fetch } = {}) {
     this.catalog = catalog;
     this.fetch = fetchImpl;
     this.abortRequested = false;
@@ -50,22 +95,21 @@ export class CatalogEnricher {
     this.abortRequested = true;
   }
 
-  get db() {
+  get db(): DatabaseSync {
     return this.catalog.db;
   }
 
-  /** @returns {Promise<{ status: 'ok'|'missing'|'error', data?: any }>} */
-  async _getJson(url, rateLimiter) {
+  private async getJson<T>(url: string, rateLimiter: TokenBucketRateLimiter): Promise<JsonResult<T>> {
     try {
       const res = await this.fetch(url, {}, { rateLimiter, maxRetries: 2 });
       if (res.status === 404) return { status: 'missing' };
       if (!res.ok) return { status: 'error' };
-      const data = await res.json();
+      const data = await res.json() as T & { error?: { code?: number } };
       // Deezer reports unknown ids as 200 + { error: { code: 800 } }
       if (data?.error) return { status: data.error.code === 800 ? 'missing' : 'error' };
       return { status: 'ok', data };
     } catch (err) {
-      logger.warn('enricher', `Request failed for ${url}: ${err.message}`);
+      logger.warn('enricher', `Request failed for ${url}: ${errorMessage(err)}`);
       return { status: 'error' };
     }
   }
@@ -73,7 +117,7 @@ export class CatalogEnricher {
   /**
    * Deezer /track/{id}: ISRC, release date, rank. Most popular tracks first.
    */
-  async enrichDeezerTracks({ limit = 2000, onProgress = () => {} } = {}) {
+  async enrichDeezerTracks({ limit = 2000, onProgress = () => {} }: StepOptions = {}) {
     const work = this.db.prepare(`
       SELECT t.id, t.isrc, t.release_year, t.deezer_rank, t.spotify_popularity,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id
@@ -84,7 +128,13 @@ export class CatalogEnricher {
         AND EXISTS (SELECT 1 FROM track_providers p WHERE p.track_id = t.id AND p.provider = 'deezer')
       ORDER BY t.popularity DESC
       LIMIT ?
-    `).all(limit);
+    `).all(limit) as {
+      id: number;
+      isrc: string | null;
+      release_year: number | null;
+      deezer_rank: number | null;
+      deezer_id: string;
+    }[];
 
     const isrcOwner = this.db.prepare('SELECT id FROM tracks WHERE isrc = ?');
     const update = this.db.prepare(`
@@ -104,7 +154,7 @@ export class CatalogEnricher {
     for (const row of work) {
       if (this.abortRequested) break;
       stats.checked++;
-      const { status, data } = await this._getJson(`https://api.deezer.com/track/${row.deezer_id}`, deezerRateLimiter);
+      const { status, data } = await this.getJson<DeezerTrackJson>(`https://api.deezer.com/track/${row.deezer_id}`, deezerRateLimiter);
       if (status === 'error') {
         stats.errors++; // left un-stamped so a later run retries
         continue;
@@ -117,7 +167,7 @@ export class CatalogEnricher {
 
       let isrc = row.isrc ? null : normalizeIsrc(data.isrc);
       if (isrc) {
-        const owner = isrcOwner.get(isrc);
+        const owner = isrcOwner.get(isrc) as { id: number } | undefined;
         if (owner && owner.id !== row.id) {
           // Another row is the same recording: a duplicate for `npm run db:sanitize` to merge
           stats.isrcConflicts++;
@@ -144,7 +194,7 @@ export class CatalogEnricher {
    * plus any catalog track whose Deezer id is in the album's track list). Albums with the most
    * popular undated tracks go first.
    */
-  async enrichAlbums({ limit = 2000, onProgress = () => {} } = {}) {
+  async enrichAlbums({ limit = 2000, onProgress = () => {} }: StepOptions = {}) {
     const work = this.db.prepare(`
       SELECT json_extract(p.raw_metadata_json, '$.albumId') AS album_id,
              GROUP_CONCAT(t.id) AS track_ids,
@@ -159,7 +209,7 @@ export class CatalogEnricher {
       GROUP BY album_id
       ORDER BY popularity DESC
       LIMIT ?
-    `).all(limit);
+    `).all(limit) as { album_id: number | string; track_ids: string }[];
 
     const trackByDeezerId = this.db.prepare("SELECT track_id FROM track_providers WHERE provider = 'deezer' AND provider_track_id = ?");
     const dateTrack = this.db.prepare(`
@@ -177,7 +227,7 @@ export class CatalogEnricher {
       if (this.abortRequested) break;
       stats.checked++;
       const trackIds = new Set(String(row.track_ids).split(',').map(Number));
-      const { status, data } = await this._getJson(`https://api.deezer.com/album/${row.album_id}`, deezerRateLimiter);
+      const { status, data } = await this.getJson<DeezerAlbumJson>(`https://api.deezer.com/album/${row.album_id}`, deezerRateLimiter);
       if (status === 'error') {
         stats.errors++; // left un-stamped so a later run retries
         continue;
@@ -189,13 +239,13 @@ export class CatalogEnricher {
         for (const id of trackIds) markChecked.run(id);
         continue;
       }
-      for (const track of data.tracks?.data || []) {
-        const owner = trackByDeezerId.get(String(track.id));
+      for (const track of data?.tracks?.data || []) {
+        const owner = trackByDeezerId.get(String(track.id)) as { track_id: number } | undefined;
         if (owner) trackIds.add(owner.track_id);
       }
       this.db.exec('BEGIN;');
       try {
-        for (const id of trackIds) stats.yearFilled += dateTrack.run(releaseYear, releaseDate, id).changes;
+        for (const id of trackIds) stats.yearFilled += Number(dateTrack.run(releaseYear, releaseDate, id).changes);
         this.db.exec('COMMIT;');
       } catch (err) {
         this.db.exec('ROLLBACK;');
@@ -209,7 +259,7 @@ export class CatalogEnricher {
   /**
    * Deezer /artist/{id} (fan count) and one /album/{id} (genres) per in-scope artist.
    */
-  async enrichArtists({ limit = 500, onProgress = () => {} } = {}) {
+  async enrichArtists({ limit = 500, onProgress = () => {} }: StepOptions = {}) {
     const work = this.db.prepare(`
       SELECT a.id, a.deezer_id, a.genres_json,
              (SELECT json_extract(p.raw_metadata_json, '$.albumId')
@@ -222,7 +272,7 @@ export class CatalogEnricher {
         AND EXISTS (SELECT 1 FROM tracks t WHERE t.artist_id = a.id AND ${IN_SCOPE})
       ORDER BY in_scope_tracks DESC
       LIMIT ?
-    `).all(limit);
+    `).all(limit) as { id: number; deezer_id: string; genres_json: string | null; album_id: number | string | null }[];
 
     const update = this.db.prepare(`
       UPDATE artists SET
@@ -236,20 +286,20 @@ export class CatalogEnricher {
     for (const row of work) {
       if (this.abortRequested) break;
       stats.checked++;
-      const artist = await this._getJson(`https://api.deezer.com/artist/${row.deezer_id}`, deezerRateLimiter);
+      const artist = await this.getJson<DeezerArtistJson>(`https://api.deezer.com/artist/${row.deezer_id}`, deezerRateLimiter);
       if (artist.status === 'error') {
         stats.errors++;
         continue;
       }
 
-      let genres;
+      let genres: string[];
       try {
         genres = row.genres_json ? JSON.parse(row.genres_json) : [];
       } catch {
         genres = [];
       }
       if (row.album_id) {
-        const album = await this._getJson(`https://api.deezer.com/album/${row.album_id}`, deezerRateLimiter);
+        const album = await this.getJson<DeezerAlbumJson>(`https://api.deezer.com/album/${row.album_id}`, deezerRateLimiter);
         const albumGenres = (album.data?.genres?.data || []).map(g => DEEZER_GENRE_NAMES[g.id] || g.name).filter(Boolean);
         if (albumGenres.length > 0) {
           genres = [...new Set([...genres, ...albumGenres])];
@@ -270,7 +320,7 @@ export class CatalogEnricher {
    * the base title and the duration (within 3 s) all match; it is attached to the existing
    * row as an iTunes provider link + preview, never inserted as a new track.
    */
-  async crossReferenceItunes({ limit = 100, onProgress = () => {} } = {}) {
+  async crossReferenceItunes({ limit = 100, onProgress = () => {} }: StepOptions = {}) {
     const work = this.db.prepare(`
       SELECT t.id, t.display_title, t.canonical_title, t.duration_ms, a.display_name AS artist, a.canonical_name
       FROM tracks t JOIN artists a ON a.id = t.artist_id
@@ -279,7 +329,14 @@ export class CatalogEnricher {
         AND NOT EXISTS (SELECT 1 FROM track_providers p WHERE p.track_id = t.id AND p.provider = 'itunes')
       ORDER BY t.popularity DESC
       LIMIT ?
-    `).all(limit);
+    `).all(limit) as {
+      id: number;
+      display_title: string;
+      canonical_title: string;
+      duration_ms: number;
+      artist: string;
+      canonical_name: string;
+    }[];
 
     const markChecked = this.db.prepare("UPDATE tracks SET itunes_checked_at = datetime('now') WHERE id = ?");
     const providerOwner = this.db.prepare("SELECT track_id FROM track_providers WHERE provider = 'itunes' AND provider_track_id = ?");
@@ -294,7 +351,7 @@ export class CatalogEnricher {
       if (this.abortRequested) break;
       stats.checked++;
       const term = `${row.artist} ${row.display_title}`.replace(/[/\\?%*:|"<>]/g, ' ').slice(0, 100);
-      const { status, data } = await this._getJson(
+      const { status, data } = await this.getJson<ItunesSearchJson>(
         `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=10`,
         itunesRateLimiter
       );
@@ -311,7 +368,7 @@ export class CatalogEnricher {
       );
 
       if (match) {
-        insertProvider.run(row.id, String(match.trackId), match.trackViewUrl || null, JSON.stringify({ itunesArtistId: match.artistId, collectionId: match.collectionId }));
+        insertProvider.run(row.id, String(match.trackId), match.trackViewUrl || null, JSON.stringify({ itunesArtistId: match.artistId, collectionId: match.collectionId }) ?? null);
         if (match.previewUrl) {
           this.catalog.insertSample(row.id, { provider: 'itunes', providerTrackId: String(match.trackId), sampleUrl: match.previewUrl, audioCodec: 'm4a' });
         }

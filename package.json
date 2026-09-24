@@ -1,7 +1,7 @@
 {
   "name": "anagroove",
   "private": true,
-  "version": "1.28.9",
+  "version": "1.28.10",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "test": "node --import ./scripts/tests/setup_env.ts --test --test-force-exit --test-reporter=dot \"scripts/tests/*.test.{js,ts}\"",
+    "test": "node --import ./scripts/tests/setup_env.ts --test --test-force-exit --test-reporter=dot \"scripts/tests/*.test.ts\"",
     "test:coverage": "c8 npm test && c8 check-coverage --lines 85 --functions 85 --branches 75 --include \"server/db/**\" --include \"server/policy/**\" --include \"shared/**\"",
     "test:web": "vitest run",
     "test:e2e": "playwright test",
@@ -29,7 +29,7 @@
     "crawl:top10k": "node scripts/ingest_annas_spotify.ts --min-popularity=31",
     "crawl:status": "node scripts/crawl_catalog.ts --status",
     "db:migrate": "node scripts/migrate_catalog.ts",
-    "catalog:enrich": "node scripts/enrich_catalog.js",
+    "catalog:enrich": "node scripts/enrich_catalog.ts",
     "catalog:coverage": "node scripts/catalog_coverage.ts",
     "catalog:recompute": "node scripts/recompute_catalog.ts",
     "catalog:genres": "node scripts/populate_artist_genres.ts",

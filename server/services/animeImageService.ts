@@ -1,4 +1,4 @@
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 import type { AnimeCatalog } from '../db/animeCatalog.ts';
 import type { SongCandidate } from '../types.ts';

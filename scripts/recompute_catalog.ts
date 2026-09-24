@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import '../server/config.js';
-import { SqliteCatalog } from '../server/db/sqliteCatalog.js';
-import { recomputeCatalogLanguages } from '../server/db/catalogLanguages.js';
-import { recomputeCatalogPopularity } from '../server/db/catalogPopularity.js';
-import { parseFlags, parseOrExit } from './lib/cli.js';
+import '../server/config.ts';
+import { SqliteCatalog } from '../server/db/sqliteCatalog.ts';
+import { recomputeCatalogLanguages } from '../server/db/catalogLanguages.ts';
+import { recomputeCatalogPopularity } from '../server/db/catalogPopularity.ts';
+import { parseFlags, parseOrExit } from './lib/cli.ts';
 
 const USAGE = `
 Recomputes derived catalog fields after crawls and enrichment (local, no network):
@@ -14,7 +14,7 @@ artist languages, then track languages, then the per-language popularity percent
 
 const flags = parseOrExit(() => parseFlags({ db: { type: 'string' } }), USAGE);
 const catalog = flags.db ? new SqliteCatalog(flags.db) : new SqliteCatalog();
-const db = catalog.db!;
+const db = catalog.db;
 const started = Date.now();
 
 console.log(`Languages:  ${JSON.stringify(recomputeCatalogLanguages(db))}`);

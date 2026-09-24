@@ -15,10 +15,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
 
-    // While files move from .js to .ts: .js files are read for their types but not checked
-    "allowJs": true,
-    "checkJs": false,
-
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

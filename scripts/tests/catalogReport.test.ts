@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
 import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
 import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
 import { catalogStatistics, renderValidationReport } from '../../server/db/catalogReport.ts';

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { DEEZER_PLACEHOLDER_RANK, normalizeDeezerRank, provisionalPopularity, PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
+import { DEEZER_PLACEHOLDER_RANK, normalizeDeezerRank, provisionalPopularity, PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.ts';
 import {
   findCoverActs,
   findTracksBelowFloor,
   isAbovePopularityFloor,
   MIN_DEEZER_RANK,
   recomputeCatalogPopularity,
-} from '../../server/db/catalogPopularity.js';
+} from '../../server/db/catalogPopularity.ts';
 import { runCatalogCleanup } from '../../server/db/catalogCleanup.ts';
 import { POPULARITY_SAMPLING, popularityWeight } from '../../server/selection/candidates.ts';
 
@@ -75,7 +75,7 @@ const FLOOR_CASES = [
   ['en', null, 29, false],
   ['en', null, null, false],
 ];
-for (const [language, deezerRank, spotifyPopularity, expected] of FLOOR_CASES) {
+for (const [language, deezerRank, spotifyPopularity, expected] of FLOOR_CASES as [string, number | null, number | null, boolean][]) {
   test(`isAbovePopularityFloor(${language}, rank ${deezerRank}, Spotify ${spotifyPopularity}) is ${expected}`, () => {
     assert.equal(isAbovePopularityFloor({ language, deezerRank, spotifyPopularity }), expected);
   });

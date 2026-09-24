@@ -7,11 +7,11 @@
  * reported counts are exactly what an apply would change. Running it twice changes nothing.
  */
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
-import { checkAuthenticity } from '../policy/authenticityRules.js';
-import { createTracksFts } from './catalogMigrations.js';
-import { recomputeCatalogLanguages } from './catalogLanguages.js';
-import { findCoverActs, findTracksBelowFloor, recomputeCatalogPopularity } from './catalogPopularity.js';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
+import { checkAuthenticity } from '../policy/authenticityRules.ts';
+import { createTracksFts } from './catalogMigrations.ts';
+import { recomputeCatalogLanguages } from './catalogLanguages.ts';
+import { findCoverActs, findTracksBelowFloor, recomputeCatalogPopularity } from './catalogPopularity.ts';
 import {
   ACCEPTED_VERSION_TYPES,
   baseTitleKey,
@@ -25,7 +25,7 @@ import {
   normalizeIsrc,
   normalizeReleaseDate,
   normalizeReleaseYear,
-} from './trackNormalization.js';
+} from './trackNormalization.ts';
 
 // Order matters: rows of one song are merged before artist languages are voted and rows are
 // deleted (so the vote sees the final title set), and provider links are restored before the
@@ -256,7 +256,7 @@ function stepClassify(db: DatabaseSync): StepCounts {
 }
 
 function stepLanguages(db: DatabaseSync): StepCounts {
-  return recomputeCatalogLanguages(db);
+  return { ...recomputeCatalogLanguages(db) };
 }
 
 /**

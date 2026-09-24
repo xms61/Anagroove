@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
-import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
+import { PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.ts';
 import {
   resolveTrackPreview,
   batchResolvePreviews,
@@ -38,7 +38,7 @@ test('SQL INSERT tuples parse strings without quotes and NULL as null', () => {
   assert.equal(values[5], null);
 });
 
-const CATALOG_IDS = [
+const CATALOG_IDS: [track: Record<string, unknown>, expected: number | null][] = [
   [{ id: 'deezer:104' }, null],
   [{ id: 'sqlite:42' }, 42],
   [{ catalogTrackId: 99 }, 99],

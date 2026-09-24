@@ -2,7 +2,7 @@
 
 import { animeCatalog } from '../server/db/animeCatalog.ts';
 import { resolveAnimeCoverImages } from '../server/services/animeImageService.ts';
-import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 import type { SongCandidate } from '../server/types.ts';
 
 interface SeriesRow {

@@ -4,8 +4,8 @@
  * an artist), then the crossword answer and clue with clue-type and answer-length rotation.
  */
 import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../../shared/musicKeywords.ts';
-import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type BlacklistIdentityItem, type MusicIdentityTrack } from '../../shared/musicIdentity.js';
-import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.js';
+import { blacklistMatchesTrack, canonicalArtistKey, canonicalTrackKey, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
+import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.ts';
 import {
   isAuthenticTrack,
   isLanguagePermitted,
@@ -143,8 +143,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.duplicateTitle++;
         continue;
       }
-      // musicIdentity.d.ts types ids as strings; the matcher compares String(id) (T7 widens the type)
-      if (blacklistMatchesTrack(blacklist, track as MusicIdentityTrack)) {
+      if (blacklistMatchesTrack(blacklist, track)) {
         rejections.blacklist++;
         continue;
       }

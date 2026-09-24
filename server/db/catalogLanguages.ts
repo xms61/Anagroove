@@ -3,13 +3,25 @@
  * track's language with them. Pure local work: no network. Used by migration v3 and by
  * `npm run catalog:recompute` after new crawls.
  */
-import { classifyArtistLanguage, resolveTrackLanguage } from './languageClassifier.js';
+import type { DatabaseSync } from 'node:sqlite';
+import { classifyArtistLanguage, resolveTrackLanguage } from './languageClassifier.ts';
 
-/**
- * @param {import('node:sqlite').DatabaseSync} db
- * @returns {{ artists: number, tracks: number, changed: number }}
- */
-export function recomputeCatalogLanguages(db) {
+export interface LanguageRecompute {
+  artists: number;
+  tracks: number;
+  changed: number;
+}
+
+interface TrackLanguageRow {
+  id: number;
+  display_title: string;
+  isrc: string | null;
+  language: string | null;
+  display_name: string;
+  primary_language: string | null;
+}
+
+export function recomputeCatalogLanguages(db: DatabaseSync): LanguageRecompute {
   // SAVEPOINT batches the writes whether or not the caller already holds a transaction
   db.exec('SAVEPOINT recompute_languages;');
   try {
@@ -22,14 +34,15 @@ export function recomputeCatalogLanguages(db) {
   }
 }
 
-function recompute(db) {
+function recompute(db: DatabaseSync): LanguageRecompute {
   const setArtistLanguage = db.prepare('UPDATE artists SET primary_language = ? WHERE id = ?');
-  const artistNames = new Map(db.prepare('SELECT id, display_name FROM artists').all().map(r => [r.id, r.display_name]));
+  const artistRows = db.prepare('SELECT id, display_name FROM artists').all() as { id: number; display_name: string }[];
+  const artistNames = new Map(artistRows.map(r => [r.id, r.display_name]));
 
   let artists = 0;
-  let currentArtist = null;
-  let titles = [];
-  let isrcs = [];
+  let currentArtist: number | null = null;
+  let titles: string[] = [];
+  let isrcs: (string | null)[] = [];
   const flush = () => {
     if (currentArtist === null) return;
     const { language } = classifyArtistLanguage({ titles, isrcs, name: artistNames.get(currentArtist) || '' });
@@ -37,7 +50,9 @@ function recompute(db) {
     artists++;
   };
 
-  for (const row of db.prepare('SELECT artist_id, display_title, isrc FROM tracks ORDER BY artist_id').iterate()) {
+  const trackRows = db.prepare('SELECT artist_id, display_title, isrc FROM tracks ORDER BY artist_id').iterate() as
+    Iterable<{ artist_id: number; display_title: string; isrc: string | null }>;
+  for (const row of trackRows) {
     if (row.artist_id !== currentArtist) {
       flush();
       currentArtist = row.artist_id;
@@ -53,7 +68,7 @@ function recompute(db) {
   const rows = db.prepare(`
     SELECT t.id, t.display_title, t.isrc, t.language, a.display_name, a.primary_language
     FROM tracks t JOIN artists a ON a.id = t.artist_id
-  `).all();
+  `).all() as unknown as TrackLanguageRow[];
 
   let changed = 0;
   for (const row of rows) {

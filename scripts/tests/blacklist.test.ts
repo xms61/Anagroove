@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blacklistMatchesTrack, type BlacklistIdentityItem } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 
 const artist = (name: string): BlacklistIdentityItem[] => [{ type: 'artist', name }];
 const song = (name: string): BlacklistIdentityItem[] => [{ type: 'song', name }];

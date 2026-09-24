@@ -1,12 +1,14 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
-import { logger } from '../logger.js';
-import { DATA_DIR } from '../paths.js';
-import { runCatalogMigrations } from './catalogMigrations.js';
-import { lazySingleton } from './lazySingleton.js';
-import { isAuthenticMetadata } from '../policy/authenticityRules.js';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
+import { logger } from '../logger.ts';
+import { errorMessage } from '../errors.ts';
+import { DATA_DIR } from '../paths.ts';
+import { runCatalogMigrations, type MigrationResult } from './catalogMigrations.ts';
+import { lazySingleton } from './lazySingleton.ts';
+import { isAuthenticMetadata } from '../policy/authenticityRules.ts';
+import type { YearRange } from '../types.ts';
 import {
   baseTitleKey,
   classifyVersion,
@@ -21,9 +23,120 @@ import {
   normalizeReleaseDate,
   provisionalPopularity,
   normalizeReleaseYear,
-} from './trackNormalization.js';
+} from './trackNormalization.ts';
 
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'catalog.sqlite');
+
+/** A provider id as crawlers pass it: Deezer and iTunes ids arrive as numbers, Spotify ids as strings. */
+type ProviderId = string | number | null;
+
+export interface ArtistRow {
+  id: number;
+  canonical_name: string;
+  display_name: string;
+  spotify_id: ProviderId;
+  deezer_id: ProviderId;
+  itunes_artist_id: ProviderId;
+  fans_count: number;
+  genres_json?: string | null;
+  primary_language?: string | null;
+}
+
+export interface ArtistInput {
+  name: unknown;
+  spotifyId?: ProviderId;
+  deezerId?: ProviderId;
+  itunesArtistId?: ProviderId;
+  genres?: string[];
+  fansCount?: number;
+}
+
+/**
+ * A track as crawlers and ingest scripts hand it over. Popularity inputs: `spotifyPopularity`
+ * (0-100), `deezerRank` (0 - ~1M) or legacy `popularity` (0-100, or a Deezer rank when > 100).
+ */
+export interface TrackInput {
+  title?: string | null;
+  artist?: string | null;
+  isrc?: string | null;
+  album?: string | null;
+  durationMs?: number | null;
+  releaseYear?: number | string | null;
+  releaseDate?: string | null;
+  popularity?: number | null;
+  deezerRank?: number | null;
+  spotifyPopularity?: number | null;
+  isExplicit?: boolean;
+  provider?: string;
+  providerTrackId?: string | number | null;
+  sampleUrl?: string | null;
+  sampleCodec?: string;
+  sampleDurationSec?: number;
+  externalUrl?: string | null;
+  rawMetadata?: unknown;
+  artistMetadata?: Omit<ArtistInput, 'name'>;
+}
+
+export interface UpsertResult {
+  trackId: number;
+  isNew: boolean;
+  isMerged: boolean;
+}
+
+export interface SampleInput {
+  provider?: string;
+  providerTrackId?: string;
+  sampleUrl?: string | null;
+  audioCodec?: string;
+  sampleDurationSec?: number;
+  httpStatus?: number;
+}
+
+/** One track of a selection window (`sampleCatalogTracks`). */
+export interface CatalogRow {
+  id: number;
+  isrc: string | null;
+  language: string | null;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_ms: number | null;
+  release_year: number | null;
+  release_date: string | null;
+  popularity: number | null;
+  rand_key: number;
+  deezer_id: string | null;
+  spotify_id: string | null;
+  itunes_id: string | null;
+  sample_url: string | null;
+}
+
+export interface CatalogWindowQuery {
+  ftsQuery?: string;
+  genres?: string[];
+  artist?: string;
+  languages?: string[] | null;
+  yearRange?: YearRange | null;
+  minPopularity?: number;
+  maxPopularity?: number;
+  excludeTrackIds?: number[];
+  poolSize?: number;
+  start?: number;
+}
+
+export interface PreviewLookup {
+  id: number;
+  isrc: string | null;
+  title: string;
+  artist: string;
+  deezer_id: string | null;
+}
+
+interface TrackRow {
+  id: number;
+}
+
+type RejectionReason = 'missingFields' | 'title' | 'language' | 'version' | 'inauthentic' | 'duration';
 
 /**
  * Dedupe key for a song title: Unicode-aware, credit/version decorations removed.
@@ -42,7 +155,7 @@ export function normalizeDedupeArtist(artist = '') {
 export { detectTrackLanguage, extractIsrcCountryCode };
 
 /** Genres stored as a JSON array; anything else reads as none. */
-function parseGenres(json) {
+function parseGenres(json: string | null | undefined): string[] {
   try {
     const genres = JSON.parse(json || '[]');
     return Array.isArray(genres) ? genres : [];
@@ -51,22 +164,117 @@ function parseGenres(json) {
   }
 }
 
+function prepareStatements(db: DatabaseSync) {
+  return {
+    getArtistByCanonical: db.prepare('SELECT * FROM artists WHERE canonical_name = ?'),
+    getArtistByDeezerId: db.prepare('SELECT * FROM artists WHERE deezer_id = ?'),
+    getArtistBySpotifyId: db.prepare('SELECT * FROM artists WHERE spotify_id = ?'),
+    getArtistByItunesId: db.prepare('SELECT * FROM artists WHERE itunes_artist_id = ?'),
+
+    insertArtist: db.prepare(`
+      INSERT INTO artists (canonical_name, display_name, spotify_id, deezer_id, itunes_artist_id, genres_json, fans_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(canonical_name) DO UPDATE SET
+        spotify_id = COALESCE(excluded.spotify_id, artists.spotify_id),
+        deezer_id = COALESCE(excluded.deezer_id, artists.deezer_id),
+        itunes_artist_id = COALESCE(excluded.itunes_artist_id, artists.itunes_artist_id),
+        fans_count = MAX(artists.fans_count, excluded.fans_count)
+    `),
+
+    updateArtistGenres: db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?'),
+
+    updateArtistProviderIds: db.prepare(`
+      UPDATE artists
+      SET spotify_id = COALESCE(?, spotify_id),
+          deezer_id = COALESCE(?, deezer_id),
+          itunes_artist_id = COALESCE(?, itunes_artist_id),
+          fans_count = MAX(fans_count, ?)
+      WHERE id = ?
+    `),
+
+    getTrackByIsrc: db.prepare('SELECT * FROM tracks WHERE isrc = ?'),
+
+    // Tier 2: one row per song and artist, whatever the release or duration
+    findMatchingTrack: db.prepare(`
+      SELECT * FROM tracks
+      WHERE artist_id = ?
+        AND canonical_title = ?
+      ORDER BY (version_type = 'original') DESC, popularity DESC
+      LIMIT 1
+    `),
+
+    insertTrack: db.prepare(`
+      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date,
+                          country_code, language, popularity, is_explicit, version_type, deezer_rank, spotify_popularity, rand_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `),
+
+    updateTrack: db.prepare(`
+      UPDATE tracks
+      SET isrc = COALESCE(isrc, ?),
+          deezer_rank = CASE WHEN ? IS NULL THEN deezer_rank ELSE MAX(COALESCE(deezer_rank, 0), ?) END,
+          spotify_popularity = COALESCE(?, spotify_popularity),
+          popularity = MAX(popularity, ?),
+          release_year = COALESCE(release_year, ?),
+          release_date = COALESCE(release_date, ?),
+          album_name = COALESCE(album_name, ?),
+          country_code = COALESCE(country_code, ?),
+          language = COALESCE(language, ?),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `),
+
+    // A plain original replaces a remaster as the row's display release
+    promoteOriginal: db.prepare(`
+      UPDATE tracks
+      SET display_title = ?, version_type = 'original', duration_ms = ?, album_name = COALESCE(?, album_name), updated_at = datetime('now')
+      WHERE id = ? AND version_type = 'remaster'
+    `),
+
+    insertSample: db.prepare(`
+      INSERT OR REPLACE INTO track_samples (track_id, provider, provider_track_id, sample_url, audio_codec, sample_duration_sec, http_status, last_checked_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `),
+
+    insertProvider: db.prepare(`
+      INSERT OR REPLACE INTO track_providers (track_id, provider, provider_track_id, external_url, raw_metadata_json, harvested_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `),
+
+    getPreviewLookup: db.prepare(`
+      SELECT t.id, t.isrc, t.display_title AS title, a.display_name AS artist,
+             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id
+      FROM tracks t
+      JOIN artists a ON t.artist_id = a.id
+      WHERE t.id = ?
+    `),
+
+    countTracks: db.prepare('SELECT COUNT(*) AS c FROM tracks'),
+    countArtists: db.prepare('SELECT COUNT(*) AS c FROM artists'),
+  };
+}
+
+const artistFrom = (statement: StatementSync, value: SQLInputValue) => statement.get(value) as unknown as ArtistRow | undefined;
+
+function countOf(db: DatabaseSync, sql: string): number {
+  return Number(db.prepare(sql).get()?.count);
+}
+
 export class SqliteCatalog {
+  readonly dbPath: string;
+  /** Open until close(); a closed catalog throws "database is not open" on use. */
+  readonly db: DatabaseSync;
+  readonly migration: MigrationResult;
+  private readonly statements: ReturnType<typeof prepareStatements>;
+  private rejectionStats: Record<RejectionReason, number> = { missingFields: 0, title: 0, language: 0, version: 0, inauthentic: 0, duration: 0 };
+
   constructor(dbPath = DEFAULT_DB_PATH) {
     this.dbPath = dbPath;
-    this.db = null;
-    this._initDatabase();
-  }
-
-  _initDatabase() {
-    if (this.dbPath !== ':memory:') {
-      const dir = path.dirname(this.dbPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
+    if (dbPath !== ':memory:') {
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     }
 
-    this.db = new DatabaseSync(this.dbPath);
+    this.db = new DatabaseSync(dbPath);
 
     // Enable WAL mode, busy timeout, foreign keys, memory-mapped I/O, and cache tuning
     try {
@@ -80,130 +288,36 @@ export class SqliteCatalog {
       // Memory DBs or certain environments ignore pragma journal_mode
     }
 
-    this._createTables();
-    this._prepareStatements();
-  }
-
-  _createTables() {
-    this.migration = runCatalogMigrations(this.db, { dbPath: this.dbPath });
-    this.rejectionStats = { missingFields: 0, title: 0, language: 0, version: 0, inauthentic: 0, duration: 0 };
-  }
-
-  _prepareStatements() {
-    this.stmtGetArtistByCanonical = this.db.prepare(
-      'SELECT * FROM artists WHERE canonical_name = ?'
-    );
-
-    this.stmtGetArtistByDeezerId = this.db.prepare(
-      'SELECT * FROM artists WHERE deezer_id = ?'
-    );
-
-    this.stmtGetArtistBySpotifyId = this.db.prepare(
-      'SELECT * FROM artists WHERE spotify_id = ?'
-    );
-
-    this.stmtGetArtistByItunesId = this.db.prepare(
-      'SELECT * FROM artists WHERE itunes_artist_id = ?'
-    );
-
-    this.stmtInsertArtist = this.db.prepare(`
-      INSERT INTO artists (canonical_name, display_name, spotify_id, deezer_id, itunes_artist_id, genres_json, fans_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(canonical_name) DO UPDATE SET
-        spotify_id = COALESCE(excluded.spotify_id, artists.spotify_id),
-        deezer_id = COALESCE(excluded.deezer_id, artists.deezer_id),
-        itunes_artist_id = COALESCE(excluded.itunes_artist_id, artists.itunes_artist_id),
-        fans_count = MAX(artists.fans_count, excluded.fans_count)
-    `);
-
-    this.stmtUpdateArtistGenres = this.db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?');
-
-    this.stmtUpdateArtistProviderIds = this.db.prepare(`
-      UPDATE artists
-      SET spotify_id = COALESCE(?, spotify_id),
-          deezer_id = COALESCE(?, deezer_id),
-          itunes_artist_id = COALESCE(?, itunes_artist_id),
-          fans_count = MAX(fans_count, ?)
-      WHERE id = ?
-    `);
-
-    this.stmtGetTrackByIsrc = this.db.prepare(
-      'SELECT * FROM tracks WHERE isrc = ?'
-    );
-
-    // Tier 2: one row per song and artist, whatever the release or duration
-    this.stmtFindMatchingTrack = this.db.prepare(`
-      SELECT * FROM tracks
-      WHERE artist_id = ?
-        AND canonical_title = ?
-      ORDER BY (version_type = 'original') DESC, popularity DESC
-      LIMIT 1
-    `);
-
-    this.stmtInsertTrack = this.db.prepare(`
-      INSERT INTO tracks (isrc, canonical_title, display_title, artist_id, album_name, duration_ms, release_year, release_date,
-                          country_code, language, popularity, is_explicit, version_type, deezer_rank, spotify_popularity, rand_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    this.stmtUpdateTrack = this.db.prepare(`
-      UPDATE tracks
-      SET isrc = COALESCE(isrc, ?),
-          deezer_rank = CASE WHEN ? IS NULL THEN deezer_rank ELSE MAX(COALESCE(deezer_rank, 0), ?) END,
-          spotify_popularity = COALESCE(?, spotify_popularity),
-          popularity = MAX(popularity, ?),
-          release_year = COALESCE(release_year, ?),
-          release_date = COALESCE(release_date, ?),
-          album_name = COALESCE(album_name, ?),
-          country_code = COALESCE(country_code, ?),
-          language = COALESCE(language, ?),
-          updated_at = datetime('now')
-      WHERE id = ?
-    `);
-
-    // A plain original replaces a remaster as the row's display release
-    this.stmtPromoteOriginal = this.db.prepare(`
-      UPDATE tracks
-      SET display_title = ?, version_type = 'original', duration_ms = ?, album_name = COALESCE(?, album_name), updated_at = datetime('now')
-      WHERE id = ? AND version_type = 'remaster'
-    `);
-
-    this.stmtInsertSample = this.db.prepare(`
-      INSERT OR REPLACE INTO track_samples (track_id, provider, provider_track_id, sample_url, audio_codec, sample_duration_sec, http_status, last_checked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `);
-
-    this.stmtInsertProvider = this.db.prepare(`
-      INSERT OR REPLACE INTO track_providers (track_id, provider, provider_track_id, external_url, raw_metadata_json, harvested_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
-    `);
+    this.migration = runCatalogMigrations(this.db, { dbPath });
+    this.statements = prepareStatements(this.db);
   }
 
   /**
    * Ensures artist exists in the database, updating provider IDs if known.
    */
-  getOrCreateArtist({ name, spotifyId = null, deezerId = null, itunesArtistId = null, genres = [], fansCount = 0 }) {
+  getOrCreateArtist({ name, spotifyId = null, deezerId = null, itunesArtistId = null, genres = [], fansCount = 0 }: ArtistInput): ArtistRow | null {
     if (!name || typeof name !== 'string') return null;
 
     const displayName = cleanDisplayText(name);
     const canonical = normalizeDedupeArtist(displayName);
     if (!canonical) return null;
 
-    let artist = this.stmtGetArtistByCanonical.get(canonical);
+    const { statements } = this;
+    let artist = artistFrom(statements.getArtistByCanonical, canonical);
     if (!artist && deezerId) {
-      artist = this.stmtGetArtistByDeezerId.get(deezerId);
+      artist = artistFrom(statements.getArtistByDeezerId, deezerId);
     }
     if (!artist && spotifyId) {
-      artist = this.stmtGetArtistBySpotifyId.get(spotifyId);
+      artist = artistFrom(statements.getArtistBySpotifyId, spotifyId);
     }
     if (!artist && itunesArtistId) {
-      artist = this.stmtGetArtistByItunesId.get(itunesArtistId);
+      artist = artistFrom(statements.getArtistByItunesId, itunesArtistId);
     }
 
     if (!artist) {
       const genresJson = genres && genres.length > 0 ? JSON.stringify(genres) : null;
       try {
-        const res = this.stmtInsertArtist.run(
+        const res = statements.insertArtist.run(
           canonical,
           displayName,
           spotifyId,
@@ -223,13 +337,13 @@ export class SqliteCatalog {
         };
       } catch {
         // In case of race condition or provider id clash, fallback fetch
-        artist = (deezerId && this.stmtGetArtistByDeezerId.get(deezerId)) ||
-                 this.stmtGetArtistByCanonical.get(canonical);
+        artist = (deezerId && artistFrom(statements.getArtistByDeezerId, deezerId)) ||
+                 artistFrom(statements.getArtistByCanonical, canonical);
       }
     } else {
       // Update any newly discovered provider links or higher fan count
       try {
-        this.stmtUpdateArtistProviderIds.run(
+        statements.updateArtistProviderIds.run(
           spotifyId,
           deezerId,
           itunesArtistId,
@@ -239,23 +353,23 @@ export class SqliteCatalog {
       } catch {
         // Safe guard against provider ID collisions across alias rows
       }
-      this._addArtistGenres(artist, genres);
+      this.addArtistGenres(artist, genres);
     }
 
-    return artist;
+    return artist ?? null;
   }
 
   /** Adds genres an existing artist doesn't have yet (e.g. the theme of a playlist they appear in). */
-  _addArtistGenres(artist, genres) {
+  private addArtistGenres(artist: ArtistRow, genres: string[] | undefined) {
     if (!Array.isArray(genres) || genres.length === 0) return;
     const current = parseGenres(artist.genres_json);
     const merged = [...new Set([...current, ...genres])];
     if (merged.length === current.length) return;
     artist.genres_json = JSON.stringify(merged);
-    this.stmtUpdateArtistGenres.run(artist.genres_json, artist.id);
+    this.statements.updateArtistGenres.run(artist.genres_json, artist.id);
   }
 
-  _reject(reason) {
+  private reject(reason: RejectionReason): null {
     this.rejectionStats[reason] = (this.rejectionStats[reason] || 0) + 1;
     return null;
   }
@@ -263,7 +377,7 @@ export class SqliteCatalog {
   /**
    * Counts of upserts refused by the admission policy since this catalog was opened.
    */
-  getRejectionStats() {
+  getRejectionStats(): Record<string, number> {
     return { ...this.rejectionStats };
   }
 
@@ -274,14 +388,9 @@ export class SqliteCatalog {
    * - versions: original recordings only (a remaster counts as the original)
    * - duration: 45 s - 20 min; ISRC/year/date validated or dropped
    * Merges provider links and samples into an existing row when the song is already known.
-   *
-   * Popularity inputs: `spotifyPopularity` (0-100), `deezerRank` (0 - ~1M) or legacy
-   * `popularity` (0-100, or a Deezer rank when > 100). Stored as one 0-100 score.
-   *
-   * @param {Object} trackData
-   * @returns {{ trackId: number, isNew: boolean, isMerged: boolean } | null} null when rejected
+   * Returns null when the track is rejected.
    */
-  upsertTrack(trackData) {
+  upsertTrack(trackData: TrackInput): UpsertResult | null {
     const {
       title,
       artist,
@@ -305,27 +414,28 @@ export class SqliteCatalog {
     } = trackData;
 
     if (!title || !artist || !provider || !providerTrackId) {
-      return this._reject('missingFields');
+      return this.reject('missingFields');
     }
+    const { statements } = this;
 
     const displayTitle = cleanDisplayText(title);
     const albumName = cleanDisplayText(album) || null;
     const canonicalTitle = normalizeDedupeTitle(displayTitle);
-    if (!canonicalTitle) return this._reject('title');
+    if (!canonicalTitle) return this.reject('title');
 
     const isrc = normalizeIsrc(rawIsrc);
     // A known artist's catalog-wide language outweighs one short (often romanized) title
-    const knownArtist = this.stmtGetArtistByCanonical.get(normalizeDedupeArtist(artist));
+    const knownArtist = artistFrom(statements.getArtistByCanonical, normalizeDedupeArtist(artist));
     const language = detectTrackLanguage(displayTitle, artist, { isrc, artistLanguage: knownArtist?.primary_language ?? null });
-    if (!isAllowedLanguage(language)) return this._reject('language');
+    if (!isAllowedLanguage(language)) return this.reject('language');
 
     const versionType = classifyVersion(displayTitle, albumName || '');
-    if (!isAcceptedVersion(versionType)) return this._reject('version');
+    if (!isAcceptedVersion(versionType)) return this.reject('version');
 
-    if (!isAuthenticMetadata({ title: displayTitle, artist, album: albumName || '' })) return this._reject('inauthentic');
+    if (!isAuthenticMetadata({ title: displayTitle, artist, album: albumName || '' })) return this.reject('inauthentic');
 
     const duration = Math.round(Number(durationMs) || 0);
-    if (!isValidDuration(duration)) return this._reject('duration');
+    if (!isValidDuration(duration)) return this.reject('duration');
 
     const releaseDate = normalizeReleaseDate(rawReleaseDate);
     const releaseYear = normalizeReleaseYear(rawReleaseYear) ?? (releaseDate ? normalizeReleaseYear(releaseDate) : null);
@@ -340,32 +450,32 @@ export class SqliteCatalog {
       name: artist,
       ...artistMetadata,
     });
-    if (!artistRow) return this._reject('missingFields');
+    if (!artistRow) return this.reject('missingFields');
 
-    let existingTrack = null;
+    let existingTrack: TrackRow | undefined;
     let isMerged = false;
 
     // 1. Tier 1 Deduplication: Exact ISRC Match (same master recording)
     if (isrc) {
-      existingTrack = this.stmtGetTrackByIsrc.get(isrc);
+      existingTrack = statements.getTrackByIsrc.get(isrc) as unknown as TrackRow | undefined;
       if (existingTrack) isMerged = true;
     }
 
     // 2. Tier 2 Deduplication: same artist + same base title (one row per song)
     if (!existingTrack) {
-      existingTrack = this.stmtFindMatchingTrack.get(artistRow.id, canonicalTitle);
+      existingTrack = statements.findMatchingTrack.get(artistRow.id, canonicalTitle) as unknown as TrackRow | undefined;
       if (existingTrack) isMerged = true;
     }
 
-    let trackId;
+    let trackId: number;
     let isNew = false;
     const countryCode = extractIsrcCountryCode(isrc);
 
     if (existingTrack) {
       trackId = existingTrack.id;
       // Only fill an ISRC on the row if no other row owns it
-      const isrcForRow = isrc && !this.stmtGetTrackByIsrc.get(isrc) ? isrc : null;
-      this.stmtUpdateTrack.run(
+      const isrcForRow = isrc && !statements.getTrackByIsrc.get(isrc) ? isrc : null;
+      statements.updateTrack.run(
         isrcForRow,
         rank,
         rank,
@@ -379,11 +489,11 @@ export class SqliteCatalog {
         trackId
       );
       if (versionType === 'original') {
-        this.stmtPromoteOriginal.run(displayTitle, duration, albumName, trackId);
+        statements.promoteOriginal.run(displayTitle, duration, albumName, trackId);
       }
     } else {
       isNew = true;
-      const res = this.stmtInsertTrack.run(
+      const res = statements.insertTrack.run(
         isrc,
         canonicalTitle,
         displayTitle,
@@ -406,7 +516,7 @@ export class SqliteCatalog {
 
     // Attach sample link if available
     if (sampleUrl && typeof sampleUrl === 'string' && sampleUrl.startsWith('http')) {
-      this.stmtInsertSample.run(
+      statements.insertSample.run(
         trackId,
         provider,
         String(providerTrackId),
@@ -418,7 +528,7 @@ export class SqliteCatalog {
     }
 
     // Attach provider cross-reference
-    this.stmtInsertProvider.run(
+    statements.insertProvider.run(
       trackId,
       provider,
       String(providerTrackId),
@@ -431,11 +541,8 @@ export class SqliteCatalog {
 
   /**
    * Executes a batch of track upserts inside a single high-performance SQLite transaction.
-   *
-   * @param {Array<Object>} trackBatch
-   * @returns {{ inserted: number, merged: number, total: number }}
    */
-  upsertBatch(trackBatch = []) {
+  upsertBatch(trackBatch: TrackInput[] = []): { inserted: number; merged: number; total: number } {
     if (!trackBatch || trackBatch.length === 0) {
       return { inserted: 0, merged: 0, total: 0 };
     }
@@ -455,7 +562,7 @@ export class SqliteCatalog {
       this.db.exec('COMMIT;');
     } catch (err) {
       this.db.exec('ROLLBACK;');
-      logger.error('sqlite_catalog', `Batch transaction failed: ${err.message}`);
+      logger.error('sqlite_catalog', `Batch transaction failed: ${errorMessage(err)}`);
       throw err;
     }
 
@@ -466,17 +573,17 @@ export class SqliteCatalog {
    * Inserts or updates an audio sample for a track in SQLite.
    * Enables persistent caching of on-the-fly lazy preview resolutions.
    */
-  insertSample(trackId, {
+  insertSample(trackId: number, {
     provider = 'deezer',
     providerTrackId = '',
     sampleUrl,
     audioCodec = 'mp3',
     sampleDurationSec = 30,
     httpStatus = 200,
-  } = {}) {
+  }: SampleInput = {}): boolean {
     if (!trackId || !sampleUrl) return false;
     try {
-      this.stmtInsertSample.run(
+      this.statements.insertSample.run(
         Number(trackId),
         String(provider || 'deezer'),
         String(providerTrackId || ''),
@@ -487,7 +594,7 @@ export class SqliteCatalog {
       );
       return true;
     } catch (err) {
-      logger.warn('sqlite_catalog', `Failed to insert sample for track ${trackId}: ${err.message}`);
+      logger.warn('sqlite_catalog', `Failed to insert sample for track ${trackId}: ${errorMessage(err)}`);
       return false;
     }
   }
@@ -495,16 +602,9 @@ export class SqliteCatalog {
   /**
    * Returns the identifiers needed to mint a fresh preview for one catalog track.
    */
-  getPreviewLookup(trackId) {
+  getPreviewLookup(trackId: number): PreviewLookup | null {
     if (!Number.isInteger(trackId) || trackId <= 0) return null;
-    this.stmtGetPreviewLookup ??= this.db.prepare(`
-      SELECT t.id, t.isrc, t.display_title AS title, a.display_name AS artist,
-             (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id
-      FROM tracks t
-      JOIN artists a ON t.artist_id = a.id
-      WHERE t.id = ?
-    `);
-    return this.stmtGetPreviewLookup.get(trackId) || null;
+    return (this.statements.getPreviewLookup.get(trackId) as unknown as PreviewLookup | undefined) || null;
   }
 
   /**
@@ -527,17 +627,18 @@ export class SqliteCatalog {
     excludeTrackIds = [],
     poolSize = 400,
     start = Math.random(),
-  } = {}) {
+  }: CatalogWindowQuery = {}): CatalogRow[] {
     const conditions = ["t.version_type IN ('original', 'remaster')"];
-    const params = [];
+    const params: SQLInputValue[] = [];
 
     if (artist && typeof artist === 'string' && artist.trim()) {
       // Resolve the artist rows first so the track lookup uses the artist_id index
       const name = artist.trim();
       const collaborations = ['&', ',', 'x', 'and', 'with', 'feat.', 'ft.'].map(joiner => `${name}${joiner === ',' ? ',' : ` ${joiner}`} %`);
-      const artistIds = this.db.prepare(
+      const artistRows = this.db.prepare(
         `SELECT id FROM artists WHERE canonical_name = ? OR display_name = ? OR ${collaborations.map(() => 'display_name LIKE ?').join(' OR ')}`
-      ).all(normalizeDedupeArtist(name), name, ...collaborations).map(r => r.id);
+      ).all(normalizeDedupeArtist(name), name, ...collaborations) as { id: number }[];
+      const artistIds = artistRows.map(r => r.id);
       if (artistIds.length === 0) return [];
       conditions.push(`t.artist_id IN (${artistIds.map(() => '?').join(', ')})`);
       params.push(...artistIds);
@@ -584,13 +685,13 @@ export class SqliteCatalog {
       JOIN artists a ON a.id = t.artist_id`;
     const startKey = Math.min(Math.max(Number(start) || 0, 0), 0.999999999);
 
-    const windowed = (extraCondition, extraParams) => {
+    const windowed = (extraCondition: string | null, extraParams: SQLInputValue[]): CatalogRow[] => {
       const where = [...conditions, extraCondition].filter(Boolean).join(' AND ');
       const head = this.db.prepare(`${select} WHERE ${where} AND t.rand_key >= ? ORDER BY t.rand_key LIMIT ?`)
-        .all(...params, ...extraParams, startKey, poolSize);
+        .all(...params, ...extraParams, startKey, poolSize) as unknown as CatalogRow[];
       if (head.length >= poolSize) return head;
       const tail = this.db.prepare(`${select} WHERE ${where} AND t.rand_key < ? ORDER BY t.rand_key LIMIT ?`)
-        .all(...params, ...extraParams, startKey, poolSize - head.length);
+        .all(...params, ...extraParams, startKey, poolSize - head.length) as unknown as CatalogRow[];
       return [...head, ...tail];
     };
 
@@ -607,12 +708,10 @@ export class SqliteCatalog {
     return windowed(null, []);
   }
 
-  countSummary() {
-    this.stmtCountTracks ??= this.db.prepare('SELECT COUNT(*) AS c FROM tracks');
-    this.stmtCountArtists ??= this.db.prepare('SELECT COUNT(*) AS c FROM artists');
+  countSummary(): { tracks: number; artists: number } {
     return {
-      tracks: Number(this.stmtCountTracks.get().c),
-      artists: Number(this.stmtCountArtists.get().c),
+      tracks: Number(this.statements.countTracks.get()?.c),
+      artists: Number(this.statements.countArtists.get()?.c),
     };
   }
 
@@ -620,36 +719,28 @@ export class SqliteCatalog {
    * Returns high-level catalog statistics.
    */
   getStats() {
-    const artistCount = this.db.prepare('SELECT COUNT(*) as count FROM artists').get().count;
-    const trackCount = this.db.prepare('SELECT COUNT(*) as count FROM tracks').get().count;
-    const sampleCount = this.db.prepare('SELECT COUNT(*) as count FROM track_samples').get().count;
-    const providerCount = this.db.prepare('SELECT COUNT(*) as count FROM track_providers').get().count;
-    const crossReferenced = this.db.prepare(`
+    const sampleCount = countOf(this.db, 'SELECT COUNT(*) as count FROM track_samples');
+    const crossReferenced = countOf(this.db, `
       SELECT COUNT(*) as count FROM (
         SELECT track_id FROM track_providers GROUP BY track_id HAVING COUNT(provider) > 1
       )
-    `).get().count;
-    const languageCount = this.db.prepare('SELECT COUNT(DISTINCT language) as count FROM tracks WHERE language IS NOT NULL').get().count;
-    const countryCount = this.db.prepare('SELECT COUNT(DISTINCT country_code) as count FROM tracks WHERE country_code IS NOT NULL').get().count;
+    `);
 
     return {
-      artists: Number(artistCount),
-      tracks: Number(trackCount),
-      audioSamples: Number(sampleCount),
-      samples: Number(sampleCount),
-      providerLinks: Number(providerCount),
-      crossReferencedTracks: Number(crossReferenced),
-      crossReferenced: Number(crossReferenced),
-      languages: Number(languageCount),
-      countryCodes: Number(countryCount),
+      artists: countOf(this.db, 'SELECT COUNT(*) as count FROM artists'),
+      tracks: countOf(this.db, 'SELECT COUNT(*) as count FROM tracks'),
+      audioSamples: sampleCount,
+      samples: sampleCount,
+      providerLinks: countOf(this.db, 'SELECT COUNT(*) as count FROM track_providers'),
+      crossReferencedTracks: crossReferenced,
+      crossReferenced,
+      languages: countOf(this.db, 'SELECT COUNT(DISTINCT language) as count FROM tracks WHERE language IS NOT NULL'),
+      countryCodes: countOf(this.db, 'SELECT COUNT(DISTINCT country_code) as count FROM tracks WHERE country_code IS NOT NULL'),
     };
   }
 
-  close() {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
+  close(): void {
+    if (this.db.isOpen) this.db.close();
   }
 }
 

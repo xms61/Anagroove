@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRng, weightedOrder } from '../../server/selection/random.ts';
 import { catalogCandidates } from '../../server/selection/candidates.ts';
-import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
+import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
+import type { QueryPlan } from '../../server/services/queryBuilder.ts';
 
 test('the seeded RNG is reproducible and seed-dependent', () => {
   const a = createRng('seed-1');
@@ -63,7 +64,7 @@ test('the catalog window honours an explicit language filter', () => {
   const catalog = new SqliteCatalog(':memory:');
   catalog.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '901', deezerRank: 800000 });
   catalog.upsertTrack({ title: 'アイドル', artist: 'YOASOBI', durationMs: 213000, provider: 'deezer', providerTrackId: '902', deezerRank: 800000, isrc: 'JPU902300400' });
-  const rows = catalogCandidates({ catalog, queryPlan: { genre: 'all', popularity: 'pure', languages: ['ja'] }, prompt: '', rng: createRng('lang') });
+  const rows = catalogCandidates({ catalog, queryPlan: { genre: 'all', popularity: 'pure', languages: ['ja'] } as QueryPlan, prompt: '', rng: createRng('lang') });
   assert.deepEqual(rows.map(r => r.language), ['ja']);
   catalog.close();
 });

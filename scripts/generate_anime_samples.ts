@@ -3,7 +3,7 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.ts';
-import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { intFlag, parseFlags, parseOrExit } from './lib/cli.ts';
 import { errorMessage } from '../server/errors.ts';
 
 const __filename = fileURLToPath(import.meta.url);

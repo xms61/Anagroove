@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import '../server/config.js';
-import { SqliteCatalog } from '../server/db/sqliteCatalog.js';
-import { LATEST_CATALOG_VERSION } from '../server/db/catalogMigrations.js';
-import { parseFlags, parseOrExit } from './lib/cli.js';
+import '../server/config.ts';
+import { SqliteCatalog } from '../server/db/sqliteCatalog.ts';
+import { LATEST_CATALOG_VERSION } from '../server/db/catalogMigrations.ts';
+import { parseFlags, parseOrExit } from './lib/cli.ts';
 
 const USAGE = `
 Applies pending catalog schema migrations (the server also applies them on first use).
@@ -16,7 +16,7 @@ if (flags['no-backup']) process.env.SPOTYSPICE_SKIP_DB_BACKUP = '1';
 
 const started = Date.now();
 const catalog = flags.db ? new SqliteCatalog(flags.db) : new SqliteCatalog();
-const { from, to, applied, backupPath } = catalog.migration!;
+const { from, to, applied, backupPath } = catalog.migration;
 
 if (applied.length === 0) {
   console.log(`Catalog already at schema v${to} (latest v${LATEST_CATALOG_VERSION}). Nothing to do.`);
@@ -26,5 +26,5 @@ if (applied.length === 0) {
   if (backupPath) console.log(`Backup: ${backupPath}`);
 }
 
-catalog.db!.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+catalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
 catalog.close();

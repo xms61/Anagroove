@@ -7,7 +7,7 @@ import { getRandomSongPool } from '../selection/songPool.ts';
 import { generateLiveCrossword, type LiveSong } from '../../shared/liveCrossword.ts';
 import { resolvePreviewRef } from '../services/previewResolver.ts';
 import { parseLanguageFilter, validateLivePuzzlePayload, validateMusicQuery, validatePreviewRef, validateUserId } from '../validators.ts';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 import type { LivePuzzleStore } from '../http/livePuzzleStore.ts';
 

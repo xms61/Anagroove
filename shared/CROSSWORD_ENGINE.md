@@ -1,7 +1,7 @@
 # Crossword Engine
 
 ## Modules
-- `musicIdentity.js`: `canonicalMusicKey` (Unicode-aware identity key), `toCrosswordAnswer` (A–Z/0–9 only, `&`/`+` become `AND`, rejects non-Latin), and blacklist matching.
+- `musicIdentity.ts`: `canonicalMusicKey` (Unicode-aware identity key), `toCrosswordAnswer` (A–Z/0–9 only, `&`/`+` become `AND`, rejects non-Latin), and blacklist matching.
 - `musicKeywords.ts`: `extractAnswerKeyword`, `extractAllAnswerCandidates`, `splitArtistNames`, and `isSingleEntityArtist`.
 - `clueGenerator.ts`: `formatCrosswordClue`, `sanitizeClue`, and `containsAnswerLeak`.
 - `liveCrossword.ts`: `generateLiveCrossword(songs, title, targetWords)`, the grid placement engine.

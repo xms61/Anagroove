@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.10] - 2026-09-24
+
+### Changed
+- **The catalog and enrichment modules are TypeScript**, which finishes the migration:
+  - `server/db/`: `sqliteCatalog`, `catalogMigrations`, `catalogLanguages`, `catalogPopularity`, `languageClassifier`, `trackNormalization`, `lazySingleton`
+  - `server/crawler/`: `enricher`, `rateLimiter`
+  - `server/policy/authenticityRules`
+  - `server/config`, `logger`, `paths`
+  - `shared/musicIdentity`
+  - `scripts/enrich_catalog`, `scripts/lib/cli`
+  - `npm run catalog:enrich` runs the `.ts` file.
+- **`SqliteCatalog.db` is always the open database.** `close()` can be called twice, and using a closed catalog throws "database is not open".
+- **Typed catalog data:** `TrackInput`, `ArtistRow`, `CatalogRow`, `CatalogWindowQuery`, `MigrationResult`, `EnrichProgress`, `VersionType`.
+  - The catalog's prepared statements are built in one place.
+  - The table-column checks in the migrations share one helper.
+- **Temporary casts removed:** the casts and the `cli.d.ts` / `musicIdentity.d.ts` declarations that bridged to the JavaScript modules are gone.
+- **Tests:** `catalogWindow`, `coverage` and `musicMoveArr` are TypeScript. Every server test is now `.test.ts`.
+- **`tsconfig.node.json` no longer allows JavaScript.** `npm run lint` rejects any `.js`, `.mjs` or `.cjs` file under `server/`, `shared/` or `scripts/`.
+
+---
+
 ## [1.28.9] - 2026-09-24
 
 ### Changed
@@ -66,27 +87,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.5] - 2026-09-23
-
-### Changed
-- **Song selection, policy, services and the crawler's harvester are TypeScript:**
-  - `server/selection/` (`candidates`, `coverage`, `random`, `songPool`, `trackPicker`) and `server/policy/selectionPolicy`
-  - `server/services/` (`animeImageService`, `deezerMusicProvider`, `fetchWithTimeout`, `ffmpegHelper`, `itunesMusicProvider`, `previewResolver`, `queryBuilder`)
-  - `server/crawler/` (`artistBaseline`, `authenticityFilter`, `harvester`)
-- **New `server/types.ts`:** `SongCandidate` (a song as it moves through selection, from any source), `TrackLike` and `YearRange`.
-- **Typed interfaces between modules:**
-  - `QueryPlan`, `PromptOptions` and `QueryOptions` (query builder)
-  - `CatalogSource` and `MusicProvider` (candidate sources)
-  - `SongPoolRequest` and `PickedSong`
-  - `ResolvedPreview` and `PreviewTrack`
-  - the Deezer and iTunes API payloads (`DeezerApiTrack`, `ItunesApiTrack`)
-  - `HarvestCatalog`, `HarvestResult` and `DiscographyResult` (harvester)
-- **New `server/errors.ts`:** `errorMessage(err)` reads the message of a caught value.
-- **Temporary casts:** where these modules call `sqliteCatalog`, `rateLimiter` or `musicIdentity` (still JavaScript while the catalog enrichment runs), they cast once to a small interface. The casts go when those files move.
-- **Tests:** `animeArt`, `animeCatalog`, `authenticity`, `itunesProvider`, `offline`, `queryBuilder`, `selectionPolicy` and `trackPicker` are TypeScript.
-
----
-
----
-
-Older releases (1.28.4 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.5 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

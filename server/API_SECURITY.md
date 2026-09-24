@@ -1,6 +1,6 @@
 # API & Security
 
-Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/ws`). `server/config.js` loads `.env` without overriding real env.
+Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/ws`). `server/config.ts` loads `.env` without overriding real env.
 - `server/http/`: `security.ts` (proxy trust, client IP, headers/CSP, CORS, request log, JSON error handler) and `livePuzzleStore.ts`.
 - `server/routes/`: `music.ts` (preview, random pool, live puzzle; public) and `user.ts` (progress, history, blacklist, behind `requireUserId`).
 - `server/ws/rooms.ts`: multiplayer (see `MULTIPLAYER_WS.md`).

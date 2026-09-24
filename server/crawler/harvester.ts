@@ -1,15 +1,16 @@
-import { sqliteCatalog } from '../db/sqliteCatalog.js';
-import { classifyArtistLanguage } from '../db/languageClassifier.js';
-import { ALLOWED_LANGUAGES, baseTitleKey, stripVersionTags } from '../db/trackNormalization.js';
-import { MIN_ARTIST_FANS } from '../db/catalogPopularity.js';
-import { canonicalArtistKey } from '../../shared/musicIdentity.js';
+import { sqliteCatalog } from '../db/sqliteCatalog.ts';
+import { classifyArtistLanguage } from '../db/languageClassifier.ts';
+import { ALLOWED_LANGUAGES, baseTitleKey, stripVersionTags } from '../db/trackNormalization.ts';
+import { MIN_ARTIST_FANS } from '../db/catalogPopularity.ts';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
 import { isAuthenticCandidate } from './authenticityFilter.ts';
-import { politeFetch, deezerRateLimiter, itunesRateLimiter } from './rateLimiter.js';
+import { politeFetch, deezerRateLimiter, itunesRateLimiter, type TokenBucketRateLimiter } from './rateLimiter.ts';
 import { STREAMED_ARTIST_NAMES } from './artistBaseline.ts';
-import { logger } from '../logger.js';
+import { logger } from '../logger.ts';
 import { THEMES, genresForPrompt } from '../../shared/themes.ts';
 import { errorMessage } from '../errors.ts';
 import type { DatabaseSync } from 'node:sqlite';
+import type { TrackInput } from '../db/sqliteCatalog.ts';
 import type { DeezerApiTrack } from '../services/deezerMusicProvider.ts';
 
 interface DeezerArtistJson {
@@ -41,12 +42,12 @@ export interface DiscographyResult extends HarvestResult {
 /** The catalog calls the harvester makes (SqliteCatalog). */
 export interface HarvestCatalog {
   db: DatabaseSync;
-  upsertBatch(batch: object[]): { inserted: number; merged: number };
+  upsertBatch(batch: TrackInput[]): { inserted: number; merged: number };
   countSummary(): { tracks: number; artists: number };
   getRejectionStats(): Record<string, number>;
 }
 
-type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: unknown }) => Promise<Response>;
+type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: TokenBucketRateLimiter }) => Promise<Response>;
 
 export interface HarvestOptions {
   targetTracks?: number;
@@ -66,9 +67,8 @@ export interface HarvestProgress {
   [counter: string]: unknown;
 }
 
-// sqliteCatalog.js and rateLimiter.js are still JavaScript; their inferred types are narrower than the code (T7)
-const defaultCatalog = sqliteCatalog as unknown as HarvestCatalog;
-const defaultFetch = politeFetch as unknown as Fetch;
+const defaultCatalog: HarvestCatalog = sqliteCatalog;
+const defaultFetch: Fetch = politeFetch;
 
 // High-frequency music words (English, plus romanized Japanese/Korean) for broad search sweeps
 export const MUSIC_LEXICON_SEEDS = [
@@ -266,7 +266,7 @@ export class MusicHarvester {
     this.abortRequested = true;
   }
 
-  async _getJson<T>(url: string, rateLimiter: unknown = deezerRateLimiter): Promise<T | null> {
+  async _getJson<T>(url: string, rateLimiter: TokenBucketRateLimiter = deezerRateLimiter): Promise<T | null> {
     const response = await this.fetch(url, {}, { rateLimiter });
     if (!response.ok) return null;
     return response.json() as Promise<T>;
