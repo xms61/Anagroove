@@ -206,7 +206,6 @@ export function parseLanguageFilter(value: unknown): { valid: boolean; languages
 
 export interface LivePuzzleRequest {
   genre: string;
-  minFans: number;
   targetWords: number;
   recentIds: string[];
   prompt: string;
@@ -226,7 +225,6 @@ export function validateLivePuzzlePayload(body: unknown): Validation<LivePuzzleR
   if (body.album !== undefined && typeof body.album !== 'string') return { valid: false, error: 'Invalid album' };
   if (body.decade !== undefined && typeof body.decade !== 'string') return { valid: false, error: 'Invalid decade' };
   if (body.popularity !== undefined && typeof body.popularity !== 'string') return { valid: false, error: 'Invalid popularity' };
-  if (body.minFans !== undefined && !Number.isFinite(Number(body.minFans))) return { valid: false, error: 'Invalid minFans' };
   if (body.targetWords !== undefined && !Number.isFinite(Number(body.targetWords))) return { valid: false, error: 'Invalid targetWords' };
   if (body.recentIds !== undefined && !Array.isArray(body.recentIds)) return { valid: false, error: 'recentIds must be an array' };
   const languageFilter = parseLanguageFilter(body.languages);
@@ -234,7 +232,6 @@ export function validateLivePuzzlePayload(body: unknown): Validation<LivePuzzleR
 
   const rawGenre = typeof body.genre === 'string' ? body.genre.trim().toLowerCase() : 'all';
   const genre = rawGenre.replace(/[^a-z0-9_\s-]/g, '').slice(0, 50) || 'all';
-  const minFans = Math.max(0, Math.min(50000000, parseInt(String(body.minFans)) || 250000));
   const targetWords = Math.max(6, Math.min(15, parseInt(String(body.targetWords)) || 10));
   const recentIds = Array.isArray(body.recentIds)
     ? (body.recentIds as unknown[])
@@ -257,7 +254,6 @@ export function validateLivePuzzlePayload(body: unknown): Validation<LivePuzzleR
     valid: true,
     data: {
       genre,
-      minFans,
       targetWords,
       recentIds,
       prompt,
@@ -276,7 +272,6 @@ export function validateLivePuzzlePayload(body: unknown): Validation<LivePuzzleR
  */
 export function validateMusicQuery(query: Record<string, unknown>) {
   const genre = typeof query.genre === 'string' ? query.genre.slice(0, 50).toLowerCase().replace(/[^a-z0-9_\s-]/g, '') : 'all';
-  const minFans = Math.max(0, Math.min(50000000, parseInt(String(query.minFans)) || 250000));
   const count = Math.max(1, Math.min(50, parseInt(String(query.count)) || 25));
   
   let recentIds: string[] = [];
@@ -299,7 +294,6 @@ export function validateMusicQuery(query: Record<string, unknown>) {
 
   return {
     genre: genre || 'all',
-    minFans,
     count,
     recentIds,
     prompt,

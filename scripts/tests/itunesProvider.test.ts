@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mapItunesTrack, detectStorefront } from '../../server/services/itunesMusicProvider.ts';
+import { itunesMusicProvider, mapItunesTrack } from '../../server/services/itunesMusicProvider.ts';
 
 test('an iTunes result maps to a track with 600px artwork; one without a preview is dropped', () => {
   const track = mapItunesTrack({
@@ -17,16 +17,14 @@ test('an iTunes result maps to a track with 600px artwork; one without a preview
   assert.equal(mapItunesTrack({ trackId: 999 }), null);
 });
 
-const STOREFRONTS = [
-  ['Japanese City Pop', 'JP'],
-  ['Korean Trot', 'KR'],
-  ['K-Pop', 'US'],
-  ['Britpop', 'GB'],
-  ['French House', 'US'],
-  ['90s Grunge', 'US'],
-];
-for (const [query, storefront] of STOREFRONTS) {
-  test(`detectStorefront("${query}") is ${storefront}`, () => {
-    assert.equal(detectStorefront(query), storefront);
+test('an iTunes artist search keeps only songs credited to that artist', async (t) => {
+  const song = (trackId: number, artistName: string) => ({ trackId, artistName, trackName: `Song ${trackId}`, previewUrl: `https://audio.test/${trackId}.m4a` });
+  const urls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    urls.push(String(url));
+    return new Response(JSON.stringify({ results: [song(1, 'Mitski'), song(2, 'Mitski Tribute Band'), song(3, 'MITSKI')] }));
   });
-}
+  const tracks = await itunesMusicProvider.getCandidateTracks({ artist: 'Mitski', limit: 10 });
+  assert.deepEqual(tracks.map(track => track.providerTrackId), ['1', '3']);
+  assert.match(urls[0], /attribute=artistTerm/);
+});

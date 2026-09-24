@@ -3,8 +3,8 @@
  *
  *   1. Query plan from the prompt/options (queryBuilder).
  *   2. Candidates: the catalog window, weighted by popularity; live providers (capped at 10 s)
- *      only when the catalog pool is thin or the picked pool falls short; the anime catalog for
- *      anime prompts.
+ *      only for a named artist whose catalog pool is thin or whose picked pool falls short; the
+ *      anime catalog for anime prompts.
  *   3. Recency tiers (never / once / twice / 3+ recent plays), filled in that order until
  *      `count` songs are picked.
  *   4. Stable /api/preview/<ref> audio paths.
@@ -41,7 +41,6 @@ const catalog: CatalogSource = sqliteCatalog;
 /** What a puzzle asks for (GET /api/music/random, POST /api/puzzles/live). */
 export interface SongPoolRequest {
   genre?: string;
-  minFans?: number;
   count?: number;
   blacklist?: BlacklistIdentityItem[];
   recentIds?: unknown[];
@@ -140,7 +139,6 @@ async function attachPreviewRefs(songs: PickedSong[]): Promise<PickedSong[]> {
 
 export async function getRandomSongPool({
   genre = 'all',
-  minFans = 250000,
   count = 25,
   blacklist = [],
   recentIds = [],
@@ -152,7 +150,7 @@ export async function getRandomSongPool({
   seed,
   languages,
 }: SongPoolRequest = {}): Promise<PickedSong[]> {
-  const queryPlan = buildQueryPlan({ genre, minFans, prompt, artist, album, decade, popularity });
+  const queryPlan = buildQueryPlan({ genre, prompt, artist, album, decade, popularity });
   // An explicit EN/JA/KO filter from the generator replaces the theme's default languages
   queryPlan.languages = Array.isArray(languages) && languages.length > 0 ? languages : null;
   logger.info('query', `Plan: genre="${queryPlan.genre}" artist="${queryPlan.artist || ''}" popularity=${queryPlan.popularity || 'balanced'}`);
@@ -190,7 +188,7 @@ export async function getRandomSongPool({
     const request = (signal?: AbortSignal) => externalCandidates({
       provider: musicProvider,
       itunesProvider: itunesMusicProvider,
-      queryPlan,
+      artist: queryPlan.artist,
       limit,
       includeItunes: isLiveProvider(),
       needed,
@@ -221,8 +219,9 @@ export async function getRandomSongPool({
       }
     }
 
-    // Live providers only when the catalog is thin (or replaced by a test provider)
-    if (!isLiveProvider() || catalogPool.length < externalFallbackThreshold(count)) {
+    // Live providers only for a named artist the catalog is thin on (or a test provider)
+    const asksProviders = !isLiveProvider() || Boolean(queryPlan.artist);
+    if (asksProviders && (!isLiveProvider() || catalogPool.length < externalFallbackThreshold(count))) {
       try {
         catalogPool = [...catalogPool, ...await fetchExternal(externalFallbackThreshold(count) - catalogPool.length)];
       } catch (err) {
@@ -234,7 +233,7 @@ export async function getRandomSongPool({
     pickFrom(catalogPool);
 
     // Policy and variety rules can reject most of a narrow pool: ask the providers once more
-    if (isLiveProvider() && !externalTried && picker.songs.length < count) {
+    if (isLiveProvider() && asksProviders && !externalTried && picker.songs.length < count) {
       try {
         pickFrom(await fetchExternal(count * 3));
       } catch (err) {

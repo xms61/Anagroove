@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from './fetchWithTimeout.ts';
 import { errorMessage } from '../errors.ts';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
 import type { SongCandidate } from '../types.ts';
 
 /** A song as the iTunes Search API returns it. */
@@ -37,24 +38,7 @@ function cacheSet(key: string, value: SongCandidate[]): SongCandidate[] {
   return value;
 }
 
-export function detectStorefront(query = ''): string {
-  const q = String(query).toLowerCase();
-  if (/\b(japanese|japan|city\s*pop|citypop|j-pop|jpop|anime|shibuya-kei|kayokyoku|enka)\b/i.test(q)) {
-    return 'JP';
-  }
-  if (/\b(kpop|k-pop)\b/i.test(q)) {
-    return 'US';
-  }
-  if (/\b(korean|korea|trot|hallyu)\b/i.test(q)) {
-    return 'KR';
-  }
-  if (/\b(britpop|uk\s*garage|grime|uk\s*drill|madchester|shoegaze)\b/i.test(q)) {
-    return 'GB';
-  }
-  return 'US';
-}
-
-export function mapItunesTrack(track: ItunesApiTrack | null | undefined, storefront = ''): SongCandidate | null {
+export function mapItunesTrack(track: ItunesApiTrack | null | undefined): SongCandidate | null {
   if (!track?.trackId || !track?.trackName || !track?.artistName || !track?.previewUrl) {
     return null;
   }
@@ -86,7 +70,6 @@ export function mapItunesTrack(track: ItunesApiTrack | null | undefined, storefr
       source: 'itunes',
       genre: track.primaryGenreName || '',
       releaseDate: track.releaseDate || '',
-      storefront,
     },
   };
 }
@@ -97,31 +80,27 @@ async function fetchJson(url: string, signal?: AbortSignal): Promise<{ results?:
   return response.json() as Promise<{ results?: ItunesApiTrack[] }>;
 }
 
+/** Live iTunes candidates for a named artist: an artist search, then only that artist's songs. */
 export const itunesMusicProvider = {
   name: 'itunes',
 
-  async getCandidateTracks({ query = '', limit = 50, country, signal }: { query?: string; limit?: number; country?: string; signal?: AbortSignal } = {}): Promise<SongCandidate[]> {
-    const trimmed = typeof query === 'string' ? query.trim() : '';
-    if (!trimmed) return [];
-
-    const effectiveCountry = country !== undefined ? country : detectStorefront(trimmed);
-    const countryParam = effectiveCountry ? `&country=${effectiveCountry}` : '';
-    const cacheKey = `${trimmed}:${limit}:${effectiveCountry}`;
+  async getCandidateTracks({ artist = '', limit = 50, signal }: { artist?: string; limit?: number; signal?: AbortSignal } = {}): Promise<SongCandidate[]> {
+    const wanted = canonicalArtistKey(artist);
+    if (!wanted) return [];
+    const cacheKey = `${wanted}:${limit}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
     try {
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=song&limit=${Math.min(100, Math.max(10, limit))}${countryParam}`;
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(artist.trim())}&entity=song&attribute=artistTerm&limit=${Math.min(100, Math.max(10, limit))}`;
       const data = await fetchJson(url, signal);
-      const results = Array.isArray(data?.results) ? data.results : [];
-
-      const candidates = results
-        .map(track => mapItunesTrack(track, effectiveCountry))
+      const candidates = (Array.isArray(data?.results) ? data.results : [])
+        .filter(track => canonicalArtistKey(track.artistName || '') === wanted)
+        .map(track => mapItunesTrack(track))
         .filter((track): track is SongCandidate => Boolean(track));
-
       return cacheSet(cacheKey, candidates);
     } catch (err) {
-      console.warn(`[iTunes Provider] Search query "${trimmed}" failed:`, errorMessage(err));
+      console.warn(`[iTunes Provider] Artist search "${artist}" failed:`, errorMessage(err));
       return [];
     }
   },

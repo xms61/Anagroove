@@ -138,8 +138,6 @@ function trackText(track: TrackLike): TrackText {
   };
 }
 
-const isItunesTrack = (track: TrackLike): boolean => track?.provider === 'itunes' || track?.selection?.source === 'itunes';
-const itunesGenreOf = (track: TrackLike): string => (track?.selection?.genre || track?.genre || '').toLowerCase();
 const HAS_JAPANESE_SCRIPT = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/;
 const ANIME_AFFILIATION = /\b(ost|opening|ending|theme|tv\s*size|soundtrack|version\s*tv|j-rock|j-pop|frieren|naruto|kenshin|bleach|one\s*piece|dragon\s*ball|attack\s*on\s*titan|shingeki|jujutsu|demon\s*slayer|kimetsu|bocchi|evangelion|dandadan)\b/i;
 // Deezer artist 147485 is the Italian hardcore techno producer "AniMe"
@@ -165,24 +163,11 @@ const THEMATIC_RULES: readonly ThematicRule[] = [
       /\b(city|kill city|motor city|sin city|inner city)\b/i.test(lowerTitle),
   },
   {
-    // K-pop: tracks named after the search query, Western acts matched on "gen"/"pop"/"korean",
-    // and non-Asian iTunes genres without Hangul
+    // K-pop: tracks named after the theme, and Western acts that playlist seeds tagged K-Pop
     appliesTo: /\b(kpop|k-pop)\b/i,
-    rejects: ({ track, artist, title, lowerArtist, lowerTitle }) => {
-      if (/^(k-?pop|new\s+gen|4th\s+gen|5th\s+gen)$/i.test(lowerTitle)) return true;
-      if (/\b(m4rkim|steven\s+wilson|carrie\s+underwood|destiny'?s\s+child|billy\s+idol|hozier|maroon\s+5|selena\s+gomez|dua\s+lipa|adele|kid\s+cudi|foster\s+the\s+people|becky\s+g|ton\s+koopman|nelis\s+leeman|michael\s+jackson|oasis|chappell\s+roan|billie\s+eilish|travis\s+scott|the\s+weeknd|lacrim|410|snoop\s+dogg|eminem|post\s+malone|drake)\b/i.test(lowerArtist)) return true;
-      return isItunesTrack(track) &&
-        ['country', 'rock', 'alternative', 'metal', 'r&b/soul', 'blues', 'punk', 'latin'].includes(itunesGenreOf(track)) &&
-        !/[\uAC00-\uD7AF\u1100-\u11FF]/.test(`${artist} ${title}`);
-    },
-  },
-  {
-    // Gaming: iTunes tracks outside game genres need a game affiliation
-    appliesTo: /\bgaming\b|\bvideo\s+game\b/i,
-    rejects: ({ track, titleArtistAlbum }) =>
-      isItunesTrack(track) &&
-      !['soundtrack', 'video game', 'anime', 'instrumental'].includes(itunesGenreOf(track)) &&
-      !/\b(video\s*game|game|soundtrack|ost|theme|zelda|mario|sonic|pokemon|final\s+fantasy|halo|cyberpunk|skyrim|genshin|undertale|megalovania|toby\s+fox)\b/i.test(titleArtistAlbum),
+    rejects: ({ lowerArtist, lowerTitle }) =>
+      /^(k-?pop|new\s+gen|4th\s+gen|5th\s+gen)$/i.test(lowerTitle) ||
+      /\b(m4rkim|steven\s+wilson|carrie\s+underwood|destiny'?s\s+child|billy\s+idol|hozier|maroon\s+5|selena\s+gomez|dua\s+lipa|adele|kid\s+cudi|foster\s+the\s+people|becky\s+g|ton\s+koopman|nelis\s+leeman|michael\s+jackson|oasis|chappell\s+roan|billie\s+eilish|travis\s+scott|the\s+weeknd|lacrim|410|snoop\s+dogg|eminem|post\s+malone|drake)\b/i.test(lowerArtist),
   },
   {
     // Gaming: the rapper The Game and "gamin" stems

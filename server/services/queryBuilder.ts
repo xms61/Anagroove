@@ -18,7 +18,6 @@ export interface PromptOptions {
 /** Options from the API: a theme, a free-text prompt and explicit filters. */
 export interface QueryOptions extends PromptOptions {
   prompt?: string;
-  minFans?: number | string;
   [option: string]: unknown;
 }
 
@@ -32,14 +31,6 @@ export interface QueryPlan {
   yearRange?: YearRange;
   targetAnimeKeyphrase: string | null;
   prompt: string;
-  minFans: number;
-  maxFans: number;
-  minRank: number;
-  maxRank: number;
-  deezerSearches: string[];
-  itunesSearches: string[];
-  randomOffset: number;
-  sortOrder: string;
   /** Explicit song languages (the API's language filter); otherwise the theme decides. */
   languages?: string[] | null;
 }
@@ -238,92 +229,6 @@ export function parsePrompt(prompt: unknown = ''): PromptOptions {
 }
 
 /**
- * Generates complementary search variations for any theme or genre.
- * Universally applicable to any query prompt (e.g. "Japanese City Pop", "90s Grunge Rock", "French House").
- */
-export function generateThemeVariations(genre = '', decade = ''): string[] {
-  const variations = new Set<string>();
-  const trimmed = typeof genre === 'string' ? genre.trim() : '';
-  if (!trimmed) return [];
-
-  const lower = trimmed.toLowerCase();
-
-  // For anime, avoid querying the bare word "anime" on Deezer which collides with artist ID 147485 ("Anime" / DJ AniMe)
-  if (lower === 'anime') {
-    variations.add('anime opening');
-    variations.add('anime ost');
-    variations.add('anime opening theme');
-    variations.add('tv anime opening');
-    if (decade) {
-      variations.add(`anime opening ${decade}`);
-      variations.add(`anime ost ${decade}`);
-    }
-    return Array.from(variations).slice(0, 6);
-  }
-
-  variations.add(trimmed);
-
-  // If there's a cultural/language prefix (e.g. "Japanese", "French", "Korean"), retain core compound genre
-  const words = trimmed.split(/\s+/);
-  const isCultural = /^(japanese|korean|french|german|swedish|british|anime)\b/i.test(words[0]);
-
-  if (words.length >= 3) {
-    if (isCultural) {
-      // Retain core atomic subgenre without cultural prefix for native storefront querying (e.g. "City Pop")
-      const coreGenre = words.slice(1).join(' ');
-      variations.add(coreGenre);
-      if (decade) {
-        variations.add(`${coreGenre} ${decade}`);
-      }
-    } else {
-      // For non-cultural phrases (e.g. "alternative indie rock" -> "indie rock")
-      const coreSubGenre = words.slice(-2).join(' ');
-      if (!/^(gen|generation|new|old|best|top)\s+/i.test(coreSubGenre)) {
-        variations.add(coreSubGenre);
-        if (decade) {
-          variations.add(`${coreSubGenre} ${decade}`);
-        }
-      }
-    }
-  }
-
-  // De-spaced compound variants (e.g. "city pop" -> "citypop", "synth wave" -> "synthwave", "hip hop" -> "hiphop")
-  const compact = trimmed.replace(/\b(city\s+pop|synth\s+wave|chill\s+wave|vapor\s+wave|hip\s+hop|lo\s+fi|post\s+punk|neo\s+soul)\b/gi, match => match.replace(/\s+/g, ''));
-  if (compact !== trimmed) {
-    variations.add(compact);
-    if (decade) {
-      variations.add(`${compact} ${decade}`);
-    }
-  }
-
-  if (decade) {
-    variations.add(`${trimmed} ${decade}`);
-  }
-
-  // Add recognized subgenre synonyms
-  if (lower === 'anime' || lower.includes('anime')) {
-    variations.add('anime opening');
-    variations.add('anime ost');
-    variations.add('anime theme');
-  }
-  if (lower === 'gaming' || lower.includes('gaming') || lower.includes('video game')) {
-    variations.add('video game soundtrack');
-    variations.add('video game music');
-  }
-  if (lower.includes('french house')) variations.add('french touch');
-  if (lower.includes('krautrock')) variations.add('kosmische musik');
-  if (lower.includes('city pop') || lower.includes('citypop')) variations.add('japanese city pop');
-  if (lower.includes('grunge')) variations.add('grunge rock');
-  if (lower.includes('reggae')) variations.add('roots reggae');
-  if (lower.includes('k-pop') || lower.includes('kpop')) {
-    variations.add('k-pop');
-    variations.add('kpop');
-  }
-
-  return Array.from(variations).slice(0, 6);
-}
-
-/**
  * Extracts a specific anime franchise or series keyphrase from a prompt/genre,
  * stripping out generic anime category and soundtrack filler words (anime, openings, endings, themes, ost, etc.).
  *
@@ -356,7 +261,7 @@ export function extractAnimeKeyphrase(prompt = '', genre = '') {
 }
 
 /**
- * Builds a query plan with search terms and filtering thresholds for Deezer and iTunes.
+ * Builds the query plan for song selection from the API options and the prompt.
  */
 export function buildQueryPlan(userOptions: QueryOptions = {}): QueryPlan {
   // Parse prompt-extracted options
@@ -400,158 +305,6 @@ export function buildQueryPlan(userOptions: QueryOptions = {}): QueryPlan {
   const decade = typeof options.decade === 'string' ? options.decade.trim() : '';
   const prompt = typeof userOptions.prompt === 'string' ? userOptions.prompt.trim() : '';
 
-  // Popularity thresholds for Deezer candidate filtering
-  let minFans = 0;
-  let maxFans = Infinity;
-  let minRank = 0;
-  let maxRank = Infinity;
-
-  if (popularity === 'obscure') {
-    maxFans = 75000;
-    maxRank = 400000;
-  } else if (popularity === 'mainstream') {
-    minFans = 100000;
-    minRank = 350000;
-  } else if (popularity === 'balanced') {
-    minFans = 25000;
-    minRank = 200000;
-  } else if (popularity === 'pure') {
-    // Pure: no popularity filtering
-    minFans = 0;
-    minRank = 0;
-  }
-
-  // If user explicitly provided minFans, honor it
-  if (Number.isFinite(Number(userOptions.minFans))) {
-    minFans = Number(userOptions.minFans);
-  }
-
-  // Build targeted Deezer & iTunes searches
-  const deezerSearches: string[] = [];
-  const itunesSearches: string[] = [];
-
-  if (artist) {
-    deezerSearches.push(`artist:"${artist}"`);
-    itunesSearches.push(artist);
-  }
-
-  if (album) {
-    deezerSearches.push(`album:"${album}"`);
-    itunesSearches.push(album);
-  }
-
-  if (genre && genre !== 'all') {
-    const variations = generateThemeVariations(genre, decade);
-    for (const term of variations) {
-      deezerSearches.push(term);
-      itunesSearches.push(term);
-    }
-
-    // Targeted artist seeding for K-Pop to avoid fuzzy matches on non-Korean tracks
-    if (genre.toLowerCase() === 'kpop' || genre.toLowerCase() === 'k-pop') {
-      const isNewGen = options.generation === 'new' || (options.yearRange?.start ?? 0) >= 2020;
-      const seeds = isNewGen
-        ? ['NewJeans', 'LE SSERAFIM', 'aespa', 'Stray Kids', 'IVE', 'ENHYPEN', 'TXT', 'ITZY', 'KISS OF LIFE']
-        : ['BTS', 'BLACKPINK', 'TWICE', 'SEVENTEEN', 'Red Velvet', 'NewJeans', 'Stray Kids'];
-      const shuffledSeeds = [...seeds].sort(() => 0.5 - Math.random()).slice(0, 3);
-      for (const s of shuffledSeeds) {
-        deezerSearches.push(s);
-        itunesSearches.push(s);
-      }
-    }
-
-    // Targeted artist seeding for Anime to ensure authentic Japanese anisong performers
-    if (genre.toLowerCase() === 'anime') {
-      const animeSeeds = [
-        'YOASOBI', 'LiSA', 'Ado', 'Kenshi Yonezu', 'FLOW', 'RADWIMPS',
-        'Asian Kung-Fu Generation', 'Eve', 'Official HIGE DANdism', 'TK from Ling tosite sigure',
-        'SawanoHiroyuki[nZk]', 'ClariS', 'UVERworld', 'SPYAIR', 'Creepy Nuts'
-      ];
-      const shuffledAnimeSeeds = [...animeSeeds].sort(() => 0.5 - Math.random()).slice(0, 3);
-      for (const s of shuffledAnimeSeeds) {
-        deezerSearches.push(s);
-        itunesSearches.push(s);
-      }
-    }
-  } else if (decade) {
-    const yearBase = parseInt(decade, 10);
-    if (!isNaN(yearBase)) {
-      deezerSearches.push(`release_date:"${yearBase}"`);
-      itunesSearches.push(decade);
-    }
-  }
-
-  // Targeted year queries when a temporal filter is present
-  if (options.yearRange) {
-    const { start, end } = options.yearRange;
-    let baseSubject = (genre && genre !== 'all') ? genre : artist || '';
-    if (genre.toLowerCase() === 'anime') {
-      baseSubject = 'anime opening';
-    } else if (genre.toLowerCase() === 'gaming') {
-      baseSubject = 'video game soundtrack';
-    }
-    if (baseSubject) {
-      if (start !== undefined && end !== undefined) {
-        if (start === end) {
-          deezerSearches.push(`${baseSubject} ${start}`);
-          itunesSearches.push(`${baseSubject} ${start}`);
-        } else {
-          deezerSearches.push(`${baseSubject} ${start}`);
-          deezerSearches.push(`${baseSubject} ${end}`);
-          itunesSearches.push(`${baseSubject} ${start}`);
-          itunesSearches.push(`${baseSubject} ${end}`);
-          const mid = Math.floor((start + end) / 2);
-          if (mid !== start && mid !== end) {
-            itunesSearches.push(`${baseSubject} ${mid}`);
-          }
-        }
-      } else if (start !== undefined) {
-        deezerSearches.push(`${baseSubject} ${start}`);
-        itunesSearches.push(`${baseSubject} ${start}`);
-      } else if (end !== undefined) {
-        deezerSearches.push(`${baseSubject} ${end}`);
-        itunesSearches.push(`${baseSubject} ${end}`);
-      }
-    }
-  }
-
-  // Fallback: If searches are empty but user entered a prompt, search by the cleaned prompt terms
-  if (deezerSearches.length === 0 && prompt) {
-    const cleanPrompt = prompt.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
-    if (cleanPrompt) {
-      deezerSearches.push(cleanPrompt);
-      itunesSearches.push(cleanPrompt);
-    }
-  }
-
-  // Open / Shuffle Mode (no artist, album, genre, decade, OR prompt specified)
-  // Query curated English charts and mainstream hits instead of unconstrained searches
-  const hasThematicCriteria = Boolean(artist || album || (genre && genre !== 'all') || decade || prompt);
-  if (deezerSearches.length === 0 && !hasThematicCriteria) {
-    const openSeeds = [
-      'billboard hot 100',
-      'uk top 40',
-      'top hits us',
-      'classic rock english',
-      'pop hits english',
-      'greatest hits radio',
-      'billboard hits',
-      '90s hits us',
-      '2000s hits us',
-    ];
-    const selectedSeed = openSeeds[Math.floor(Math.random() * openSeeds.length)];
-    deezerSearches.push(selectedSeed);
-    itunesSearches.push(selectedSeed);
-    itunesSearches.push('billboard hot 100');
-  }
-
-  // Dynamic sorting order to explore varied catalog depths on repeated calls
-  const SORT_ORDERS = ['RANKING', 'TRACK_ASC', 'RATING_ASC', 'DURATION_ASC'];
-  const randomOrder = SORT_ORDERS[Math.floor(Math.random() * SORT_ORDERS.length)];
-  const randomOffset = (genre && genre !== 'all')
-    ? Math.floor(Math.random() * 6) * 25
-    : Math.floor(Math.random() * 8) * 25;
-
   return {
     genre: genre || 'all',
     popularity,
@@ -561,14 +314,6 @@ export function buildQueryPlan(userOptions: QueryOptions = {}): QueryPlan {
     yearRange: options.yearRange,
     targetAnimeKeyphrase: options.targetAnimeKeyphrase || null,
     prompt,
-    minFans,
-    maxFans,
-    minRank,
-    maxRank,
-    deezerSearches: Array.from(new Set(deezerSearches)),
-    itunesSearches: Array.from(new Set(itunesSearches)),
-    randomOffset,
-    sortOrder: randomOrder,
   };
 }
 

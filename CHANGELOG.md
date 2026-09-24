@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.0] - 2026-09-24
+
+### Changed
+- **Live Deezer/iTunes lookups only for prompts that name an artist.** Themes and every other prompt are served from the local catalog alone. A named artist the catalog has too few rows of is still looked up, and the results are stored in the catalog as before.
+  - Both providers search the artist and keep only tracks credited to that artist, so "songs by Queen" no longer brings ABBA's "Dancing Queen".
+  - With an empty catalog, only artist prompts produce puzzles.
+
+### Removed
+- **The per-genre live search setup:**
+  - `DEEZER_GENRE_TAXONOMY`
+  - the theme search variations, the K-pop and anime seed artists, and the year searches in the query plan
+  - the fan and rank thresholds
+  - the iTunes storefront guessing
+  - the iTunes genre guards in the thematic rules
+- **The `minFans` option** of `GET /api/music/random` and `POST /api/puzzles/live`. It only steered the genre search and is now ignored if sent.
+
+---
+
 ## [1.29.0] - 2026-09-24
 
 ### Security
@@ -85,13 +103,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.9] - 2026-09-24
-
-### Changed
-- **Agent docs state current rules only:** the crawler, catalog, track selection and frontend docs drop the notes that described earlier behaviour ("before, …", "used to", "replaced") and the dated coverage pass count, and keep the reasons.
-
----
-
----
-
-Older releases (1.28.8 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.9 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
