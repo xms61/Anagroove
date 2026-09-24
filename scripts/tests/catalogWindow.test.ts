@@ -84,3 +84,33 @@ test('catalog candidates carry the artist\'s Deezer id, so id-based hides apply 
   assert.equal(String(row.providerArtistId), '8706544');
   catalog.close();
 });
+
+test('genre filters follow artists.genres_json through artist_genres, ignoring case', () => {
+  const catalog = thirtyTrackCatalog();
+  const genreRows = (genres: string[]) => catalog.sampleCatalogTracks({ genres, poolSize: 50 }).map(r => r.artist);
+  assert.deepEqual(genreRows(['Jazz']), []);
+  catalog.db.prepare("UPDATE artists SET genres_json = ? WHERE display_name = 'Sample Artist 3'").run(JSON.stringify(['Jazz', 'Blues']));
+  assert.deepEqual(new Set(genreRows(['jazz'])), new Set(['Sample Artist 3']));
+  catalog.db.prepare("UPDATE artists SET genres_json = NULL WHERE display_name = 'Sample Artist 3'").run();
+  assert.deepEqual(genreRows(['Jazz']), []);
+  catalog.db.prepare("INSERT INTO artists (canonical_name, display_name, genres_json) VALUES ('new artist', 'New Artist', '[\"Jazz\"]')").run();
+  assert.equal(catalog.db.prepare("SELECT COUNT(*) AS n FROM artist_genres WHERE genre = 'jazz'").get()?.n, 1, 'inserts are indexed too');
+  catalog.close();
+});
+
+test('artist prompts match collaboration credits by prefix, with "%" and "_" as plain characters', () => {
+  const catalog = thirtyTrackCatalog();
+  catalog.db.prepare("UPDATE artists SET display_name = 'Sample Artist 3 & Friends' WHERE display_name = 'Sample Artist 4'").run();
+  assert.equal(catalog.sampleCatalogTracks({ artist: 'sample artist 3', poolSize: 50 }).length, 6, 'the artist and the collaboration');
+  assert.deepEqual(catalog.sampleCatalogTracks({ artist: '%', poolSize: 50 }), []);
+  assert.deepEqual(catalog.sampleCatalogTracks({ artist: 'Sample Artist _', poolSize: 50 }), []);
+  catalog.close();
+});
+
+test('genre and artist lookups use indexes', () => {
+  const catalog = thirtyTrackCatalog();
+  const plan = (sql: string, ...params) => (catalog.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as { detail: string }[]).map(row => row.detail).join(' | ');
+  assert.match(plan("SELECT artist_id FROM artist_genres WHERE genre IN (SELECT value FROM json_each(?))", '["Jazz"]'), /SEARCH artist_genres/);
+  assert.match(plan("SELECT id FROM artists WHERE display_name >= ? COLLATE NOCASE AND display_name < ? COLLATE NOCASE", 'a', 'b'), /idx_artists_display_nocase/);
+  catalog.close();
+});

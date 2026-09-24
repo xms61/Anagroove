@@ -16,7 +16,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
 1. **Query plan:** `queryBuilder.buildQueryPlan` handles the prompt, genre, decade, artist and popularity. `genresForPrompt` (`shared/themes.ts`) maps a theme id, or the words of the genre and prompt, to artist genre clusters.
 2. **Catalog window** (`sqliteCatalog.sampleCatalogTracks`). Every filter runs in SQL:
    - allowed languages, `original`/`remaster` only, a popularity window, and the year range
-   - the artist (resolved to ids first), genres (`artists.genres_json`), and a text theme (trigram FTS over title, artist and album; its matches are the whole answer, however few. LIKE per token only when the FTS query is malformed. Skipped when the prompt maps to genres)
+   - the artist (resolved to ids first: canonical name, display name in any case, or a collaboration credit starting with it, by NOCASE range on an index), genres (`artist_genres`), and a text theme (trigram FTS over title, artist and album; its matches are the whole answer, however few. LIKE per token only when the FTS query is malformed. Skipped when the prompt maps to genres)
    - excluding recent `sqlite:<id>` plays
 
    It then reads up to 400 rows in `rand_key` order from a random start (wrapping around; index `idx_tracks_rand`). That's one row per track, 2–160 ms on ~300k tracks.
@@ -67,4 +67,4 @@ Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist 
 ## Known limits
 - Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist, so they fall back to live providers.
 - Decade prompts depend on release-year coverage (`catalog:enrich -- --albums=N`). Years come from the album, so compilations carry their own year.
-- Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are still code in `selectionPolicy.ts`, not data.
+- Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are rows of `THEMATIC_RULES` in `selectionPolicy.ts`: a context pattern and a reject function. `createThematicPolicy` and `createLanguagePolicy` select the rules for a request once; the picker then runs only those per candidate.

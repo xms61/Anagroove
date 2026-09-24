@@ -7,10 +7,10 @@ import { extractAnswerKeyword, splitArtistNames, formatCrosswordClue } from '../
 import { canonicalArtistKey, canonicalTrackKey, compileBlacklist, type BlacklistIdentityItem } from '../../shared/musicIdentity.ts';
 import { classifyVersion, isAcceptedVersion } from '../db/trackNormalization.ts';
 import {
+  createLanguagePolicy,
+  createThematicPolicy,
   isAuthenticTrack,
-  isLanguagePermitted,
   isTemporalPermitted,
-  isThematicallyPermitted,
   resolveReleaseYear,
 } from '../policy/selectionPolicy.ts';
 import type { AnswerCandidate, ExtractKeywordOptions, LengthBucket } from '../../shared/musicKeywords.ts';
@@ -91,6 +91,9 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
 
   const policyContext = prompt || queryPlan.prompt;
   const isBlacklisted = compileBlacklist(blacklist);
+  // Everything that depends only on the request is resolved once, not per candidate
+  const isLanguageOk = createLanguagePolicy(queryPlan.genre, policyContext, { languages: queryPlan.languages });
+  const isThemeOk = createThematicPolicy(queryPlan.genre, policyContext);
   const isTargetingSingleArtist = Boolean(queryPlan.artist);
   const targetArtistKey = queryPlan.artist ? canonicalArtistKey(queryPlan.artist) : '';
 
@@ -148,7 +151,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.blacklist++;
         continue;
       }
-      if (!isLanguagePermitted(track, queryPlan.genre, policyContext, { languages: queryPlan.languages })) {
+      if (!isLanguageOk(track)) {
         rejections.language++;
         continue;
       }
@@ -157,7 +160,7 @@ export function createTrackPicker({ count, queryPlan, prompt = '', blacklist = [
         rejections.version++;
         continue;
       }
-      if (!isThematicallyPermitted(track, queryPlan.genre, policyContext) || !isAuthenticTrack(track)) {
+      if (!isThemeOk(track) || !isAuthenticTrack(track)) {
         rejections.thematic++;
         continue;
       }

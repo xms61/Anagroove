@@ -38,7 +38,19 @@ function transliterate(value: string): string {
 export function canonicalMusicKey(value: unknown): string {
   const input = asString(value);
   if (!input) return '';
+  const cached = keyCache.get(input);
+  if (cached !== undefined) return cached;
+  // Selection asks for the same names several times per candidate; the key is pure, so memoize
+  if (keyCache.size >= KEY_CACHE_SIZE) keyCache.clear();
+  const key = computeMusicKey(input);
+  keyCache.set(input, key);
+  return key;
+}
 
+const KEY_CACHE_SIZE = 5000;
+const keyCache = new Map<string, string>();
+
+function computeMusicKey(input: string): string {
   return transliterate(input)
     .replace(/&/g, ' and ')
     .replace(/\+/g, ' and ')

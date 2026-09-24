@@ -263,12 +263,18 @@ function countOf(db: DatabaseSync, sql: string): number {
   return Number(db.prepare(sql).get()?.count);
 }
 
+// How collaboration credits continue an artist's name ("Drake & Future", "Drake feat. Future")
+const COLLABORATION_JOINERS = [' & ', ', ', ' x ', ' and ', ' with ', ' feat. ', ' ft. '];
+// Sorts after any text that continues a prefix, so [prefix, prefix + PREFIX_END) is "starts with prefix"
+const PREFIX_END = '\u{10FFFF}';
+
 export class SqliteCatalog {
   readonly dbPath: string;
   /** Open until close(); a closed catalog throws "database is not open" on use. */
   readonly db: DatabaseSync;
   readonly migration: MigrationResult;
   private readonly statements: ReturnType<typeof prepareStatements>;
+  private readonly statementCache = new Map<string, StatementSync>();
   private rejectionStats: Record<RejectionReason, number> = { missingFields: 0, title: 0, language: 0, version: 0, inauthentic: 0, duration: 0 };
 
   constructor(dbPath = DEFAULT_DB_PATH, { busyTimeoutMs = catalogBusyTimeout() }: { busyTimeoutMs?: number } = {}) {
@@ -617,7 +623,9 @@ export class SqliteCatalog {
    * track (best sample chosen by subquery), never one per sample.
    *
    * `start` in [0, 1) comes from the caller's (seeded) RNG, which makes the window reproducible.
-   * A theme (`ftsQuery`) matches through the trigram index, or LIKE when that finds < 10 rows.
+   * A theme (`ftsQuery`) matches through the trigram index. Genres go through `artist_genres`
+   * and artist names through a NOCASE index, and every list is one JSON parameter, so the SQL
+   * text depends only on which filters are present and its statements are prepared once.
    */
   sampleCatalogTracks({
     ftsQuery = '',
@@ -636,23 +644,18 @@ export class SqliteCatalog {
 
     if (artist && typeof artist === 'string' && artist.trim()) {
       // Resolve the artist rows first so the track lookup uses the artist_id index
-      const name = artist.trim();
-      const collaborations = ['&', ',', 'x', 'and', 'with', 'feat.', 'ft.'].map(joiner => `${name}${joiner === ',' ? ',' : ` ${joiner}`} %`);
-      const artistRows = this.db.prepare(
-        `SELECT id FROM artists WHERE canonical_name = ? OR display_name = ? OR ${collaborations.map(() => 'display_name LIKE ?').join(' OR ')}`
-      ).all(normalizeDedupeArtist(name), name, ...collaborations) as { id: number }[];
-      const artistIds = artistRows.map(r => r.id);
+      const artistIds = this.artistIdsForName(artist.trim());
       if (artistIds.length === 0) return [];
-      conditions.push(`t.artist_id IN (${artistIds.map(() => '?').join(', ')})`);
-      params.push(...artistIds);
+      conditions.push('t.artist_id IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(artistIds));
     }
     if (Array.isArray(genres) && genres.length > 0) {
-      conditions.push(`(${genres.map(() => 'a.genres_json LIKE ?').join(' OR ')})`);
-      params.push(...genres.map(g => `%"${String(g).trim()}"%`));
+      conditions.push('t.artist_id IN (SELECT artist_id FROM artist_genres WHERE genre IN (SELECT value FROM json_each(?)))');
+      params.push(JSON.stringify(genres.map(g => String(g).trim())));
     }
     if (Array.isArray(languages) && languages.length > 0) {
-      conditions.push(`t.language IN (${languages.map(() => '?').join(', ')})`);
-      params.push(...languages);
+      conditions.push('t.language IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(languages));
     }
     if (yearRange && typeof yearRange === 'object') {
       if (yearRange.start !== undefined) {
@@ -673,8 +676,8 @@ export class SqliteCatalog {
       params.push(maxPopularity);
     }
     if (Array.isArray(excludeTrackIds) && excludeTrackIds.length > 0) {
-      conditions.push(`t.id NOT IN (${excludeTrackIds.map(() => '?').join(', ')})`);
-      params.push(...excludeTrackIds);
+      conditions.push('t.id NOT IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(excludeTrackIds));
     }
 
     const select = `
@@ -690,10 +693,10 @@ export class SqliteCatalog {
 
     const windowed = (extraCondition: string | null, extraParams: SQLInputValue[]): CatalogRow[] => {
       const where = [...conditions, extraCondition].filter(Boolean).join(' AND ');
-      const head = this.db.prepare(`${select} WHERE ${where} AND t.rand_key >= ? ORDER BY t.rand_key LIMIT ?`)
+      const head = this.prepareCached(`${select} WHERE ${where} AND t.rand_key >= ? ORDER BY t.rand_key LIMIT ?`)
         .all(...params, ...extraParams, startKey, poolSize) as unknown as CatalogRow[];
       if (head.length >= poolSize) return head;
-      const tail = this.db.prepare(`${select} WHERE ${where} AND t.rand_key < ? ORDER BY t.rand_key LIMIT ?`)
+      const tail = this.prepareCached(`${select} WHERE ${where} AND t.rand_key < ? ORDER BY t.rand_key LIMIT ?`)
         .all(...params, ...extraParams, startKey, poolSize - head.length) as unknown as CatalogRow[];
       return [...head, ...tail];
     };
@@ -711,6 +714,29 @@ export class SqliteCatalog {
       return windowed(`(${like})`, terms.flatMap(term => [term, term, term]));
     }
     return windowed(null, []);
+  }
+
+  /**
+   * Artists an artist prompt names: the same canonical name, the same display name (any case),
+   * or a collaboration credit starting with it ("Drake & …", "Drake, …", "Drake feat. …").
+   * Prefixes are NOCASE ranges on an index, so "%" or "_" in a prompt are plain characters.
+   */
+  private artistIdsForName(name: string): number[] {
+    const prefixes = COLLABORATION_JOINERS.map(joiner => `${name}${joiner}`);
+    const ranges = prefixes.map(() => '(display_name >= ? COLLATE NOCASE AND display_name < ? COLLATE NOCASE)').join(' OR ');
+    const rows = this.prepareCached(`SELECT id FROM artists WHERE canonical_name = ? OR display_name = ? COLLATE NOCASE OR ${ranges}`)
+      .all(normalizeDedupeArtist(name), name, ...prefixes.flatMap(prefix => [prefix, `${prefix}${PREFIX_END}`])) as { id: number }[];
+    return rows.map(row => row.id);
+  }
+
+  /** Statements keyed by SQL text; the window queries only have a few dozen shapes. */
+  private prepareCached(sql: string): StatementSync {
+    let statement = this.statementCache.get(sql);
+    if (!statement) {
+      statement = this.db.prepare(sql);
+      this.statementCache.set(sql, statement);
+    }
+    return statement;
   }
 
   countSummary(): { tracks: number; artists: number } {
