@@ -20,7 +20,7 @@ cp .env.example .env   # optional overrides: ports, CORS origins, data dir, log 
 npm run dev            # API + WebSockets on :3001, Vite UI on :3000
 ```
 
-An empty catalog still serves puzzles through the live Deezer/iTunes fallback. To build a local catalog, see [Populating the catalog](#populating-the-catalog).
+Puzzles come from the local catalog. With an empty catalog only prompts that name an artist work (they look the artist up on Deezer/iTunes). To build a catalog, see [Populating the catalog](#populating-the-catalog).
 
 Production: `npm run build && npm start` serves `dist/` and the API on `:3000`.
 

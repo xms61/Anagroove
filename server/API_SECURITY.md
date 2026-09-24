@@ -33,7 +33,7 @@ Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/w
 - Shutdown: register cleanup with `onShutdown(name, fn)` in `server/shutdown.ts` (user store and catalog WAL checkpoints). Never add your own SIGINT/SIGTERM handlers.
 
 ## Env vars (see `.env.example`)
-`PORT`, `VITE_PORT`, `CORS_ALLOWED_ORIGINS`, `TRUST_PROXY`, `SPOTYSPICE_DATA_DIR`, `LOG_LEVEL`, `NODE_ENV`, `SPOTYSPICE_OFFLINE` (`1` = catalog only: no Deezer/iTunes fallback, previews answer 404; used by the smoke test). No third-party API keys are used. Never commit `.env`.
+`PORT`, `VITE_PORT`, `CORS_ALLOWED_ORIGINS`, `TRUST_PROXY`, `SPOTYSPICE_DATA_DIR`, `LOG_LEVEL`, `NODE_ENV`, `SPOTYSPICE_OFFLINE` (`1` = catalog only: no Deezer/iTunes lookups for named artists, previews answer 404; used by the smoke test). No third-party API keys are used. Never commit `.env`.
 
 ## Known gaps
 - `X-User-Id` is an unauthenticated bearer id. There are no accounts.

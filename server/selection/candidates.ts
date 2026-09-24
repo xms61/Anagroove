@@ -3,9 +3,9 @@
  *
  *   catalog   sampleCatalogTracks: SQL filters + random rand_key window, then weighted by
  *             popularity (Efraimidis-Spirakis). The primary source.
- *   external  live Deezer + iTunes searches. Only a fallback when the catalog pool is thin
- *             (rare theme, artist missing from the catalog); results are written back to the
- *             catalog through upsertTrack so the next request finds them locally.
+ *   external  live Deezer + iTunes searches, only for a prompt that names an artist the catalog
+ *             has too few rows of; results are written back to the catalog through upsertTrack
+ *             so the next request finds them locally. Themes and other prompts use the catalog only.
  *   anime     the isolated anime OP/ED catalog.
  */
 import { normalizeDeezerRank, provisionalPopularity } from '../db/trackNormalization.ts';
@@ -25,10 +25,10 @@ export interface CatalogSource {
   upsertBatch(batch: TrackInput[]): { inserted: number; merged: number; total: number };
 }
 
-/** A live provider (Deezer, iTunes, or a test double). */
+/** A live provider (Deezer, iTunes, or a test double): tracks by one named artist. */
 export interface MusicProvider {
   name: string;
-  getCandidateTracks(query: Record<string, unknown>): Promise<SongCandidate[]>;
+  getCandidateTracks(query: { artist: string; limit: number; signal?: AbortSignal }): Promise<SongCandidate[]>;
 }
 
 
@@ -117,39 +117,26 @@ export function catalogCandidates({ catalog, queryPlan, prompt = '', recentIds =
 }
 
 /**
- * Live provider candidates. Deezer first; iTunes (rate-limited to 0.25 req/s, so each search
- * costs seconds) only when the pool is still below `needed`.
+ * Live provider candidates for the named artist. Deezer first; iTunes (rate-limited to
+ * 0.25 req/s, so each search costs seconds) only when the pool is still below `needed`.
  */
-export async function externalCandidates({ provider, itunesProvider, queryPlan, limit, includeItunes, needed = 0, signal }: {
+export async function externalCandidates({ provider, itunesProvider, artist, limit, includeItunes, needed = 0, signal }: {
   provider: MusicProvider;
   itunesProvider: MusicProvider;
-  queryPlan: QueryPlan;
+  artist: string;
   limit: number;
   includeItunes: boolean;
   needed?: number;
   signal?: AbortSignal;
 }): Promise<SongCandidate[]> {
-  const deezer = await provider.getCandidateTracks({
-      genre: queryPlan.genre,
-      minFans: queryPlan.minFans,
-      maxFans: queryPlan.maxFans,
-      minRank: queryPlan.minRank,
-      maxRank: queryPlan.maxRank,
-      searches: queryPlan.deezerSearches,
-      offset: queryPlan.randomOffset,
-      popularity: queryPlan.popularity,
-      limit,
-      signal,
-  });
+  const deezer = await provider.getCandidateTracks({ artist, limit, signal });
   if (!includeItunes || deezer.length >= needed) return deezer;
 
-  const itunes = await Promise.all(queryPlan.itunesSearches.slice(0, 2).map(term =>
-    itunesProvider.getCandidateTracks({ query: term, limit: 100, signal }).catch((err: Error): SongCandidate[] => {
-      logger.warn('music_service', `iTunes harvesting error: ${err.message}`);
-      return [];
-    })
-  ));
-  return [...deezer, ...itunes.flat()];
+  const itunes = await itunesProvider.getCandidateTracks({ artist, limit: 100, signal }).catch((err: Error): SongCandidate[] => {
+    logger.warn('music_service', `iTunes harvesting error: ${err.message}`);
+    return [];
+  });
+  return [...deezer, ...itunes];
 }
 
 /**

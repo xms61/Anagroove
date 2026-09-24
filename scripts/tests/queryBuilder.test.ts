@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePrompt, buildQueryPlan, generateThemeVariations, type PromptOptions } from '../../server/services/queryBuilder.ts';
+import { parsePrompt, buildQueryPlan, type PromptOptions } from '../../server/services/queryBuilder.ts';
 
 const years = (parsed) => [parsed.yearRange?.start, parsed.yearRange?.end];
 
@@ -21,42 +21,20 @@ for (const [prompt, check] of PROMPTS) {
   test(`parsePrompt("${prompt}")`, () => check(parsePrompt(prompt)));
 }
 
-test('pure popularity clears the fan and rank filters', () => {
-  const plan = buildQueryPlan({ popularity: 'pure' });
-  assert.equal(plan.popularity, 'pure');
-  assert.equal(plan.minFans, 0);
-  assert.equal(plan.minRank, 0);
-  assert.ok(plan.deezerSearches.length > 0);
-});
-
-test('the default plan is balanced with a fan threshold', () => {
+test('the default plan is balanced, for every genre, with no artist', () => {
   const plan = buildQueryPlan({ genre: 'all' });
-  assert.equal(plan.popularity, 'balanced');
-  assert.ok(plan.minFans >= 25000);
+  assert.deepEqual([plan.popularity, plan.genre, plan.artist], ['balanced', 'all', '']);
+  assert.equal(buildQueryPlan({ popularity: 'pure' }).popularity, 'pure');
 });
 
-test('an anime plan searches "anime opening", never the bare word (DJ AniMe)', () => {
-  const plan = buildQueryPlan({ genre: 'anime' });
-  assert.equal(plan.genre, 'anime');
-  assert.ok(plan.deezerSearches.includes('anime opening'));
-  assert.ok(!plan.deezerSearches.includes('anime'));
-  assert.ok(plan.deezerSearches.every(s => !/^[a-z]{2}$/.test(s)), 'no two-letter seeds');
-});
-
-test('a prompt overrides genre=all and adds a decade search', () => {
+test('a prompt overrides genre=all and keeps its decade', () => {
   const plan = buildQueryPlan({ prompt: '80s Japanese City Pop', genre: 'all' });
-  assert.equal(plan.genre, 'Japanese City Pop');
-  assert.ok(plan.deezerSearches.includes('Japanese City Pop'));
-  assert.ok(plan.deezerSearches.includes('Japanese City Pop 1980s'));
-  assert.ok(plan.deezerSearches.every(s => !/^[a-z]{2}$/.test(s)));
+  assert.deepEqual([plan.genre, plan.decade, plan.artist], ['Japanese City Pop', '1980s', '']);
 });
 
-test('theme variations keep the core subgenre and add known synonyms', () => {
-  const cityPop = generateThemeVariations('Japanese City Pop', '1980s');
-  assert.ok(cityPop.includes('City Pop') || cityPop.includes('Japanese Citypop'));
-  assert.ok(!cityPop.includes('Japanese Pop'));
-  const frenchHouse = generateThemeVariations('French House');
-  assert.ok(frenchHouse.includes('french touch') || frenchHouse.includes('French House'));
-  const kpop = generateThemeVariations('kpop');
-  assert.ok(!kpop.some(v => v.startsWith('gen ')) && !kpop.includes('kpop hits'));
+test('a prompt naming an artist puts the artist in the plan (the only live lookup), in every language', () => {
+  const plan = buildQueryPlan({ prompt: 'songs by Queen' });
+  assert.deepEqual([plan.artist.toLowerCase(), plan.languages], ['queen', ['en', 'ja', 'ko']]);
+  assert.equal(buildQueryPlan({ genre: 'rock', artist: 'AC/DC' }).artist, 'AC/DC');
+  assert.equal(buildQueryPlan({ genre: 'kpop' }).languages, null, 'the theme decides');
 });

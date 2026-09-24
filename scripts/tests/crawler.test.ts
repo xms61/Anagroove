@@ -69,6 +69,26 @@ test('upsertTrack refuses spoken word, and a voted Japanese artist keeps English
   catalog.close();
 });
 
+test('recompute votes a tagged K-pop act Korean and drops the scene genres the vote does not confirm', () => {
+  const catalog = new SqliteCatalog(':memory:');
+  let id = 910000;
+  const put = (title, artist, isrc, genres) => catalog.upsertTrack({
+    title, artist, isrc, durationMs: 200000, provider: 'deezer', providerTrackId: String(id++), artistMetadata: { genres },
+  });
+  ['Fancy', 'Feel Special', 'The Feels', 'What Is Love'].forEach((title, i) => put(title, 'TWICE', `US5TA19000${i}1`, ['K-Pop', 'Asian Music', 'Japanese']));
+  ['Bohemian Rhapsody', 'Under Pressure', 'Somebody to Love', 'Radio Ga Ga'].forEach((title, i) => put(title, 'Queen', `GBUM710000${i}1`, ['Rock', 'K-Pop']));
+
+  const result = recomputeCatalogLanguages(catalog.db);
+
+  const artist = (name) => catalog.db.prepare('SELECT primary_language, genres_json FROM artists WHERE canonical_name = ?').get(name);
+  assert.deepEqual([artist('twice').primary_language, JSON.parse(String(artist('twice').genres_json))], ['ko', ['K-Pop', 'Asian Music']]);
+  assert.deepEqual([artist('queen').primary_language, JSON.parse(String(artist('queen').genres_json))], ['en', ['Rock']]);
+  assert.equal(result.sceneGenresRemoved, 2);
+  assert.equal(catalog.db.prepare("SELECT COUNT(*) AS c FROM tracks WHERE language = 'ko'").get().c, 4, 'TWICE\'s English titles are Korean now');
+  assert.equal(recomputeCatalogLanguages(catalog.db).sceneGenresRemoved, 0, 'a second run changes nothing');
+  catalog.close();
+});
+
 const deezerTrack = (id, title, artist, extra = {}) => ({
   id, title, artist: { id: 5000 + id, name: artist }, album: { id: 7000 + id, title: `${title} - Single` },
   duration: 200, rank: 650000, preview: `https://cdnt-preview.dzcdn.net/${id}.mp3`, link: `https://www.deezer.com/track/${id}`, ...extra,

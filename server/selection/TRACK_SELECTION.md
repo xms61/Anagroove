@@ -3,7 +3,7 @@
 Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is called by `GET /api/music/random` and `POST /api/puzzles/live` (`server/routes/music.ts`).
 
 ## Themes (`shared/themes.ts`)
-`THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there, plus a `DEEZER_GENRE_TAXONOMY` entry for the live fallback; `themes.test.ts` checks both. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
+`THEMES` is the single theme list: the generator and multiplayer pickers, `genresForPrompt`, the theme languages, the crawler's playlist seeds and the coverage report all read it. Each theme has `id`, label fields, `genres` (values in `artists.genres_json`), `languages` and `seeds`. Add a theme there; `themes.test.ts` checks it. The K-pop, J-pop and anime themes allow only Korean or Japanese: a Korean or Japanese act's English-titled songs carry the artist's language. Free-text prompts go through the ordered `PROMPT_GENRES` rules: the most specific phrase wins and is removed before the next rule runs ("city pop" never also counts as "pop"). There is no Latin theme: the catalog only admits en/ja/ko.
 
 ## Modules
 - `songPool.ts`: orchestrator (query plan → candidates → recency tiers → picker → preview paths). `setMusicProviderForTesting(mock)` replaces the live providers **and** bypasses the catalog.
@@ -32,7 +32,7 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
    | `mainstream` | ≥ 75 (top quarter) | 2 |
 
    A named artist drops the popularity floor (deep cuts allowed).
-4. **Live providers are a fallback only:** used when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Deezer goes first; iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s: then the request's `AbortSignal` fires, which also stops the provider's remaining searches and artist lookups. Deezer results go through `upsertTrack` (admission policy), so the catalog learns. `SPOTYSPICE_OFFLINE=1` (`server/offline.ts`) turns the fallback and preview lookups off.
+4. **Live providers only for a named artist:** a prompt or option that names an artist (`queryPlan.artist`) asks them when the catalog window has fewer than `max(3×count, 30)` rows, or once when the picked pool falls short. Themes and other prompts are served from the catalog alone. Both providers search the artist and keep only tracks credited to them (`canonicalArtistKey`); Deezer goes first, iTunes (0.25 req/s) only if Deezer is still short. Capped at 10 s: then the request's `AbortSignal` fires, which also stops the provider's remaining searches and artist lookups. Deezer results go through `upsertTrack` (admission policy), so the catalog learns. `SPOTYSPICE_OFFLINE=1` (`server/offline.ts`) turns the fallback and preview lookups off.
 5. **Recency tiers:** candidates are bucketed by recent plays (0 / 1 / 2 / 3+), counting track ids, legacy `hit-` ids, and recently played artists. Tiers are filled in that order until `count` is reached.
 6. **Picker:**
    - It rejects duplicate track/title/answer, blacklisted items (`compileBlacklist`, once per request: an artist hidden by provider id matches that id, or its name when the song has no id from that provider; catalog rows carry the artist's Deezer id), language/thematic/authenticity/year policy failures, and non-original versions (`classifyVersion`, which also applies to live candidates).
@@ -44,9 +44,11 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
 ## Rules
 - **Language:** catalog rows are judged by their stored `language`; live candidates by `resolveTrackLanguage`. An explicit `languages` filter (generator chips, `queryPlan.languages`) replaces the theme languages in both the catalog window and the picker. Otherwise `allowedLanguagesForContext` returns:
   - a theme id → the theme's `languages` (`shared/themes.ts`)
-  - K-pop or Korean prompts → ko/en
-  - Japanese, J-pop, city pop or anime prompts → ja/en
+  - K-pop or Korean prompts → ko
+  - Japanese, J-pop, city pop or anime prompts → ja
   - everything else → en
+
+  A named artist (`queryPlan.artist`) is served in every admitted language (`buildQueryPlan`), so "songs by YOASOBI" finds Japanese songs. An explicit filter still replaces that.
 
   English-only themes still run live candidates of 1-2 words through the stopword/script heuristics, because titles like "Despacito" are too short for the classifier. From 3 words the classifier decides: stopwords such as "die" or "son" are English words too. Typographic quotes, dashes and the ellipsis (U+2010-U+2027) count as Latin text.
 - **Year window:** a requested year range needs a known year (`resolveReleaseYear`: a vintage remaster year, then the stored year/date, then a year in the title/album). Without a range, unknown years pass. `isTemporalPermitted` never mutates the track; the picker stores the matched year on the output copy.
@@ -65,6 +67,7 @@ For every theme (except anime, which has its own catalog) and about 40 benchmark
 Targets: themes ≥ 150 tracks from ≥ 40 artists, prompts ≥ 60 / 20, artist prompts ≥ 15 tracks, and full puzzles. `-- --ci` exits 1 on a miss. The failing rows are the crawl to-do list. Genre themes miss on artists until `catalog:enrich -- --artists=N` fills genres, and decade prompts miss on release years until `--albums=N` runs.
 
 ## Known limits
-- Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist, so they fall back to live providers.
+- Genre prompts depend on `artists.genres_json`, which `npm run catalog:enrich -- --artists=N` fills. With few enriched artists, genre pools are thin and pick many tracks per artist; there is no live fallback for them.
+- K-pop and J-pop acts with no Korean or Japanese evidence in the catalog vote English and stay out of the scene themes. Evidence means hangul or kana titles, KR ISRCs or 20% JP ISRCs, or Deezer's Asian Music genre. On 2026-09-24 this left out LE SSERAFIM and the BTS solo acts. Homonyms merged into one artist (Eve, LISA, Winter, Rainbow) are voted as one.
 - Decade prompts depend on release-year coverage (`catalog:enrich -- --albums=N`). Years come from the album, so compilations carry their own year.
 - Homonym guardrails (Daft Punk in pop-punk, "The Japanese House", …) are rows of `THEMATIC_RULES` in `selectionPolicy.ts`: a context pattern and a reject function. `createThematicPolicy` and `createLanguagePolicy` select the rules for a request once; the picker then runs only those per candidate.

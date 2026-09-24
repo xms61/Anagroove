@@ -30,7 +30,7 @@
 | :-- | :-- |
 | `crosswordEngine`, `musicKeywords`, `clueSystem`, `animeArt` | grid placement, answer extraction, zero-spoiler clues |
 | `queryBuilder`, `selectionPolicy`, `trackPicker`, `catalogWindow` | prompt parsing, query plans, language/theme/year/authenticity rules, picker, RNG and the SQL window |
-| `deezerProvider`, `itunesProvider` | live provider caching, retries, mapping |
+| `deezerProvider`, `itunesProvider` | live artist search (only the named artist's tracks), caching, retries, mapping; only artist prompts reach the providers |
 | `validators`, `apiIntegration`, `hardening`, `userStore` | input validation, REST + WS flows, preview 302, CORS/CSP, WS authz and resume, user store |
 | `sqliteCatalog`, `trackNormalization`, `unicodeDedupe`, `popularity`, `languageCorpus`, `authenticity`, `themes` | schema, admission policy, keys, CJK dedupe, popularity, classifier corpus, authenticity corpus |
 | `catalogReport`, `catalogCleanup`, `crawler`, `musicMoveArr`, `animeCatalog` | report, cleanup idempotence, gate, harvester, enrichment, ingest |

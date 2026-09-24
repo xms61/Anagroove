@@ -20,7 +20,6 @@ export interface LivePuzzleOptions {
   genre?: string;
   languages?: ('en' | 'ja' | 'ko')[];
   targetWords?: number;
-  minFans?: number;
   prompt?: string;
   artist?: string;
   album?: string;
@@ -36,16 +35,14 @@ export const dynamicMusicService = {
   async generateLivePuzzle(
     genreOrOptions: string | LivePuzzleOptions = 'all',
     targetWords = 10,
-    minFans = 250000,
   ): Promise<{ puzzle: Puzzle; livePuzzleToken: string }> {
     const opts: LivePuzzleOptions = typeof genreOrOptions === 'object' && genreOrOptions !== null
       ? genreOrOptions
-      : { genre: genreOrOptions, targetWords, minFans };
+      : { genre: genreOrOptions, targetWords };
 
     const payload = {
       genre: opts.genre || 'all',
       targetWords: opts.targetWords || 10,
-      minFans: opts.minFans !== undefined ? opts.minFans : 250000,
       prompt: opts.prompt || undefined,
       artist: opts.artist || undefined,
       album: opts.album || undefined,

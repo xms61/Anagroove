@@ -1,6 +1,15 @@
 # Changelog archive
 
-Releases before 1.28.9. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.10. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.9] - 2026-09-24
+
+### Changed
+- **Agent docs state current rules only:** the crawler, catalog, track selection and frontend docs drop the notes that described earlier behaviour ("before, …", "used to", "replaced") and the dated coverage pass count, and keep the reasons.
+
+---
+
+---
 
 ## [1.28.8] - 2026-09-24
 

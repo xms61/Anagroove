@@ -7,7 +7,8 @@ import { parseFlags, parseOrExit } from './lib/cli.ts';
 
 const USAGE = `
 Recomputes derived catalog fields after crawls and enrichment (local, no network):
-artist languages, then track languages, then the per-language popularity percentile.
+artist languages (K-pop/J-pop scene genres the vote doesn't confirm are removed), then track
+languages, then the per-language popularity percentile.
 
   npm run catalog:recompute
   npm run catalog:recompute -- --db=path/to/catalog.sqlite`;

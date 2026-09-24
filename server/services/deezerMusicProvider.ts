@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from './fetchWithTimeout.ts';
-import { shuffleArray } from '../../shared/shuffle.ts';
+import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
 import type { SongCandidate } from '../types.ts';
 
 /** A track as the Deezer API returns it (search, chart and track endpoints). */
@@ -19,27 +19,6 @@ export interface DeezerApiTrack {
 }
 
 type DeezerArtist = { nb_fan?: number; fans?: number } | undefined;
-
-export interface DeezerGenreConfig {
-  chartId: number | null;
-  searches: string[];
-  minFans: number;
-  minRank: number;
-}
-
-export interface DeezerQuery {
-  genre?: string;
-  limit?: number;
-  minFans?: number;
-  maxFans?: number;
-  minRank?: number;
-  maxRank?: number;
-  searches?: string[];
-  offset?: number;
-  popularity?: string;
-  /** Aborts the searches and the artist lookups (the caller stopped waiting). */
-  signal?: AbortSignal;
-}
 
 type Cache<T> = Map<string, { value: T; expiresAt: number }>;
 
@@ -123,118 +102,37 @@ async function getArtistDetails(artistId: number, signal?: AbortSignal): Promise
   return cacheSet(artistCache, cacheKey, await fetchJson<DeezerArtist>(`https://api.deezer.com/artist/${encodeURIComponent(cacheKey)}`, signal));
 }
 
-export const DEEZER_GENRE_TAXONOMY: Record<string, DeezerGenreConfig> = {
-  all: { chartId: 0, searches: [], minFans: 250000, minRank: 350000 },
-  mixed: { chartId: 0, searches: [], minFans: 250000, minRank: 350000 },
-  pop: { chartId: 132, searches: ['genre:"pop"'], minFans: 200000, minRank: 350000 },
-  rock: { chartId: 152, searches: ['genre:"rock"'], minFans: 150000, minRank: 300000 },
-  hiphop: { chartId: 116, searches: ['genre:"rap"', 'genre:"hip hop"', 'hip hop classics'], minFans: 150000, minRank: 300000 },
-  edm: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"', 'electronic dance music'], minFans: 100000, minRank: 250000 },
-  electronic: { chartId: 113, searches: ['genre:"dance"', 'genre:"electro"', 'electronic dance music'], minFans: 100000, minRank: 250000 },
-  kpop: { chartId: null, searches: ['k-pop', 'kpop', 'genre:"k-pop"'], minFans: 25000, minRank: 200000 },
-  anime: { chartId: null, searches: ['anime opening theme', 'anime ending theme', 'anime ost', 'tv anime opening'], minFans: 25000, minRank: 200000 },
-  gaming: { chartId: 173, searches: ['video game soundtrack', 'video game music', 'original video game score'], minFans: 1000, minRank: 150000 },
-  cinematic: { chartId: 173, searches: ['film score', 'motion picture soundtrack', 'cinematic score'], minFans: 1000, minRank: 150000 },
-  poppunk: { chartId: 85, searches: ['pop punk', 'midwest emo', 'emo punk'], minFans: 50000, minRank: 250000 },
-  indie: { chartId: 85, searches: ['genre:"alternative"', 'indie rock'], minFans: 50000, minRank: 250000 },
-  rnb: { chartId: 165, searches: ['genre:"r&b"', 'soul classics'], minFans: 100000, minRank: 250000 },
-  metal: { chartId: 464, searches: ['genre:"metal"', 'heavy metal'], minFans: 100000, minRank: 250000 },
-  country: { chartId: 84, searches: ['genre:"country"'], minFans: 100000, minRank: 250000 },
-  jazz: { chartId: 129, searches: ['genre:"jazz"', 'genre:"blues"'], minFans: 25000, minRank: 150000 },
-  jpop: { chartId: null, searches: ['j-pop', 'japanese city pop', 'j-rock'], minFans: 25000, minRank: 200000 },
-};
-
 /**
- * Small provider boundary for live selection. The current application has one
- * provider, so this deliberately exposes only the candidate operation it uses.
+ * Live Deezer candidates for a prompt that names an artist the catalog knows too little of.
+ * A plain search (the advanced `artist:"…"` filter returns unrelated results), then only the
+ * tracks credited to that artist.
  */
 export const deezerMusicProvider = {
   name: 'deezer',
 
-  async getCandidateTracks({
-    genre = 'all',
-    limit = 50,
-    minFans = 250000,
-    maxFans = Infinity,
-    minRank = 0,
-    maxRank = Infinity,
-    searches = [],
-    offset = 0,
-    popularity = 'balanced',
-    signal,
-  }: DeezerQuery = {}): Promise<SongCandidate[]> {
-    const normalizedGenre = typeof genre === 'string' ? genre.toLowerCase().trim() : 'all';
-    const genreConfig: DeezerGenreConfig = DEEZER_GENRE_TAXONOMY[normalizedGenre] || {
-      chartId: 0,
-      searches: [normalizedGenre],
-      minFans: 50000,
-      minRank: 250000,
-    };
-
-    const isPure = popularity === 'pure';
-    const thresholdFans = isPure ? 0 : Math.min(minFans, genreConfig.minFans);
-    const thresholdRank = isPure ? 0 : Math.max(minRank, genreConfig.minRank);
-    const customSearches = Array.isArray(searches) && searches.length > 0 ? searches : genreConfig.searches;
-    const cacheKey = `${normalizedGenre}:${customSearches.join(',')}:${offset}:${limit}:${thresholdFans}:${thresholdRank}:${maxFans}:${maxRank}:${popularity}`;
+  async getCandidateTracks({ artist = '', limit = 50, signal }: { artist?: string; limit?: number; signal?: AbortSignal } = {}): Promise<SongCandidate[]> {
+    const wanted = canonicalArtistKey(artist);
+    if (!wanted) return [];
+    const cacheKey = `${wanted}:${limit}`;
     const cached = cacheGet(trackCache, cacheKey);
     if (cached) return cached;
 
-    const requests: Promise<{ data?: DeezerApiTrack[] }>[] = [];
-    if (customSearches.length === 0 && genreConfig.chartId !== null && genreConfig.chartId !== undefined && !isPure) {
-      requests.push(fetchJson(`https://api.deezer.com/chart/${genreConfig.chartId}/tracks?limit=100`, signal));
-    }
-    for (const query of customSearches) {
-      const searchUrl = offset > 0
-        ? `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100&index=${offset}`
-        : `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=100`;
-      requests.push(fetchJson(searchUrl, signal));
-    }
-    if (requests.length === 0) {
-      requests.push(fetchJson('https://api.deezer.com/chart/0/tracks?limit=100', signal));
-    }
-
-    const results = await Promise.all(requests);
-    const rawTracks = results.flatMap(result => Array.isArray(result?.data) ? result.data : []);
-    const uniqueTracks = shuffleArray(
-      [...new Map(rawTracks.map(track => [String(track.id), track])).values()]
-        .filter((track): track is DeezerApiTrack & { artist: { id: number; name: string } } =>
-          Boolean(track.preview && track.title && track.artist?.id && track.artist?.name))
-    );
+    const result = await fetchJson<{ data?: DeezerApiTrack[] }>(`https://api.deezer.com/search?q=${encodeURIComponent(artist.trim())}&limit=100`, signal);
+    const byArtist = (result?.data || []).filter((track): track is DeezerApiTrack & { artist: { id: number; name: string } } =>
+      Boolean(track.preview && track.title && track.artist?.id && track.artist.name && canonicalArtistKey(track.artist.name) === wanted));
 
     const candidates: SongCandidate[] = [];
-    const relaxedCandidates: SongCandidate[] = [];
-
-    for (const track of uniqueTracks) {
-      if (signal?.aborted) break;
-      let artist: DeezerArtist;
+    for (const track of byArtist) {
+      if (signal?.aborted || candidates.length >= limit) break;
+      let details: DeezerArtist;
       try {
-        artist = await getArtistDetails(track.artist.id, signal);
+        details = await getArtistDetails(track.artist.id, signal);
       } catch {
         continue;
       }
-      const mapped = mapDeezerTrack(track, artist);
-      if (!mapped) continue;
-
-      const withinFans = isPure || (mapped.fans >= thresholdFans && mapped.fans <= maxFans);
-      const withinRank = isPure || (mapped.rank >= thresholdRank && mapped.rank <= maxRank);
-
-      if (withinFans && withinRank) {
-        candidates.push(mapped);
-        if (candidates.length >= limit) break;
-      } else {
-        relaxedCandidates.push(mapped);
-      }
+      const mapped = mapDeezerTrack(track, details);
+      if (mapped) candidates.push(mapped);
     }
-
-    // Safety fallback: if strict fan/rank filters yielded fewer than Math.min(6, limit)
-    // tracks, use relaxed candidates to avoid puzzle generation shortages.
-    if (candidates.length < Math.min(6, limit) && relaxedCandidates.length > 0) {
-      for (const track of relaxedCandidates) {
-        candidates.push(track);
-        if (candidates.length >= limit) break;
-      }
-    }
-
     return candidates.length > 0 ? cacheSet(trackCache, cacheKey, candidates) : candidates;
   },
 };

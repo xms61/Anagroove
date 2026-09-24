@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.0] - 2026-09-24
+
+### Changed
+- **Live Deezer/iTunes lookups only for prompts that name an artist.** Themes and every other prompt are served from the local catalog alone. A named artist the catalog has too few rows of is still looked up, and the results are stored in the catalog as before.
+  - Both providers search the artist and keep only tracks credited to that artist, so "songs by Queen" no longer brings ABBA's "Dancing Queen".
+  - With an empty catalog, only artist prompts produce puzzles.
+- **The K-pop, J-pop and anime themes only use Korean or Japanese songs.** Before, they also took English songs by any artist with the theme's genre tag. On 2026-09-24 more than half of the K-pop pool was Western acts: Drake, Radiohead and Queen were its three biggest artists.
+- **A named artist is served in every language.** "songs by YOASOBI" found no songs before, because artist prompts only allowed English.
+- Two theme playlist seeds, "top south korea" and "top japan", are gone. They are country charts of mostly Western hits and were the main source of the wrong genre tags.
+
+### Fixed
+- **K-pop and J-pop acts vote Korean or Japanese.** Deezer romanizes their titles and many of their ISRCs are US codes, so TWICE, Stray Kids, BTS, NewJeans and about 85 more voted English, and 2NE1 and TREASURE voted Japanese.
+  - A K-Pop, Japanese, J-Pop, City Pop or Anime genre from a theme playlist now counts when evidence backs it: Deezer's Asian Music genre, at least one KR ISRC, or a fifth of the ISRCs from JP.
+  - Western acts on those playlists stay English.
+  - `npm run catalog:recompute` applies it, and removes these genres from artists the vote puts in another language. On the 2026-09-24 catalog, 1,558 tracks moved to Korean and 161 wrong genre tags were removed.
+  - K-pop and J-pop acts with none of that evidence still vote English: LE SSERAFIM and the BTS solo acts.
+
+### Removed
+- **The K-pop artist blocklist** in the thematic rules. The language rule above does its job.
+- **The per-genre live search setup:**
+  - `DEEZER_GENRE_TAXONOMY`
+  - the theme search variations, the K-pop and anime seed artists, and the year searches in the query plan
+  - the fan and rank thresholds
+  - the iTunes storefront guessing
+  - the iTunes genre guards in the thematic rules
+- **The `minFans` option** of `GET /api/music/random` and `POST /api/puzzles/live`. It only steered the genre search and is now ignored if sent.
+
+---
+
 ## [1.29.0] - 2026-09-24
 
 ### Security
@@ -85,13 +114,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.9] - 2026-09-24
-
-### Changed
-- **Agent docs state current rules only:** the crawler, catalog, track selection and frontend docs drop the notes that described earlier behaviour ("before, …", "used to", "replaced") and the dated coverage pass count, and keep the reasons.
-
----
-
----
-
-Older releases (1.28.8 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.9 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

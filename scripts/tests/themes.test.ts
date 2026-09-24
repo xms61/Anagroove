@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import { THEMES, themeById, genresForPrompt } from '../../shared/themes.ts';
 import { ALLOWED_LANGUAGES } from '../../server/db/trackNormalization.ts';
 import { allowedLanguagesForContext } from '../../server/policy/selectionPolicy.ts';
-import { DEEZER_GENRE_TAXONOMY } from '../../server/services/deezerMusicProvider.ts';
 import { validateLivePuzzlePayload } from '../../server/validators.ts';
 
 test('theme ids are unique and every theme has a label, icon and description', () => {
@@ -27,13 +26,14 @@ test('every theme except Mixed has genre clusters, and every theme has crawl see
   }
 });
 
-test('every theme is a valid live-puzzle genre with a live Deezer configuration', () => {
+test('every theme is a valid live-puzzle genre', () => {
   for (const { id } of THEMES) {
     assert.equal(validateLivePuzzlePayload({ genre: id }).data?.genre, id);
-    const config: { chartId?: number | null; searches?: string[]; minFans: number; minRank: number } | undefined =
-      DEEZER_GENRE_TAXONOMY[id as keyof typeof DEEZER_GENRE_TAXONOMY];
-    assert.ok(config && (config.chartId !== undefined || (config.searches?.length ?? 0) > 0) && config.minFans > 0 && config.minRank > 0, id);
   }
+});
+
+test('the K-pop, J-pop and anime themes allow only their own language', () => {
+  assert.deepEqual(['kpop', 'jpop', 'anime'].map(id => themeById(id)?.languages), [['ko'], ['ja'], ['ja']]);
 });
 
 test('the selection languages of a theme are the theme\'s own', () => {

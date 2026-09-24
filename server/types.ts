@@ -49,7 +49,7 @@ export interface SongCandidate {
   display_name?: string;
   album_name?: string | null;
   collectionName?: string;
-  selection?: { source?: string; rank?: number; artistFans?: number; genre?: string; releaseDate?: string; storefront?: string };
+  selection?: { source?: string; rank?: number; artistFans?: number; genre?: string; releaseDate?: string };
   [field: string]: unknown;
 }
 

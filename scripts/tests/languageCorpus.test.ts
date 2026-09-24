@@ -74,6 +74,26 @@ for (const [titles, isrcs, expected] of ARTIST_VOTES) {
   });
 }
 
+// Romanized titles and US-registered ISRCs: a scene genre decides with evidence. [artist, genres, isrcs, expected]
+const ENGLISH_TITLES = ['Fancy', 'Feel Special', 'The Feels', 'What Is Love', 'Talk that Talk', 'Set Me Free'];
+const SCENE_VOTES: [artist: string, genres: string[], isrcs: string[], expected: string, why: string][] = [
+  ['TWICE', ['K-Pop', 'Asian Music'], ['US5TA1900001', 'US5TA1900002', 'JPWP02100001'], 'ko', 'a K-pop act Deezer files under Asian Music'],
+  ['NewJeans', ['K-Pop'], ['USA2P2300001', 'USA2P2300002', 'KRNAR2300001'], 'ko', 'one Korean registration'],
+  ['TOMORROW X TOGETHER', ['K-Pop', 'Anime', 'Asian Music'], ['JPU902200001', 'USA2P2200001', 'USA2P2200002', 'USA2P2200003'], 'ko', 'K-Pop before a Japanese anime tie-in'],
+  ['2NE1', ['Asian Music', 'K-Pop'], ['JPB601400001', 'JPB601400002', 'JPB601400003', 'KRA491100001', 'KRB471400001'], 'ko', 'Japanese live recordings of a K-pop group'],
+  ['Queen', ['Rock', 'K-Pop'], ['GBUM71000001', 'GBUM71000002', 'GBUM71000003'], 'en', 'a Western act on a Korean chart playlist'],
+  ['Kylie Minogue', ['Pop', 'K-Pop'], ['GB5KW0000001', 'GB5KW0000002', 'JPWP00000001'], 'en', 'a Japan edition is no Korean evidence'],
+  ['ONE OK ROCK', ['Japanese', 'Rock'], ['JPA271700001', 'USAT21700001', 'USAT21700002', 'USAT21700003'], 'ja', 'a quarter of the ISRCs are Japanese'],
+  ['Eve', ['Anime', 'Rap/Hip Hop'], ['JPU902000001', ...Array.from({ length: 7 }, (_, i) => `USIR1000000${i}`)], 'en', 'a few Japanese ISRCs among many'],
+  ['Taylor Swift', ['Pop', 'Japanese'], ['USCJY1431309', 'USCJY1431310', 'USCJY1431311'], 'en', 'a Western act on a Japanese chart playlist'],
+  ['Pritam', ['Pop', 'Asian Music'], ['INH101000001', 'INH101000002'], 'en', 'Asian Music without a scene genre'],
+];
+for (const [artist, genres, isrcs, expected, why] of SCENE_VOTES) {
+  test(`${artist} (${genres.join(', ')}) votes ${expected}: ${why}`, () => {
+    assert.equal(classifyArtistLanguage({ titles: ENGLISH_TITLES, isrcs, name: artist, genres }).language, expected);
+  });
+}
+
 test('a non-Latin script counts only when it is most of the letters', () => {
   assert.equal(scriptLanguage('KoЯn'), null);
   assert.equal(scriptLanguage('DISCIPLΞS'), null);

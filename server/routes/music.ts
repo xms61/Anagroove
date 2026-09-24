@@ -51,7 +51,6 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
 
       const songs = await getRandomSongPool({
         genre: validatedQuery.genre,
-        minFans: validatedQuery.minFans,
         count: validatedQuery.count,
         blacklist: userId ? db.getBlacklist(userId) : [],
         recentIds: validatedQuery.recentIds,
@@ -85,14 +84,13 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
     }
 
     try {
-      const { genre, minFans, targetWords, recentIds, prompt, artist, album, decade, popularity, seed, languages } = validation.data;
+      const { genre, targetWords, recentIds, prompt, artist, album, decade, popularity, seed, languages } = validation.data;
 
       logger.info('puzzle', `Generating live puzzle | genre: ${genre}, popularity: ${popularity}, prompt: ${JSON.stringify(prompt || '')}`);
       const genStart = Date.now();
 
       const songs = await getRandomSongPool({
         genre,
-        minFans,
         count: Math.min(40, targetWords + 12),
         blacklist: db.getBlacklist(userId),
         recentIds,
@@ -142,7 +140,6 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
           provider: 'deezer',
           candidateCount: songs.length,
           genre,
-          minFans,
           popularity,
           artist,
           album,

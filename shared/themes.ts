@@ -3,7 +3,9 @@
  * mapping, the crawler's playlist seeds and the coverage report.
  *
  *   genres     values in artists.genres_json that belong to the theme (any one matches)
- *   languages  song languages the theme allows (the catalog holds en/ja/ko only)
+ *   languages  song languages the theme allows (the catalog holds en/ja/ko only). The K-pop,
+ *              J-pop and anime themes allow only their own language: a Korean or Japanese act's
+ *              English-titled songs carry the artist's language.
  *   seeds      Deezer playlist searches the crawler harvests for the theme
  */
 export type SongLanguage = 'en' | 'ja' | 'ko';
@@ -22,7 +24,22 @@ const ROCK = ['Rock', 'Classic Rock', 'Alternative Rock', 'Hard Rock', 'Indie Ro
 const HIP_HOP = ['Rap/Hip Hop', 'Hip-Hop', 'Hip Hop'];
 const ELECTRONIC = ['Dance', 'Electro', 'Electronic', 'EDM', 'Techno/House', 'Trance', 'French House'];
 const SOUNDTRACK = ['Films/Games', 'Soundtrack'];
-const JAPANESE = ['Japanese', 'J-Pop', 'City Pop', 'Asian Music'];
+
+/** Deezer's genre for East Asian pop, stored from the artist's album by `enrichArtists`. */
+export const ASIAN_MUSIC = 'Asian Music';
+
+const JAPANESE_SCENE = ['Japanese', 'J-Pop', 'City Pop'];
+const JAPANESE = [...JAPANESE_SCENE, ASIAN_MUSIC];
+
+/**
+ * Genres that place an artist in the Korean or Japanese scene. Theme playlist seeds add them to
+ * every artist on the playlist, Western acts included, so the artist language vote only trusts
+ * them with other evidence, and `catalog:recompute` removes them from artists voted another language.
+ */
+export const SCENE_GENRES: Readonly<Record<'ko' | 'ja', readonly string[]>> = Object.freeze({
+  ko: ['K-Pop'],
+  ja: [...JAPANESE_SCENE, 'Anime'],
+});
 
 export const THEMES: readonly Theme[] = Object.freeze([
   { id: 'all', name: 'Mixed & Eclectic', icon: '🎲', description: 'Fresh cross-genre selection', genres: [], languages: ['en'],
@@ -47,11 +64,11 @@ export const THEMES: readonly Theme[] = Object.freeze([
     seeds: ['classic country', 'modern country hits'] },
   { id: 'jazz', name: 'Jazz & Blues', icon: '🎷', description: 'Standards, swing & the blues', genres: ['Jazz', 'Blues'], languages: ['en'],
     seeds: ['jazz masters', 'blues legends', 'jazz standards'] },
-  { id: 'kpop', name: 'K-Pop Universe', icon: '🌸', description: 'Korean pop & idol anthems', genres: ['K-Pop'], languages: ['ko', 'en'],
-    seeds: ['kpop essentials', 'k-pop hits', 'top south korea', 'korean r&b', 'k-pop girl groups', 'k-pop boy groups'] },
-  { id: 'jpop', name: 'J-Pop & City Pop', icon: '🗼', description: 'Tokyo pop, city pop & J-rock', genres: JAPANESE, languages: ['ja', 'en'],
-    seeds: ['j-pop hits', 'japanese city pop', 'city pop vibes', 'top japan', 'j-rock anthems'] },
-  { id: 'anime', name: 'Anime & J-Rock', icon: '⚔️', description: 'Anime openings & J-Rock', genres: ['Anime'], languages: ['ja', 'en'],
+  { id: 'kpop', name: 'K-Pop Universe', icon: '🌸', description: 'Korean pop & idol anthems', genres: SCENE_GENRES.ko, languages: ['ko'],
+    seeds: ['kpop essentials', 'k-pop hits', 'korean r&b', 'k-pop girl groups', 'k-pop boy groups'] },
+  { id: 'jpop', name: 'J-Pop & City Pop', icon: '🗼', description: 'Tokyo pop, city pop & J-rock', genres: JAPANESE, languages: ['ja'],
+    seeds: ['j-pop hits', 'japanese city pop', 'city pop vibes', 'j-rock anthems'] },
+  { id: 'anime', name: 'Anime & J-Rock', icon: '⚔️', description: 'Anime openings & J-Rock', genres: ['Anime'], languages: ['ja'],
     seeds: ['anime openings', 'anime songs'] },
   { id: 'gaming', name: 'Video Game OSTs', icon: '🎮', description: 'Iconic game soundtracks', genres: SOUNDTRACK, languages: ['en'],
     seeds: ['video game music', 'gaming soundtracks'] },
