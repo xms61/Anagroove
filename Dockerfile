@@ -37,12 +37,16 @@ COPY data/ ./data/
 # Copy compiled frontend from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create runtime non-root user and ensure data directories have write permissions
+# Runtime non-root user. It owns only DATA_DIR (server/data), the one place the server writes;
+# code and dependencies stay root-owned, so the app cannot modify them
 RUN addgroup -S anagroove && adduser -S anagroove -G anagroove && \
-    mkdir -p /app/server/data && chown -R anagroove:anagroove /app
+    mkdir -p /app/server/data && chown anagroove:anagroove /app/server/data
 
 USER anagroove
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" > /dev/null || exit 1
 
 CMD ["node", "server/server.ts"]

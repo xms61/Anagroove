@@ -8,6 +8,9 @@ import type { BlacklistType } from './db/userStore.ts';
 export type Validation<T> = { valid: true; data: T; error?: undefined } | { valid: false; error: string; data?: undefined };
 
 type Body = Record<string, unknown>;
+
+/** Free text that reaches logs or other players: control characters (newlines too) become spaces. */
+const cleanText = (value: string, max: number): string => value.replace(/\p{Cc}/gu, ' ').trim().slice(0, max);
 const isBody = (body: unknown): body is Body => Boolean(body) && typeof body === 'object';
 
 /** A WebSocket message after validation; room handlers read the fields their action needs. */
@@ -240,10 +243,10 @@ export function validateLivePuzzlePayload(body: unknown): Validation<LivePuzzleR
       .filter(Boolean)
     : [];
 
-  const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 200) : '';
-  const artist = typeof body.artist === 'string' ? body.artist.trim().slice(0, 100) : '';
-  const album = typeof body.album === 'string' ? body.album.trim().slice(0, 100) : '';
-  const decade = typeof body.decade === 'string' ? body.decade.trim().slice(0, 20) : '';
+  const prompt = typeof body.prompt === 'string' ? cleanText(body.prompt, 200) : '';
+  const artist = typeof body.artist === 'string' ? cleanText(body.artist, 100) : '';
+  const album = typeof body.album === 'string' ? cleanText(body.album, 100) : '';
+  const decade = typeof body.decade === 'string' ? cleanText(body.decade, 20) : '';
   const popularity = typeof body.popularity === 'string' && ['pure', 'obscure', 'indie', 'balanced', 'mainstream'].includes(body.popularity.toLowerCase().trim())
     ? body.popularity.toLowerCase().trim()
     : undefined;
@@ -284,10 +287,10 @@ export function validateMusicQuery(query: Record<string, unknown>) {
       .filter(id => id.length > 0);
   }
 
-  const prompt = typeof query.prompt === 'string' ? query.prompt.trim().slice(0, 200) : '';
-  const artist = typeof query.artist === 'string' ? query.artist.trim().slice(0, 100) : '';
-  const album = typeof query.album === 'string' ? query.album.trim().slice(0, 100) : '';
-  const decade = typeof query.decade === 'string' ? query.decade.trim().slice(0, 20) : '';
+  const prompt = typeof query.prompt === 'string' ? cleanText(query.prompt, 200) : '';
+  const artist = typeof query.artist === 'string' ? cleanText(query.artist, 100) : '';
+  const album = typeof query.album === 'string' ? cleanText(query.album, 100) : '';
+  const decade = typeof query.decade === 'string' ? cleanText(query.decade, 20) : '';
   const popularity = typeof query.popularity === 'string' && ['pure', 'obscure', 'indie', 'balanced', 'mainstream'].includes(query.popularity.toLowerCase().trim())
     ? query.popularity.toLowerCase().trim()
     : undefined;
@@ -350,7 +353,7 @@ export function validateWsMessage(message: unknown): Validation<WsMessage> {
   }
 
   if (data.playerName) {
-    data.playerName = String(data.playerName).slice(0, 30).trim();
+    data.playerName = cleanText(String(data.playerName), 30);
   }
 
   if (data.action === 'create_room') {

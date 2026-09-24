@@ -17,13 +17,13 @@ Entry: `server/server.ts` composes the app (Express 4, plus a `ws` server on `/w
 | `GET /api/preview/:ref` | none | `ref` = `deezer:<id>`, `itunes:<id>`, or `catalog:<id>`. 302 to a fresh preview URL (404 if none, 503 with `Retry-After` when the shared provider budget is exhausted). Own limit of 300/min and skips the general limiter. One lookup per ref at a time; misses are cached for 10 min |
 | `/audio/anime/*` | none | static anime clips |
 
-`X-User-Id` must match `^[A-Za-z0-9_-]{3,64}$`. It's an anonymous bearer id, so treat it as a secret.
+`X-User-Id` must match `^[A-Za-z0-9_-]{3,64}$`. It's an anonymous bearer id, so treat it as a secret: it is read from the header only (never the query string) and never logged. The request log records method, path (no query string), status and time.
 
 ## Validation & limits
 - All input goes through `server/validators.ts`. Add a validator there for any new payload.
 - JSON body limit 256 kb. General API: 120 req/min per IP (`middleware/rateLimiter.ts`). WS: max 20 connections per IP and 35 messages/s. `maxPayload` refuses a frame over 64 KiB while it arrives (close 1009), and a socket that misses a 30 s ping is terminated. Wrong room codes are limited to 10 per minute per IP.
 - Client IP is `req.ip`, which follows `TRUST_PROXY`. WS upgrades use `clientIpFromUpgrade` with the same rule. Never read `X-Forwarded-For` directly.
-- CORS allows only origins in `CORS_ALLOWED_ORIGINS`, or localhost when that's unset. A rejected origin gets a 403 JSON response from `jsonErrorHandler` (`http/security.ts`), which also turns bad or oversized bodies into 400/413 JSON.
+- CORS (`isAllowedOrigin`) always allows the page's own origin (the `Origin` host equals `Host`: browsers send `Origin` on same-origin POST and DELETE), then origins in `CORS_ALLOWED_ORIGINS`, or local dev origins when that's unset. WebSocket upgrades apply the same rule. Free text that reaches logs or other players (prompt, artist, album, decade, player name) has its control characters replaced. A rejected origin gets a 403 JSON response from `jsonErrorHandler` (`http/security.ts`), which also turns bad or oversized bodies into 400/413 JSON.
 - Every response gets `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and `Permissions-Policy`. Production also gets a CSP (`media-src https:` for preview redirects, `font-src 'self'`, since fonts are self-hosted).
 - **User store:** `server/db.ts` → `UserStore` (`server/db/userStore.ts`), SQLite `DATA_DIR/users.sqlite` (tables `users`, `progress`, `solved_history`, `blacklist`, `meta`), opened lazily.
   - The old `store.json` (or its `.bak`) is imported once on first open, recorded in `meta`, and then no longer read.

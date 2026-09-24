@@ -5,6 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import { setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { validatePreviewRef } from '../../server/validators.ts';
 import { server, parseTrustProxy, clientIpFromUpgrade } from '../../server/server.ts';
+import { isAllowedOrigin } from '../../server/http/security.ts';
 import { db } from '../../server/db.ts';
 import { MAX_BLACKLIST_ITEMS } from '../../server/db/userStore.ts';
 import {
@@ -111,6 +112,16 @@ test('TRUST_PROXY parsing and the WebSocket client IP', () => {
   const upgrade = { socket: { remoteAddress: '10.0.0.5' }, headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9' } } as unknown as IncomingMessage;
   assert.equal(clientIpFromUpgrade(upgrade, false), '10.0.0.5', 'X-Forwarded-For is ignored without a trusted proxy');
   assert.equal(clientIpFromUpgrade(upgrade, 1), '203.0.113.9', 'one trusted hop: the entry it appended');
+});
+
+test('the page\'s own origin is always allowed; others need CORS_ALLOWED_ORIGINS or a local dev origin', () => {
+  assert.ok(isAllowedOrigin(undefined, 'anagroove.example', null), 'no Origin (curl, same-origin GET)');
+  assert.ok(isAllowedOrigin('https://anagroove.example', 'anagroove.example', null), 'same origin on a real domain');
+  assert.ok(isAllowedOrigin('http://localhost:3000', '127.0.0.1:3001', null), 'Vite dev server');
+  assert.ok(!isAllowedOrigin('https://evil.example', 'anagroove.example', null));
+  assert.ok(isAllowedOrigin('https://partner.example', 'anagroove.example', ['https://partner.example']));
+  assert.ok(!isAllowedOrigin('http://localhost:3000', 'anagroove.example', ['https://partner.example']), 'a configured list replaces the dev default');
+  assert.ok(!isAllowedOrigin('not a url', 'anagroove.example', null));
 });
 
 describe('preview lookups stay within the provider budget', () => {
@@ -233,6 +244,28 @@ describe('HTTP and WebSocket server', () => {
     const response = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'https://evil.example' } });
     assert.equal(response.status, 403);
     assert.ok((await readJson(response).catch(() => null))?.error);
+  });
+
+  test('a same-origin POST on a real domain is allowed without CORS_ALLOWED_ORIGINS', async () => {
+    const status = await new Promise<number>((resolve, reject) => {
+      const request = http.request(`${baseUrl}/api/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': `origin-${Date.now()}`, Host: 'anagroove.example', Origin: 'https://anagroove.example' },
+      }, response => { response.resume(); resolve(response.statusCode); });
+      request.on('error', reject);
+      request.end(JSON.stringify({ name: 'Nickelback', type: 'artist' }));
+    });
+    assert.equal(status, 200);
+  });
+
+  test('the user id is read from the header only and never logged', async (t) => {
+    const userId = `secret-${Date.now()}`;
+    const lines: string[] = [];
+    t.mock.method(console, 'log', (...args: unknown[]) => { lines.push(args.join(' ')); });
+    assert.equal((await fetch(`${baseUrl}/api/progress?userId=${userId}`)).status, 400);
+    assert.equal((await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } })).status, 200);
+    assert.ok(lines.some(line => line.includes('/api/progress')), 'requests are still logged');
+    assert.ok(lines.every(line => !line.includes(userId)));
   });
 
   test('read-only requests do not create users', async () => {

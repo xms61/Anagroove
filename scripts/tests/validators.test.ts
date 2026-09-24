@@ -56,3 +56,11 @@ test('the language filter accepts arrays and comma lists, deduped, and only en/j
   assert.ok(!validateLivePuzzlePayload({ languages: 'fr' }).valid);
   assert.deepEqual(validateLivePuzzlePayload({ languages: ['ja'] }).data.languages, ['ja']);
 });
+
+test('free text that reaches logs and other players loses control characters', () => {
+  const live = validateLivePuzzlePayload({ prompt: '80s rock\n[ERROR] forged line', artist: 'Queen\r' });
+  assert.equal(live.data?.prompt, '80s rock [ERROR] forged line');
+  assert.equal(live.data?.artist, 'Queen');
+  const message = validateWsMessage({ action: 'join_room', roomCode: 'BEAT-1234', playerId: 'player-1', playerName: 'Eve\u0000\nAdmin' });
+  assert.equal(message.data?.playerName, 'Eve  Admin');
+});

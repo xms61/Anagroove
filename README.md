@@ -69,7 +69,7 @@ Details: [scripts/tests/TESTING.md](scripts/tests/TESTING.md).
 ```bash
 docker compose up -d        # http://localhost:3000, data in the spotyspice_data volume (the old name, kept so existing data stays)
 ```
-The image never contains catalog or user databases (`.dockerignore`). Copy a catalog into the volume, or crawl inside the container. The server honours `$PORT`.
+The image never contains catalog or user databases (`.dockerignore`). Copy a catalog into the volume, or crawl inside the container. The server honours `$PORT`. Anime clips are mounted from `./data/anime_samples`. Behind a reverse proxy, set `TRUST_PROXY` (see `.env.example`), or every player shares the proxy's rate limits.
 
 Releases are cut with the manual **Release** workflow (`.github/workflows/manual-release.yml`). It runs the checks, builds the image, tags the version and publishes notes from `CHANGELOG.md`.
 

@@ -6,11 +6,11 @@
  */
 import crypto from 'crypto';
 import { Buffer } from 'buffer';
-import type { Server } from 'http';
+import type { IncomingMessage, Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { validateWsMessage, type WsMessage } from '../validators.ts';
 import { createFailureCounter, wsRateLimiter } from '../middleware/rateLimiter.ts';
-import { clientIpFromUpgrade } from '../http/security.ts';
+import { clientIpFromUpgrade, isAllowedOrigin, parseAllowedOrigins } from '../http/security.ts';
 import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 import type { LivePuzzleStore } from '../http/livePuzzleStore.ts';
@@ -87,7 +87,14 @@ function emptyGrid(puzzle: Puzzle | undefined): string[][] | null {
 /** Attaches the multiplayer WebSocket server to an HTTP server. */
 export function attachMultiplayer(server: Server, { livePuzzles, heartbeatMs = HEARTBEAT_MS }: { livePuzzles: LivePuzzleStore; heartbeatMs?: number }) {
   // Larger frames are refused while they arrive (close 1009); the library default is 100 MiB
-  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_MESSAGE_BYTES });
+  const allowedOrigins = parseAllowedOrigins();
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: MAX_MESSAGE_BYTES,
+    // The same origin rule as the HTTP API (clients without Origin, such as scripts, are allowed)
+    verifyClient: ({ origin, req }: { origin: string | undefined; req: IncomingMessage }) => isAllowedOrigin(origin, req.headers.host, allowedOrigins),
+  });
   const rooms = new Map<string, Room>();
   const failedJoins = createFailureCounter({ windowMs: 60 * 1000, max: FAILED_JOINS_PER_MINUTE });
 

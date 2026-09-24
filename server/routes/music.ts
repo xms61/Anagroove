@@ -45,7 +45,7 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
   router.get('/music/random', async (req, res) => {
     try {
       const validatedQuery = validateMusicQuery(req.query as Record<string, unknown>);
-      const rawUserId = req.headers['x-user-id'] || req.query.userId;
+      const rawUserId = req.headers['x-user-id'];
       const userId = rawUserId ? validateUserId(rawUserId) : null;
 
       const songs = await getRandomSongPool({
@@ -73,8 +73,7 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
   // Builds one complete puzzle on the server so every multiplayer participant
   // receives the host's same, already-selected tracks and grid.
   router.post('/puzzles/live', async (req, res) => {
-    const rawUserId = req.headers['x-user-id'] || req.query.userId;
-    const userId = validateUserId(rawUserId);
+    const userId = validateUserId(req.headers['x-user-id']);
     if (!userId) {
       return res.status(400).json({ error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)' });
     }
@@ -87,7 +86,7 @@ export function createMusicRouter({ livePuzzles }: { livePuzzles: LivePuzzleStor
     try {
       const { genre, minFans, targetWords, recentIds, prompt, artist, album, decade, popularity, seed, languages } = validation.data;
 
-      logger.info('puzzle', `Generating live puzzle for user "${userId}" | genre: ${genre}, popularity: ${popularity}, prompt: "${prompt || ''}"`);
+      logger.info('puzzle', `Generating live puzzle | genre: ${genre}, popularity: ${popularity}, prompt: ${JSON.stringify(prompt || '')}`);
       const genStart = Date.now();
 
       const songs = await getRandomSongPool({

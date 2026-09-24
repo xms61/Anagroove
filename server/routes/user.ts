@@ -8,7 +8,8 @@ import { BlacklistFullError, MAX_BLACKLIST_ITEMS } from '../db/userStore.ts';
 import { validateBlacklistPayload, validateHistoryPayload, validateProgressPayload, validateUserId } from '../validators.ts';
 
 export const requireUserId: RequestHandler = (req, res, next) => {
-  const validatedId = validateUserId(req.headers['x-user-id'] || req.query.userId);
+  // Header only: an id in the URL would end up in logs and browser history
+  const validatedId = validateUserId(req.headers['x-user-id']);
   if (!validatedId) {
     res.status(400).json({
       error: 'Invalid or missing X-User-Id header (must be 3-64 alphanumeric/dash/underscore chars)',
