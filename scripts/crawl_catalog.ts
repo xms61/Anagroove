@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { ParseArgsOptionsConfig } from 'node:util';
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
 import { musicHarvester } from '../server/crawler/harvester.ts';
 import { UsageError, intFlag, parseFlags, parseOrExit } from './lib/cli.js';
@@ -21,9 +22,13 @@ Vectors can be combined; --all takes per-vector overrides. Flags must follow "--
 
 export const DEFAULT_VECTOR_LIMITS = Object.freeze({ charts: 100, playlists: 100, decades: 49, cjk: 300, artists: 500, lexicon: 400 });
 const DEFAULT_TARGET = 500000;
-const VECTORS = Object.keys(DEFAULT_VECTOR_LIMITS);
+type Vector = keyof typeof DEFAULT_VECTOR_LIMITS;
+const VECTORS = Object.keys(DEFAULT_VECTOR_LIMITS) as Vector[];
 
-const OPTIONS = {
+/** Catalog counts only, or the per-vector limits (0 = off) and the track target. */
+export type CrawlPlan = { status: true } | ({ status: false; targetTracks: number } & Record<Vector, number>);
+
+const OPTIONS: ParseArgsOptionsConfig = {
   all: { type: 'boolean' },
   status: { type: 'boolean' },
   'playlists-only': { type: 'boolean' },
@@ -31,12 +36,11 @@ const OPTIONS = {
   ...Object.fromEntries(VECTORS.map(vector => [vector, { type: 'string' }])),
 };
 
-/** `{ status: true }` or the per-vector limits (0 = off) and the track target. */
-export function buildCrawlPlan(argv, env = {}) {
+export function buildCrawlPlan(argv: string[], env: NodeJS.ProcessEnv = {}): CrawlPlan {
   const flags = parseFlags(OPTIONS, { argv, env });
   if (flags.status) return { status: true };
 
-  const limits = {};
+  const limits = {} as Record<Vector, number>;
   for (const vector of VECTORS) {
     limits[vector] = intFlag(flags, vector) ?? (flags.all ? DEFAULT_VECTOR_LIMITS[vector] : 0);
   }
@@ -50,7 +54,7 @@ export function buildCrawlPlan(argv, env = {}) {
   return { status: false, targetTracks: intFlag(flags, 'target') ?? DEFAULT_TARGET, ...limits };
 }
 
-function printStats(stats) {
+function printStats(stats: ReturnType<typeof sqliteCatalog.getStats>) {
   console.log('\nCatalog status');
   console.log(`  Artists:                 ${stats.artists.toLocaleString()}`);
   console.log(`  Tracks:                  ${stats.tracks.toLocaleString()}`);
@@ -61,8 +65,8 @@ function printStats(stats) {
   console.log(`  Cross-referenced tracks: ${stats.crossReferencedTracks.toLocaleString()}\n`);
 }
 
-async function main(plan) {
-  if (plan.status) {
+async function main(plan: CrawlPlan) {
+  if (plan.status === true) {
     printStats(sqliteCatalog.getStats());
     return;
   }

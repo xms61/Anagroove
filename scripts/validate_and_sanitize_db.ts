@@ -5,10 +5,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../server/paths.js';
 import { catalogStatistics, renderValidationReport } from '../server/db/catalogReport.ts';
-import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup } from '../server/db/catalogCleanup.ts';
+import { CLEANUP_STEPS, compactCatalog, runCatalogCleanup, type CleanupResult, type StepResult } from '../server/db/catalogCleanup.ts';
 import { DEFAULT_GATE_THRESHOLDS, evaluateCatalogGate } from '../server/db/catalogGate.ts';
 import { LATEST_CATALOG_VERSION, runCatalogMigrations } from '../server/db/catalogMigrations.js';
 import { listFlag, numberFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { errorMessage } from '../server/errors.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,7 +41,7 @@ const OPTIONS = {
   steps: { type: 'string' },
   'min-year-coverage': { type: 'string' },
   'min-isrc-coverage': { type: 'string' },
-};
+} as const;
 const flags = parseOrExit(() => {
   const values = parseFlags(OPTIONS);
   return {
@@ -50,7 +51,7 @@ const flags = parseOrExit(() => {
     minIsrcCoverage: numberFlag(values, 'min-isrc-coverage') ?? DEFAULT_GATE_THRESHOLDS.minIsrcCoverage,
   };
 }, USAGE);
-const flag = (name) => Boolean(flags[name]);
+const flag = (name: keyof typeof OPTIONS) => Boolean(flags[name]);
 
 const shouldFix = flag('fix');
 const ciMode = flag('ci');
@@ -69,9 +70,9 @@ function openCatalog() {
   return db;
 }
 
-function printStep(name, result) {
+function printStep(name: string, result: StepResult) {
   const counts = Object.entries(result)
-    .filter(([key, value]) => typeof value === 'number' && key !== 'ms')
+    .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && entry[0] !== 'ms')
     .map(([key, value]) => `${key}=${value.toLocaleString()}`);
   if (result.reasons) counts.push(...Object.entries(result.reasons).map(([key, value]) => `${key}=${value.toLocaleString()}`));
   console.log(`   ${name.padEnd(11)} ${counts.join('  ')}  (${(result.ms / 1000).toFixed(1)}s)`);
@@ -82,8 +83,8 @@ function main() {
   const db = openCatalog();
 
   try {
-    const version = Number(db.prepare('PRAGMA user_version').get().user_version) || 0;
-    let backupPath = null;
+    const version = Number(db.prepare('PRAGMA user_version').get()?.user_version) || 0;
+    let backupPath: string | null = null;
     if (shouldFix && !flag('no-backup')) {
       backupPath = path.join(path.dirname(dbPath), `${path.basename(dbPath, '.sqlite')}.backup-cleanup-${timestamp()}.sqlite`);
       console.log(`Backing up to ${backupPath} ...`);
@@ -103,7 +104,7 @@ function main() {
     console.log(`\nTracks ${overview.tracks.toLocaleString()}, artists ${overview.artists.toLocaleString()} (${overview.artistsEnriched}% enriched), release year known ${overview.releaseYearKnown}%`);
     console.log(`Languages: ${stats.languages.map(l => `${l.language} ${l.count.toLocaleString()}`).join(', ')}`);
 
-    let cleanup = null;
+    let cleanup: CleanupResult | null = null;
     if (!ciMode) {
       console.log(`\n${shouldFix ? 'Applying' : 'Dry-running'} cleanup (${steps.join(', ')}) ...`);
       cleanup = runCatalogCleanup(db, { apply: shouldFix, steps, onStep: printStep });
@@ -143,6 +144,6 @@ function main() {
 try {
   main();
 } catch (err) {
-  console.error(`\nValidation failed: ${err.message}`);
+  console.error(`\nValidation failed: ${errorMessage(err)}`);
   process.exit(1);
 }

@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { AnimeCatalog } from '../server/db/animeCatalog.ts';
-import { scanSourceOggFiles, generateSamplesForFile } from './generate_anime_samples.js';
-import { normalizeAnimeSlugKey } from './sync_anime_metadata.js';
+import { scanSourceOggFiles, generateSamplesForFile, type SampleRecord } from './generate_anime_samples.ts';
+import { normalizeAnimeSlugKey, type AnimeMetadataIndex, type AnimeThemeMetadata } from './sync_anime_metadata.ts';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
 
@@ -14,7 +14,10 @@ const SOURCE_DIR = path.join(ROOT_DIR, 'data', 'Anime OPED');
 const INDEX_PATH = path.join(ROOT_DIR, 'data', 'anime_metadata_index.json');
 const SAMPLES_DIR = path.join(ROOT_DIR, 'data', 'anime_samples');
 
-function parseFilenameFallback(relFile) {
+/** Index metadata for a file, or a guess from its name (isFallback). */
+type ThemeMetadata = Omit<AnimeThemeMetadata, 'animeId' | 'animeSlug' | 'artists'> & { isFallback?: boolean };
+
+function parseFilenameFallback(relFile: string): ThemeMetadata {
   const parts = relFile.replace(/\\/g, '/').split('/');
   const year = parts.length > 2 && /^\d{4}$/.test(parts[0]) ? parseInt(parts[0], 10) : null;
   const season = parts.length > 2 ? parts[1] : null;
@@ -61,12 +64,12 @@ function parseFilenameFallback(relFile) {
 export async function ingestAnimeCatalog({
   generateSamples = false,
   limit = null,
-} = {}) {
+}: { generateSamples?: boolean; limit?: number | null } = {}) {
   console.log('======================================================');
   console.log('       ANAGROOVE ANIME OP/ED CATALOG INGESTOR        ');
   console.log('======================================================\n');
 
-  let metadataIndex = { byBasename: {}, bySlugKey: {} };
+  let metadataIndex: AnimeMetadataIndex = { byBasename: {}, bySlugKey: {} };
   if (fs.existsSync(INDEX_PATH)) {
     console.log(`[AnimeIngest] Loading metadata index from ${INDEX_PATH}...`);
     metadataIndex = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
@@ -101,11 +104,11 @@ export async function ingestAnimeCatalog({
     const baseLower = baseName.toLowerCase();
     const slugKey = normalizeAnimeSlugKey(baseName);
 
-    let meta = metadataIndex.byBasename?.[baseLower];
+    let meta: ThemeMetadata | undefined = metadataIndex.byBasename[baseLower];
     if (meta) {
       exactMatches++;
     } else {
-      meta = metadataIndex.bySlugKey?.[slugKey];
+      meta = metadataIndex.bySlugKey[slugKey];
       if (meta) {
         slugMatches++;
       } else {
@@ -120,13 +123,12 @@ export async function ingestAnimeCatalog({
     const dirSeason = parts.length > 2 ? parts[1] : null;
 
     const trackId = catalog.upsertAnimeTrack({
-      animeTitle: meta.animeTitle || meta.anime_title,
-      englishAnimeTitle: meta.englishAnimeTitle || null,
-      songTitle: meta.songTitle || meta.song_title,
-      artistName: meta.artistName || meta.artist_name,
-      themeType: meta.themeType || meta.theme_type || 'OP',
-      themeNumber: meta.themeNumber || meta.theme_number || 1,
-      themeSlug: meta.themeSlug || meta.theme_slug || `${meta.themeType || 'OP'}${meta.themeNumber || 1}`,
+      animeTitle: meta.animeTitle,
+      songTitle: meta.songTitle,
+      artistName: meta.artistName,
+      themeType: meta.themeType || 'OP',
+      themeNumber: meta.themeNumber || 1,
+      themeSlug: meta.themeSlug || `${meta.themeType || 'OP'}${meta.themeNumber || 1}`,
       year: meta.year || dirYear || null,
       season: meta.season || dirSeason || null,
       malId: meta.malId || null,
@@ -135,10 +137,11 @@ export async function ingestAnimeCatalog({
       durationMs: 90000,
       popularity: meta.isFallback ? 60 : 85,
     });
+    if (trackId === undefined) throw new Error(`No anime_tracks row after the upsert of ${relFile}`);
 
     // Generate or link 2-3 sample variations
     const relDir = path.dirname(relFile);
-    let sampleRecords = [];
+    let sampleRecords: SampleRecord[] = [];
 
     if (generateSamples && ffmpegBin) {
       sampleRecords = generateSamplesForFile({

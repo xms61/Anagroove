@@ -35,12 +35,12 @@ After crawls and enrichment, run `npm run catalog:recompute` (languages, then po
 ## Ingest scripts
 | Script | Source |
 |---|---|
-| `scripts/crawl_catalog.js` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --cjk=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
-| `scripts/enrich_catalog.js` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N`, or `--all` for every step with default limits (overrides allowed). Then `scripts/recompute_catalog.js` (`npm run catalog:recompute`) |
-| `scripts/ingest_annas_spotify.js` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
-| `scripts/ingest_musicmovearr.js` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
-| `scripts/fetch_datasets.js` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
-| `scripts/populate_artist_genres.js` (`npm run catalog:genres`), `scripts/build_recognized_artists.js` | Curated artist genre clusters and recognized artists |
+| `scripts/crawl_catalog.ts` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --cjk=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
+| `scripts/enrich_catalog.js` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N`, or `--all` for every step with default limits (overrides allowed). Then `scripts/recompute_catalog.ts` (`npm run catalog:recompute`) |
+| `scripts/ingest_annas_spotify.ts` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
+| `scripts/ingest_musicmovearr.ts` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
+| `scripts/fetch_datasets.ts` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
+| `scripts/populate_artist_genres.ts` (`npm run catalog:genres`), `scripts/build_recognized_artists.ts` | Curated artist genre clusters and recognized artists |
 
 Dumps under `data/` are gitignored and must never be committed.
 

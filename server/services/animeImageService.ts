@@ -14,7 +14,7 @@ const REQUEST_TIMEOUT_MS = 3500;
  * with the image URLs stored in the anime catalog so later lookups skip the network. Mutates and
  * returns the tracks (albumArt and imageUrl set).
  */
-export async function resolveAnimeCoverImages<T extends SongCandidate>(tracks: T[] = [], catalog: CoverCatalog | null = null): Promise<T[]> {
+export async function resolveAnimeCoverImages<T extends Partial<SongCandidate>>(tracks: T[] = [], catalog: CoverCatalog | null = null): Promise<T[]> {
   if (!Array.isArray(tracks) || tracks.length === 0) {
     return tracks;
   }

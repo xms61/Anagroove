@@ -66,7 +66,7 @@ const EXPIRY_MARGIN_MS = 60 * 1000;
 
 let fetchImpl: Fetch = defaultFetch;
 
-export function setPreviewFetchForTesting(fn: Fetch | null): void {
+export function setPreviewFetchForTesting(fn: Fetch | null = null): void {
   fetchImpl = fn || defaultFetch;
 }
 

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.7] - 2026-09-24
+
+### Changed
+- **Scripts are TypeScript:** every CLI under `scripts/` except `enrich_catalog.js` and `lib/cli.js`, which stay JavaScript while the catalog enrichment runs. The `npm run` aliases point at the `.ts` files.
+- **Test support is TypeScript:** `helpers`, the fixture catalog, the CI gate fixture and the e2e server. Tests `apiIntegration`, `blacklist` and `hardening` are TypeScript.
+- **New `scripts/lib/cli.d.ts`:** types for the flag helpers in `cli.js`, so flag values are typed by their options. It goes when `cli.js` moves (T7).
+- **Typed script data:**
+  - `CrawlPlan`
+  - `SampleRecord` (anime clips)
+  - `AnimeThemeMetadata` and `AnimeMetadataIndex` (the anime metadata index)
+- **The harvester reports a typed `HarvestProgress`.**
+- **Selection takes blacklist identities:** `getRandomSongPool` and the track picker take `BlacklistIdentityItem[]` instead of stored entries.
+- **Test hooks reset with no argument:** `setMusicProviderForTesting()` and `setPreviewFetchForTesting()`.
+- **New test helper `readJson`:** reads a response body for assertions.
+
+### Removed
+- **`scripts/test_multiplayer_live_sync.js`:** it no longer matched the room protocol (rooms need a live puzzle token, cells send `char`). The same co-op flow is covered by `apiIntegration`.
+- **Dead code:**
+  - `generateAllSamples`' unused `onProgress` option
+  - the anime ingest's snake_case metadata fallbacks, which no index or fallback produces
+
+---
+
 ## [1.28.6] - 2026-09-24
 
 ### Changed
@@ -77,23 +100,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.2] - 2026-09-23
-
-### Changed
-- **TypeScript setup for the server, shared modules and scripts** (first step of moving them from JavaScript).
-  - Node 24 runs `.ts` files directly by stripping the types. There is no build step, and `tsc` only type-checks.
-  - The new `tsconfig.node.json` checks `server/`, `shared/` and `scripts/`:
-    - `nodenext` resolution
-    - `erasableSyntaxOnly`: no `enum`, `namespace` or constructor parameter properties
-    - `verbatimModuleSyntax`: type-only imports use `import type`
-    - relative imports name the `.ts` file
-    - `strict`
-  - While files move, `.js` files are read for their types but not checked.
-- `npm run typecheck` checks both projects. The frontend config now targets ES2022, and also checks the Playwright smoke test.
-- `npm test`, c8 and ESLint accept `.ts` files next to `.js`.
-- Dev dependencies: `@types/node` 24 (was 22, only installed as a sub-dependency) and `@types/express` 4 (was 5, which didn't match Express 4.22).
-- `AGENTS.md` lists the TypeScript rules for new server, shared and script code.
-
----
-
-Older releases (1.28.1 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.2 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

@@ -43,7 +43,7 @@ export interface HarvestCatalog {
   db: DatabaseSync;
   upsertBatch(batch: object[]): { inserted: number; merged: number };
   countSummary(): { tracks: number; artists: number };
-  getRejectionStats(): unknown;
+  getRejectionStats(): Record<string, number>;
 }
 
 type Fetch = (url: string, options: RequestInit, retry: { rateLimiter: unknown }) => Promise<Response>;
@@ -56,7 +56,14 @@ export interface HarvestOptions {
   cjkLimit?: number;
   artistsLimit?: number;
   lexiconLimit?: number;
-  onProgress?: (progress: Record<string, unknown>) => void;
+  onProgress?: (progress: HarvestProgress) => void;
+}
+
+/** What runFullHarvest reports after each query, next to its running counters. */
+export interface HarvestProgress {
+  currentAction: string;
+  currentStats: { tracks: number; artists: number; rejections: Record<string, number> };
+  [counter: string]: unknown;
 }
 
 // sqliteCatalog.js and rateLimiter.js are still JavaScript; their inferred types are narrower than the code (T7)

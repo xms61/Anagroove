@@ -2,6 +2,7 @@
 import https from 'https';
 import http from 'http';
 import fs from 'fs';
+import type { Readable } from 'stream';
 import { sqliteCatalog } from '../server/db/sqliteCatalog.js';
 import { isAuthenticCandidate } from '../server/crawler/authenticityFilter.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
@@ -11,9 +12,14 @@ const ANNAS_ARCHIVE_URL =
 
 const USAGE = `
   npm run crawl:top10k                                          ingest Anna's Archive Spotify top 10k (popularity >= 31)
-  node scripts/ingest_annas_spotify.js --file=path.html --min-popularity=31`;
+  node scripts/ingest_annas_spotify.ts --file=path.html --min-popularity=31`;
 
-const flags = import.meta.main
+interface IngestOptions {
+  file?: string;
+  minPopularity?: number;
+}
+
+const flags: IngestOptions = import.meta.main
   ? parseOrExit(() => {
     const values = parseFlags({ file: { type: 'string' }, 'min-popularity': { type: 'string' } });
     return { ...values, minPopularity: intFlag(values, 'min-popularity') };
@@ -46,7 +52,7 @@ function parseDuration(str = '') {
   return 0;
 }
 
-function parseTr(trHtml) {
+function parseTr(trHtml: string) {
   if (!trHtml.includes('<td class="rank">')) return null;
 
   // Track Name & ID
@@ -145,7 +151,9 @@ function parseTr(trHtml) {
   };
 }
 
-export async function ingestAnnasSpotifyTop10k(options = {}) {
+type ParsedTrack = NonNullable<ReturnType<typeof parseTr>>;
+
+export async function ingestAnnasSpotifyTop10k(options: IngestOptions = {}) {
   const minPop = options.minPopularity ?? minPopularity;
   const initialStats = sqliteCatalog.getStats();
 
@@ -164,7 +172,7 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
   let rowsParsed = 0;
   let filteredByPop = 0;
   let filteredByAuth = 0;
-  let candidatesBatch = [];
+  let candidatesBatch: ParsedTrack[] = [];
   let totalInserted = 0;
   let totalMerged = 0;
 
@@ -176,10 +184,10 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
     candidatesBatch = [];
   }
 
-  await new Promise((resolve, reject) => {
-    function handleStream(stream) {
+  await new Promise<void>((resolve, reject) => {
+    function handleStream(stream: Readable) {
       let buffer = '';
-      stream.on('data', (chunk) => {
+      stream.on('data', (chunk: Buffer) => {
         buffer += chunk.toString('utf8');
 
         let trStart = buffer.indexOf('<tr>');
@@ -218,7 +226,7 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
         resolve();
       });
 
-      stream.on('error', (err) => {
+      stream.on('error', (err: Error) => {
         reject(err);
       });
     }
@@ -234,7 +242,8 @@ export async function ingestAnnasSpotifyTop10k(options = {}) {
           'Accept': 'text/html,application/xhtml+xml',
         },
       }, (res) => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
+        const status = res.statusCode ?? 0;
+        if (status < 200 || status >= 300) {
           return reject(new Error(`HTTP ${res.statusCode} from ${ANNAS_ARCHIVE_URL}`));
         }
         handleStream(res);

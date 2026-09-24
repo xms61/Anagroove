@@ -8,7 +8,7 @@ import {
   extractNumericCatalogTrackId,
   clearPreviewCacheForTesting,
 } from '../../server/services/previewResolver.ts';
-import { parseDelimitedLine, mapRowToCandidate, parseSqlInsertTuple } from '../ingest_musicmovearr.js';
+import { parseDelimitedLine, mapRowToCandidate, parseSqlInsertTuple } from '../ingest_musicmovearr.ts';
 
 test('delimited lines keep quoted delimiters (CSV) and split on tabs (TSV)', () => {
   assert.deepEqual(parseDelimitedLine('"101","Discovery, Vol. 1","Daft Punk"', ','), ['101', 'Discovery, Vol. 1', 'Daft Punk']);

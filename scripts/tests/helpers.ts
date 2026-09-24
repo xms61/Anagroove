@@ -1,9 +1,14 @@
 /** Shared test helpers (no network, no real data dir). */
 import WebSocket from 'ws';
 
-export function mockJsonResponse(body, status = 200) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
+/** A fetch Response carrying `body` as JSON (only ok, status and json() are real). */
+export function mockJsonResponse(body, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
 }
+
+/** The JSON body of a response; tests read whichever fields they assert on. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- assertions reach into arbitrary response fields
+export const readJson = (res: Response): Promise<any> => res.json();
 
 export function wsTestClient(url) {
   const ws = new WebSocket(url);

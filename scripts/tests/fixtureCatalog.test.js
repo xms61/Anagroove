@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { buildFixtureCatalog } from './fixtures/fixtureCatalog.js';
+import { buildFixtureCatalog } from './fixtures/fixtureCatalog.ts';
 import { evaluateCatalogGate } from '../../server/db/catalogGate.ts';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.js';
 

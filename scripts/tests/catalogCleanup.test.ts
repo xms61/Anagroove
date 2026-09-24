@@ -164,7 +164,7 @@ test('CLI: --ci exits 1 on a failing catalog, --fix writes a backup first, then 
   catalog.upsertTrack({ title: 'Levitating', artist: 'Dua Lipa', durationMs: 203000, provider: 'deezer', providerTrackId: '1', isrc: 'GBAHT2000942', releaseYear: 2020, deezerRank: 900000 });
   catalog.db.prepare("INSERT INTO tracks (canonical_title, display_title, artist_id, album_name, duration_ms, language, popularity, version_type) VALUES ('levitating', 'Levitating (Live)', 1, 'A', 200000, 'en', 10, 'live')").run();
   catalog.close();
-  const cli = (...args) => spawnSync(process.execPath, ['scripts/validate_and_sanitize_db.js', `--db=${dbPath}`, '--no-report', ...args], { encoding: 'utf8' });
+  const cli = (...args) => spawnSync(process.execPath, ['scripts/validate_and_sanitize_db.ts', `--db=${dbPath}`, '--no-report', ...args], { encoding: 'utf8' });
 
   const dirty = cli('--ci', '--min-year-coverage=0', '--min-isrc-coverage=0');
   assert.equal(dirty.status, 1);

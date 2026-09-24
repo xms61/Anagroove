@@ -32,7 +32,7 @@ import {
 import { createRecentCounter, createTrackPicker, type PickedSong } from './trackPicker.ts';
 import type { CatalogSource, MusicProvider } from './candidates.ts';
 import type { QueryPlan } from '../services/queryBuilder.ts';
-import type { BlacklistEntry } from '../db/userStore.ts';
+import type { BlacklistIdentityItem } from '../../shared/musicIdentity.js';
 import type { SongCandidate } from '../types.ts';
 import { errorMessage } from '../errors.ts';
 
@@ -44,7 +44,7 @@ export interface SongPoolRequest {
   genre?: string;
   minFans?: number;
   count?: number;
-  blacklist?: BlacklistEntry[];
+  blacklist?: BlacklistIdentityItem[];
   recentIds?: unknown[];
   prompt?: string;
   artist?: string;
@@ -58,7 +58,7 @@ export interface SongPoolRequest {
 let musicProvider: MusicProvider = deezerMusicProvider;
 
 /** Replaces the live providers (and bypasses the catalog) in tests. */
-export function setMusicProviderForTesting(provider: MusicProvider | null): void {
+export function setMusicProviderForTesting(provider: MusicProvider | null = null): void {
   musicProvider = provider || deezerMusicProvider;
 }
 

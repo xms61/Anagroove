@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, describe, test } from 'node:test';
-import { blacklistMatchesTrack } from '../../shared/musicIdentity.js';
+import { blacklistMatchesTrack, type BlacklistIdentityItem, type MusicIdentityTrack } from '../../shared/musicIdentity.js';
 import { mapDeezerTrack } from '../../server/services/deezerMusicProvider.ts';
 import { getRandomSongPool, setMusicProviderForTesting } from '../../server/selection/songPool.ts';
 import { server } from '../../server/server.ts';
 import { db } from '../../server/db.ts';
-import { wsTestClient } from './helpers.js';
+import { wsTestClient, readJson } from './helpers.ts';
 
 const MOCK_TRACKS = ['ALPHA', 'PHASE', 'SHAPE', 'HEART', 'EARTH', 'TEARS', 'STARE', 'RATES'].map((title, index) => ({
   id: `deezer:${index}`,
@@ -91,14 +91,16 @@ test('generic blacklist entries match canonically; provider-scoped ones match th
   }, { nb_fan: 900000 });
   assert.equal(track?.artist, 'Beyoncé');
   assert.equal(track.providerTrackId, '99');
+  // musicIdentity.d.ts types ids as strings; the matcher compares String(id) (T7 widens the type)
+  const identity = track as MusicIdentityTrack;
   assert.equal(track.providerArtistId, '42');
 
-  const generic = { type: 'artist', name: 'beyonce', canonicalKey: 'beyonce' };
-  const scoped = { type: 'artist', name: 'Beyoncé', canonicalKey: 'beyonce', provider: 'deezer', providerArtistId: '42' };
-  assert.ok(blacklistMatchesTrack([generic], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
-  assert.ok(blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE' }));
-  assert.ok(!blacklistMatchesTrack([scoped], { ...track, artist: 'BEYONCE', providerArtistId: '43' }));
-  assert.ok(!blacklistMatchesTrack([scoped], { ...track, provider: 'other', artist: 'BEYONCE' }));
+  const generic: BlacklistIdentityItem = { type: 'artist', name: 'beyonce', canonicalKey: 'beyonce' };
+  const scoped: BlacklistIdentityItem = { type: 'artist', name: 'Beyoncé', canonicalKey: 'beyonce', provider: 'deezer', providerArtistId: '42' };
+  assert.ok(blacklistMatchesTrack([generic], { ...identity, artist: 'BEYONCE', providerArtistId: '43' }));
+  assert.ok(blacklistMatchesTrack([scoped], { ...identity, artist: 'BEYONCE' }));
+  assert.ok(!blacklistMatchesTrack([scoped], { ...identity, artist: 'BEYONCE', providerArtistId: '43' }));
+  assert.ok(!blacklistMatchesTrack([scoped], { ...identity, provider: 'other', artist: 'BEYONCE' }));
   assert.ok(!blacklistMatchesTrack(
     [{ type: 'song', name: 'Hello', provider: 'deezer', providerTrackId: '1' }],
     { provider: 'deezer', providerTrackId: '2', title: 'Hello', artist: 'Different Artist' }
@@ -135,7 +137,7 @@ describe('REST API and WebSocket rooms', () => {
   test('GET /api/health is ok', async () => {
     const response = await fetch(`${baseUrl}/api/health`);
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).status, 'ok');
+    assert.equal((await readJson(response)).status, 'ok');
   });
 
   test('a missing or malformed X-User-Id is rejected with 400', async () => {
@@ -148,14 +150,14 @@ describe('REST API and WebSocket rooms', () => {
       puzzleId: 'test-puz-1', themeId: 'rock', userLetters: [['T', 'E'], ['S', 'T']], validity: [['correct', 'correct'], ['correct', 'correct']],
     });
     assert.equal(saved.status, 200);
-    assert.equal((await saved.json()).success, true);
-    const read = await (await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } })).json();
+    assert.equal((await readJson(saved)).success, true);
+    const read = await readJson(await fetch(`${baseUrl}/api/progress`, { headers: { 'X-User-Id': userId } }));
     assert.equal(read.progress?.puzzleId, 'test-puz-1');
   });
 
   test('a generic artist entry and distinct provider-scoped entries coexist', async () => {
     assert.equal((await post('/api/blacklist', { name: 'The Beatles', type: 'artist' })).status, 200);
-    const listed = await (await fetch(`${baseUrl}/api/blacklist`, { headers: { 'X-User-Id': userId } })).json();
+    const listed = await readJson(await fetch(`${baseUrl}/api/blacklist`, { headers: { 'X-User-Id': userId } }));
     assert.ok(listed.blacklist.some(b => b.name === 'The Beatles'));
 
     for (const body of [
@@ -163,7 +165,7 @@ describe('REST API and WebSocket rooms', () => {
       { name: 'beyonce', type: 'artist' },
       { name: 'BEYONCE', type: 'artist', provider: 'deezer', providerArtistId: '43' },
     ]) assert.equal((await post('/api/blacklist', body)).status, 200);
-    const last = await (await post('/api/blacklist', { name: 'BEYONCÉ', type: 'artist' })).json();
+    const last = await readJson(await post('/api/blacklist', { name: 'BEYONCÉ', type: 'artist' }));
     const entries = last.blacklist.filter(item => item.canonicalKey === 'beyonce');
     assert.equal(entries.length, 3, 'the second generic spelling is a duplicate');
     assert.deepEqual(entries.map(item => item.providerArtistId ?? null).sort(), ['42', '43', null].sort());
@@ -192,7 +194,7 @@ describe('REST API and WebSocket rooms', () => {
 
     useProvider(MOCK_TRACKS);
     const response = await post('/api/puzzles/live', { genre: 'all', targetWords: 6, recentIds: [] });
-    const live = await response.json();
+    const live = await readJson(response);
     assert.equal(response.status, 200);
     assert.equal(live.selection?.provider, 'deezer');
     assert.equal(typeof live.livePuzzleToken, 'string');
@@ -205,7 +207,7 @@ describe('REST API and WebSocket rooms', () => {
 
   test('a co-op room syncs the start, cell updates and race progress between two players', async () => {
     useProvider(MOCK_TRACKS);
-    const live = await (await post('/api/puzzles/live', { genre: 'all', targetWords: 6 })).json();
+    const live = await readJson(await post('/api/puzzles/live', { genre: 'all', targetWords: 6 }));
     setMusicProviderForTesting();
 
     const connect = async () => {

@@ -10,7 +10,7 @@ Flags go after `--` (`npm run db:migrate -- --no-backup`). Every script rejects 
 | `npm test` | Server/shared tests on `node:test`, one temp data dir per process (see `scripts/tests/TESTING.md`) |
 | `npm run test:coverage` | `npm test` under c8 with coverage thresholds for `server/db`, `server/policy`, `shared` |
 | `npm run test:web` / `test:e2e` | Vitest frontend tests / Playwright smoke test (after `npm run build`) |
-| `npm run typecheck` | `tsc --noEmit` |
+| `npm run typecheck` | `tsc` for the frontend, the server/shared/scripts and the server tests |
 | `npm run db:gate:fixture` | Build the fixture catalog in a temp dir and run the validation gate on it |
 | `npm run test:ci` | lint + typecheck + test:coverage + test:web + db:gate:fixture |
 | `npm run crawl -- --all` | Crawl: Apple charts, then Deezer vectors. Name vectors to run only those (`-- --artists=250`; flags in `server/crawler/CRAWLER.md`) |
@@ -26,4 +26,4 @@ Flags go after `--` (`npm run db:migrate -- --no-backup`). Every script rejects 
 | `npm run db:sanitize` | Backup (`VACUUM INTO`), apply the cleanup, ANALYZE + VACUUM (`-- --no-backup --no-vacuum --steps=a,b --db=path`) |
 | `npm run anime:sync` / `anime:samples` / `anime:ingest` / `anime:images` | Anime OP/ED pipeline |
 
-Manual scripts with no npm alias: `scripts/test_multiplayer_live_sync.js` (needs a running server on :3001), `scripts/build_recognized_artists.js`, `scripts/populate_artist_genres.js`, `scripts/backfill_anime_images.js`.
+Manual scripts with no npm alias: `scripts/build_recognized_artists.ts`, `scripts/populate_artist_genres.ts`, `scripts/backfill_anime_images.ts`.

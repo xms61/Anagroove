@@ -55,6 +55,7 @@ export interface CatalogSource {
 
 /** A live provider (Deezer, iTunes, or a test double). */
 export interface MusicProvider {
+  name: string;
   getCandidateTracks(query: Record<string, unknown>): Promise<SongCandidate[]>;
 }
 

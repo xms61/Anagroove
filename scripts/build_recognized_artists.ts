@@ -2,6 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { errorMessage } from '../server/errors.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -137,7 +138,7 @@ async function main() {
     try {
       const res = await fetch(`https://api.deezer.com/search/artist?q=${encodeURIComponent(item.name)}`);
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as { data?: { name: string; nb_fan: number; id: number; picture?: string; picture_medium?: string }[] };
         const match = data.data?.find(a => a.nb_fan >= 200000);
         if (match) {
           verified.push({
@@ -154,7 +155,7 @@ async function main() {
         }
       }
     } catch (e) {
-      console.error(`[ERR] Failed for ${item.name}:`, e.message);
+      console.error(`[ERR] Failed for ${item.name}:`, errorMessage(e));
     }
   }
 

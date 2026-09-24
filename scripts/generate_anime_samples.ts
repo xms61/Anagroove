@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { findFfmpegPath, findFfprobePath } from '../server/services/ffmpegHelper.ts';
 import { intFlag, parseFlags, parseOrExit } from './lib/cli.js';
+import { errorMessage } from '../server/errors.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,9 +12,18 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT_DIR, 'data', 'Anime OPED');
 const SAMPLES_DIR = path.join(ROOT_DIR, 'data', 'anime_samples');
 
-export function scanSourceOggFiles(dir = SOURCE_DIR, baseDir = SOURCE_DIR) {
+/** A 20-second clip cut from an anime theme. */
+export interface SampleRecord {
+  index: number;
+  filePath: string;
+  url: string;
+  offset: number;
+  duration: number;
+}
+
+export function scanSourceOggFiles(dir = SOURCE_DIR, baseDir = SOURCE_DIR): string[] {
   if (!fs.existsSync(dir)) return [];
-  const results = [];
+  const results: string[] = [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
@@ -26,7 +36,7 @@ export function scanSourceOggFiles(dir = SOURCE_DIR, baseDir = SOURCE_DIR) {
   return results;
 }
 
-export function getAudioDuration(filePath, ffprobeBin) {
+export function getAudioDuration(filePath: string, ffprobeBin: string | null): number {
   if (!ffprobeBin) return 90; // Default anime OP/ED duration
   try {
     const stdout = execFileSync(ffprobeBin, [
@@ -52,7 +62,14 @@ export function generateSamplesForFile({
   sourceBaseDir = SOURCE_DIR,
   samplesBaseDir = SAMPLES_DIR,
   skipExisting = true,
-}) {
+}: {
+  relativeFilePath: string;
+  ffmpegBin: string;
+  ffprobeBin: string | null;
+  sourceBaseDir?: string;
+  samplesBaseDir?: string;
+  skipExisting?: boolean;
+}): SampleRecord[] {
   const fullSource = path.join(sourceBaseDir, relativeFilePath);
   if (!fs.existsSync(fullSource)) return [];
 
@@ -78,7 +95,7 @@ export function generateSamplesForFile({
     sampleConfigs.push({ index: 3, offset: 65, duration: 20 });
   }
 
-  const createdSamples = [];
+  const createdSamples: SampleRecord[] = [];
 
   for (const cfg of sampleConfigs) {
     const outFilename = `${baseName}_s${cfg.index}.ogg`;
@@ -115,7 +132,7 @@ export function generateSamplesForFile({
         duration: cfg.duration,
       });
     } catch (err) {
-      console.warn(`[SampleGen] Failed to generate sample ${cfg.index} for ${relativeFilePath}: ${err.message}`);
+      console.warn(`[SampleGen] Failed to generate sample ${cfg.index} for ${relativeFilePath}: ${errorMessage(err)}`);
     }
   }
 
@@ -126,8 +143,7 @@ export async function generateAllSamples({
   limit = null,
   batchSize = 50,
   skipExisting = true,
-  onProgress = null,
-} = {}) {
+}: { limit?: number | null; batchSize?: number; skipExisting?: boolean } = {}) {
   const ffmpegBin = findFfmpegPath();
   const ffprobeBin = findFfprobePath();
 
@@ -166,10 +182,6 @@ export async function generateAllSamples({
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
     const pct = ((processed / files.length) * 100).toFixed(1);
     console.log(`[SampleGen] Progress: ${processed}/${files.length} (${pct}%) in ${elapsedSec}s | Samples created/verified: ${totalSamplesGenerated}`);
-
-    if (onProgress) {
-      onProgress({ processed, total: files.length, totalSamplesGenerated });
-    }
   }
 
   console.log(`[SampleGen] Completed in ${((Date.now() - startTime) / 1000).toFixed(1)}s. Total samples: ${totalSamplesGenerated}`);
