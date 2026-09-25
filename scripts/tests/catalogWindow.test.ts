@@ -85,6 +85,27 @@ test('catalog candidates carry the artist\'s Deezer id, so id-based hides apply 
   catalog.close();
 });
 
+test('catalog candidates link to their provider page and show the album cover, else the artist picture', () => {
+  const catalog = new SqliteCatalog(':memory:');
+  const track = (title: string, artist: string, providerTrackId: string, extra = {}) => catalog.upsertTrack({
+    title, artist, durationMs: 200000, provider: 'deezer', providerTrackId, deezerRank: 800000, ...extra,
+  });
+  track('Levitating', 'Dua Lipa', '901', {
+    externalUrl: 'https://www.deezer.com/track/901', rawMetadata: { albumId: 1500 }, artistMetadata: { deezerId: 8706544 },
+  });
+  track('Houdini', 'Dua Lipa', '902', { rawMetadata: { deezerRank: 800000 } });
+  track('Midnight Drive', 'Unlinked Act', '903');
+  const candidates = catalogCandidates({ catalog, queryPlan: { genre: 'all', popularity: 'pure' } as QueryPlan, prompt: '', rng: createRng('covers') });
+  const byTitle = new Map(candidates.map(c => [c.title, c]));
+
+  assert.equal(byTitle.get('Levitating')?.providerUrl, 'https://www.deezer.com/track/901');
+  assert.equal(byTitle.get('Levitating')?.albumArt, 'https://api.deezer.com/album/1500/image?size=medium');
+  assert.equal(byTitle.get('Houdini')?.albumArt, 'https://api.deezer.com/artist/8706544/image?size=medium');
+  assert.equal(byTitle.get('Houdini')?.providerUrl, '');
+  assert.equal(byTitle.get('Midnight Drive')?.albumArt, '');
+  catalog.close();
+});
+
 test('genre filters follow artists.genres_json through artist_genres, ignoring case', () => {
   const catalog = thirtyTrackCatalog();
   const genreRows = (genres: string[]) => catalog.sampleCatalogTracks({ genres, poolSize: 50 }).map(r => r.artist);

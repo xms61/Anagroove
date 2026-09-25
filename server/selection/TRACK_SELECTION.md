@@ -20,6 +20,8 @@ Entry point: `getRandomSongPool(opts)` in `server/selection/songPool.ts`. It is 
    - excluding recent `sqlite:<id>` plays
 
    It then reads up to 400 rows in `rand_key` order from a random start (wrapping around; index `idx_tracks_rand`). That's one row per track, 2–160 ms on ~300k tracks.
+
+   Each row also carries the track's provider page (Deezer first) and the Deezer album id from the stored payload. The candidate turns them into the end screen's link and cover: the album picture, else the artist's. Both are `api.deezer.com/.../image` redirects, so selection fetches nothing.
 3. **Weighting:** `weightedOrder` with weight `(popularity + 1)^α`. With a seed, both the window start and the keys are reproducible.
 
    The score is the track's percentile within its language (`server/db/CATALOG_DB.md`, Popularity).
