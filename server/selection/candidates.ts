@@ -11,6 +11,7 @@
 import { normalizeDeezerRank, provisionalPopularity } from '../db/trackNormalization.ts';
 import { toFtsQuery } from '../services/queryBuilder.ts';
 import { allowedLanguagesForContext } from '../policy/selectionPolicy.ts';
+import { deezerAlbumImageUrl, deezerArtistImageUrl } from '../services/deezerMusicProvider.ts';
 import { logger } from '../logger.ts';
 import { weightedOrder } from './random.ts';
 import { genresForPrompt } from '../../shared/themes.ts';
@@ -54,6 +55,13 @@ export function popularityWeight(popularity: unknown, alpha: number): number {
   return (Math.max(0, Number(popularity) || 0) + 1) ** alpha;
 }
 
+/** The album cover when the crawl stored the Deezer album id, else the artist's picture. */
+function catalogCoverUrl(row: CatalogRow): string {
+  if (row.deezer_album_id) return deezerAlbumImageUrl(row.deezer_album_id);
+  if (row.artist_deezer_id) return deezerArtistImageUrl(row.artist_deezer_id);
+  return '';
+}
+
 function catalogRowToCandidate(row: CatalogRow): SongCandidate {
   return {
     id: `sqlite:${row.id}`,
@@ -67,6 +75,8 @@ function catalogRowToCandidate(row: CatalogRow): SongCandidate {
     title: row.title,
     artist: row.artist,
     album: row.album || 'Single',
+    albumArt: catalogCoverUrl(row),
+    providerUrl: row.external_url || '',
     audioUrl: row.sample_url || '',
     sample_url: row.sample_url || '',
     duration_ms: row.duration_ms,

@@ -45,6 +45,15 @@ function cacheSet<T>(cache: Cache<T>, key: string, value: T): T {
   return value;
 }
 
+// Deezer answers these with a redirect to the current CDN image, so storing the id is enough
+export function deezerAlbumImageUrl(albumId: string | number): string {
+  return `https://api.deezer.com/album/${albumId}/image?size=medium`;
+}
+
+export function deezerArtistImageUrl(artistId: string | number): string {
+  return `https://api.deezer.com/artist/${artistId}/image?size=medium`;
+}
+
 export function resetDeezerCachesForTesting() {
   trackCache.clear();
   artistCache.clear();

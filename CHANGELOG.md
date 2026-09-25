@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.1] - 2026-09-25
+
+### Fixed
+- **The end screen shows covers and "Open on Deezer" links again.** Songs from the local catalog never carried either. Before 1.30.0 most puzzles also held live Deezer results, which did. Since themes are served from the catalog alone, the tracklist showed only placeholders.
+  - The catalog window now reads each track's provider page and the Deezer album id stored with it.
+  - The cover is Deezer's album picture, or the artist's picture when the album is unknown (about half the rows). Both are redirects to Deezer's image CDN.
+
+---
+
 ## [1.30.0] - 2026-09-24
 
 ### Changed
@@ -93,25 +102,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.10] - 2026-09-24
-
-### Changed
-- **The catalog and enrichment modules are TypeScript**, which finishes the migration:
-  - `server/db/`: `sqliteCatalog`, `catalogMigrations`, `catalogLanguages`, `catalogPopularity`, `languageClassifier`, `trackNormalization`, `lazySingleton`
-  - `server/crawler/`: `enricher`, `rateLimiter`
-  - `server/policy/authenticityRules`
-  - `server/config`, `logger`, `paths`
-  - `shared/musicIdentity`
-  - `scripts/enrich_catalog`, `scripts/lib/cli`
-  - `npm run catalog:enrich` runs the `.ts` file.
-- **`SqliteCatalog.db` is always the open database.** `close()` can be called twice, and using a closed catalog throws "database is not open".
-- **Typed catalog data:** `TrackInput`, `ArtistRow`, `CatalogRow`, `CatalogWindowQuery`, `MigrationResult`, `EnrichProgress`, `VersionType`.
-  - The catalog's prepared statements are built in one place.
-  - The table-column checks in the migrations share one helper.
-- **Temporary casts removed:** the casts and the `cli.d.ts` / `musicIdentity.d.ts` declarations that bridged to the JavaScript modules are gone.
-- **Tests:** `catalogWindow`, `coverage` and `musicMoveArr` are TypeScript. Every server test is now `.test.ts`.
-- **`tsconfig.node.json` no longer allows JavaScript.** `npm run lint` rejects any `.js`, `.mjs` or `.cjs` file under `server/`, `shared/` or `scripts/`.
-
----
-
-Older releases (1.28.9 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.10 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

@@ -113,6 +113,10 @@ export interface CatalogRow {
   spotify_id: string | null;
   itunes_id: string | null;
   sample_url: string | null;
+  /** The track's page at its provider, Deezer first. */
+  external_url: string | null;
+  /** The Deezer album id stored with the Deezer payload, when the crawl recorded one. */
+  deezer_album_id: number | string | null;
 }
 
 export interface CatalogWindowQuery {
@@ -677,7 +681,10 @@ export class SqliteCatalog {
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'deezer' LIMIT 1) AS deezer_id,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'spotify' LIMIT 1) AS spotify_id,
              (SELECT provider_track_id FROM track_providers WHERE track_id = t.id AND provider = 'itunes' LIMIT 1) AS itunes_id,
-             (SELECT sample_url FROM track_samples WHERE track_id = t.id ORDER BY provider = 'deezer' DESC LIMIT 1) AS sample_url
+             (SELECT sample_url FROM track_samples WHERE track_id = t.id ORDER BY provider = 'deezer' DESC LIMIT 1) AS sample_url,
+             (SELECT external_url FROM track_providers WHERE track_id = t.id AND external_url IS NOT NULL ORDER BY provider = 'deezer' DESC LIMIT 1) AS external_url,
+             (SELECT CASE WHEN json_valid(raw_metadata_json) THEN json_extract(raw_metadata_json, '$.albumId') END AS album_id
+                FROM track_providers WHERE track_id = t.id AND provider = 'deezer' ORDER BY album_id IS NULL LIMIT 1) AS deezer_album_id
       FROM tracks t
       JOIN artists a ON a.id = t.artist_id`;
     const startKey = Math.min(Math.max(Number(start) || 0, 0), 0.999999999);
