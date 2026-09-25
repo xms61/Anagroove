@@ -51,6 +51,14 @@ A match merges provider links, samples, raw popularity, and missing metadata int
 
 ## Languages after crawls
 `recomputeCatalogLanguages(db)` (`catalogLanguages.ts`, also `npm run catalog:recompute`) re-votes every artist's language, removes the scene genres the vote doesn't confirm (`sceneGenresRemoved`), and re-resolves track languages. Run it after large crawls, because new titles change artist votes.
+- The artist vote reads the artist's titles and album names.
+- A narrow lead of another language (under the 0.15 margin, or on as few as 3 words) counts when at least half of the artist's country-coded ISRCs come from a country of that language, or a genre only that language's music carries backs it (Latin Music, Reggaeton, Bachata, … for es; Brazilian Music, Bossa Nova for pt).
+  - Bilingual countries (CA, CH, BE) and distributor codes (QM, QZ, TC, …) count for nothing.
+  - French, German and Italian rap and Latin pop voted English before, because their titles mix in English words and brand names.
+- A 2–3-word title that is clearly foreign overrules an English artist vote when its ISRC comes from a country of that language ("Dans mon café", FR).
+- `npm run catalog:recompute -- --dry-run` recomputes the languages in a transaction it rolls back. Both modes print the transitions (`en→fr 4,349`) and the most-followed artists whose vote changed, so the review happens before `db:sanitize` deletes anything.
+
+Known limit: the recompute votes on catalog rows only, so it resets artists the crawler voted on their Deezer top tracks when the catalog has too few of their titles (30 ja and 17 ko artists on 2026-09-25).
 
 Known limit: without an artist vote, about 2.5% of plain two-word English titles read as es/it ("Quiet Shadow", "Neon Anchor"), so a new artist's first such track can be refused. The vote fixes it once the artist has 3+ titles. A per-word check was measured on the 498k-track catalog and rejected: it would have kept ~1,900 two-word titles as English, and most of them are genuinely foreign.
 

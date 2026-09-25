@@ -5,9 +5,11 @@
  *   1. Script: hangul -> ko, kana -> ja, Han-only -> ja/ko with a JP/KR ISRC or artist, else zh.
  *   2. Artist language: an artist whose catalog is Japanese/Korean (by script or ISRC registrant,
  *      or a K-pop/J-pop scene genre backed by evidence) keeps romanized/English-titled songs in
- *      ja/ko. Voted over all of the artist's titles.
+ *      ja/ko. Otherwise voted over all of the artist's titles and album names; a narrow lead of
+ *      another language counts when the artist's ISRC countries or a genre back it.
  *   3. Title language from the ELD n-gram detector (short-text friendly), used when the artist is
- *      unknown or the title is long enough to outweigh the artist vote.
+ *      unknown, the title is long enough to outweigh the artist vote, or its ISRC comes from a
+ *      country of the title's language.
  * Artist *names* are never run through the text detector ("King Von" is not German).
  */
 import { eld } from 'eld/medium';
@@ -61,6 +63,53 @@ const SHORT_TEXT_LANGUAGES = new Set(['es', 'pt', 'fr', 'de', 'it']);
 // An artist is voted non-English only on this much title text, with this lead over English
 const ARTIST_MIN_WORDS = 6;
 const ARTIST_MARGIN = 0.15;
+// With ISRC or genre evidence for the leading language, any lead on this much text is enough
+const EVIDENCE_MIN_WORDS = 3;
+
+/**
+ * ISRC registrant countries that release mostly in one language. Bilingual countries (CA, CH, BE)
+ * are left out, and registrant codes of distributors (QM, QZ, TC, …) appear in no list.
+ */
+const LANGUAGE_REGISTRANTS: Readonly<Record<string, readonly string[]>> = {
+  en: ['US', 'GB', 'UK', 'IE', 'AU', 'NZ'],
+  fr: ['FR', 'LU', 'MC', 'CI', 'SN', 'CM', 'CD', 'ML', 'HT', 'MA', 'DZ', 'TN'],
+  es: ['ES', 'MX', 'CO', 'AR', 'CL', 'PE', 'VE', 'EC', 'GT', 'CU', 'BO', 'DO', 'HN', 'PY', 'SV', 'NI', 'CR', 'PA', 'UY', 'PR'],
+  ca: ['ES', 'AD'],
+  pt: ['BR', 'PT', 'AO', 'MZ'],
+  it: ['IT', 'SM'],
+  de: ['DE', 'AT'],
+  nl: ['NL'],
+  sv: ['SE'],
+  da: ['DK'],
+  no: ['NO'],
+  fi: ['FI'],
+  pl: ['PL'],
+  cs: ['CZ'],
+  hu: ['HU'],
+  hr: ['HR'],
+  ro: ['RO'],
+  tr: ['TR'],
+  el: ['GR'],
+};
+const COUNTRY_REGISTRANTS = new Set(Object.values(LANGUAGE_REGISTRANTS).flat());
+
+// Deezer genres that only one language's music carries
+const LANGUAGE_GENRES: Readonly<Record<string, readonly string[]>> = {
+  es: ['Latin Music', 'Latin', 'Salsa', 'Cumbia', 'Reggaeton', 'Traditional Mexicano', 'Bachata', 'Bolero', 'Norteño', 'Corridos', 'Ranchera', 'Regional Mexican'],
+  pt: ['Brazilian Music', 'Bossa Nova'],
+};
+
+function isRegisteredIn(language: string, registrant: string | null): boolean {
+  return Boolean(registrant) && Boolean(LANGUAGE_REGISTRANTS[language]?.includes(registrant!));
+}
+
+/** Whether most of the artist's country-coded ISRCs, or one of its genres, point to `language`. */
+function hasLanguageEvidence(language: string, registrants: string[], genres: readonly string[]): boolean {
+  if (LANGUAGE_GENRES[language]?.some(genre => genres.includes(genre))) return true;
+  const countryCoded = registrants.filter(r => COUNTRY_REGISTRANTS.has(r));
+  const own = countryCoded.filter(r => isRegisteredIn(language, r)).length;
+  return own > 0 && own * 2 >= countryCoded.length;
+}
 
 /** Title text used for language detection: bracketed credits/versions removed. */
 export function languageText(title: string | null = ''): string {
@@ -139,9 +188,15 @@ function sceneLanguage(genres: readonly string[], registrants: string[]): string
   return null;
 }
 
-/** Votes an artist's language over its catalog titles, ISRC registrants and scene genres. */
+/** Votes an artist's language over its catalog titles, album names, ISRC registrants and genres. */
 export function classifyArtistLanguage(
-  { titles = [], isrcs = [], name = '', genres = [] }: { titles?: string[]; isrcs?: (string | null)[]; name?: string; genres?: readonly string[] } = {},
+  { titles = [], albums = [], isrcs = [], name = '', genres = [] }: {
+    titles?: string[];
+    albums?: (string | null)[];
+    isrcs?: (string | null)[];
+    name?: string;
+    genres?: readonly string[];
+  } = {},
 ): { language: string | null; basis: string } {
   const cleaned = titles.map(languageText).filter(Boolean);
   const total = cleaned.length;
@@ -175,15 +230,25 @@ export function classifyArtistLanguage(
   }
 
   const latin = cleaned.filter(text => !scriptLanguage(text));
-  const words = latin.join(' ').match(TITLE_WORD)?.length || 0;
-  if (latin.length < 3 || words < ARTIST_MIN_WORDS) return { language: null, basis: 'insufficient' };
-  const result = eld.detect(latin.join('. '));
+  // Album names add text, except the ones named after a title (singles)
+  const titleKeys = new Set(latin.map(text => text.toLowerCase()));
+  const albumTexts = [...new Set(albums.map(album => languageText(album)))]
+    .filter(text => text && !scriptLanguage(text) && !titleKeys.has(text.toLowerCase()));
+  const text = [...latin, ...albumTexts];
+  const words = text.join(' ').match(TITLE_WORD)?.length || 0;
+  const enoughText = latin.length >= 3 && words >= ARTIST_MIN_WORDS;
+  const insufficient = { language: null, basis: 'insufficient' };
+  if (!enoughText && words < EVIDENCE_MIN_WORDS) return insufficient;
+  const result = eld.detect(text.join('. '));
   if (!result.language) return { language: null, basis: 'undetected' };
-  if (result.language === 'en') return { language: 'en', basis: 'text' };
-  // A few short English titles can tip the detector ("Brown Sugar. The Door. Playa Playa" -> tl)
+  if (result.language === 'en') return enoughText ? { language: 'en', basis: 'text' } : insufficient;
+  // A few short English titles can tip the detector ("Brown Sugar. The Door. Playa Playa" -> tl),
+  // so a narrow lead needs the artist's ISRC countries or a genre to agree
   const scores = result.getScores();
   const margin = (scores[result.language] || 0) - (scores.en || 0);
-  return margin >= ARTIST_MARGIN ? { language: result.language, basis: 'text' } : { language: 'en', basis: 'text-close' };
+  if (enoughText && margin >= ARTIST_MARGIN) return { language: result.language, basis: 'text' };
+  if (margin > 0 && hasLanguageEvidence(result.language, registrants, genres)) return { language: result.language, basis: 'text+evidence' };
+  return enoughText ? { language: 'en', basis: 'text-close' } : insufficient;
 }
 
 /** Final language of one track, as an ISO 639-1 code. */
@@ -218,6 +283,8 @@ export function resolveTrackLanguage(
     if (artistLanguage === detected.language) return detected.language;
     if (!artistLanguage && isClearlyForeign(detected)) return detected.language;
     if (artistLanguage && detected.words >= 4 && isClearlyForeign(detected)) return detected.language;
+    // Shorter titles overrule an English vote when the ISRC comes from a country of that language
+    if (artistLanguage === 'en' && isClearlyForeign(detected) && isRegisteredIn(detected.language, registrant)) return detected.language;
   }
   return artistLanguage || 'en';
 }

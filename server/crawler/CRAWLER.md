@@ -27,12 +27,12 @@
 
 ## Language (`server/db/languageClassifier.ts`)
 1. Script: hangul → ko, kana → ja. Han-only text is ja/ko with a JP/KR ISRC or artist, otherwise zh.
-2. Artist vote (`artists.primary_language`, from `classifyArtistLanguage`): hangul/kana titles or a majority of JP/KR ISRCs make an artist ja/ko; otherwise ELD runs on their joined titles. Japanese and Korean artists keep romanized or English-titled songs.
+2. Artist vote (`artists.primary_language`, from `classifyArtistLanguage`): hangul/kana titles or a majority of JP/KR ISRCs make an artist ja/ko; otherwise ELD runs on their joined titles and album names. Japanese and Korean artists keep romanized or English-titled songs.
    - A scene genre from a theme playlist (K-Pop, or Japanese/J-Pop/City Pop/Anime) weighs like an ISRC majority when evidence backs it. Evidence is Deezer's Asian Music genre, or at least one KR ISRC, or a fifth of the ISRCs from JP (Japan editions of Western records carry JP codes). K-Pop is checked first.
    - This catches K-pop acts with romanized titles and US ISRCs (TWICE, Stray Kids) and K-pop groups whose catalog is mostly Japanese live recordings (2NE1). Western acts on those playlists (Queen, Drake) are unaffected.
-3. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4. Either way it must beat the English score by `requiredMargin(words)` (0.3 for 2 words, 0.2 for 3, 0.15 for 4+), and 2-word titles can only be ruled es/pt/fr/de/it. Words have 2+ letters, so dotted acronyms don't count. Artist **names** are never run through the text detector.
+3. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4, or 2–3 when the artist votes English and the title's ISRC comes from a country of the title's language. Either way it must beat the English score by `requiredMargin(words)` (0.3 for 2 words, 0.2 for 3, 0.15 for 4+), and 2-word titles can only be ruled es/pt/fr/de/it. Words have 2+ letters, so dotted acronyms don't count. Artist **names** are never run through the text detector.
 
-Artist votes on text need 6+ words and a 0.15 lead over English (otherwise `en`). Non-CJK scripts count only when they make up at least half the letters ("KoЯn" is not Russian). Deletion is irreversible, so doubtful titles stay English.
+Artist votes on text need 6+ words and a 0.15 lead over English (otherwise `en`). A smaller lead, on as few as 3 words, counts when most of the artist's country-coded ISRCs or a Latin/Brazilian genre point to the leading language (`CATALOG_DB.md`, Languages after crawls). Non-CJK scripts count only when they make up at least half the letters ("KoЯn" is not Russian). Deletion is irreversible, so doubtful titles stay English.
 
 After crawls and enrichment, run `npm run catalog:recompute` (languages, then popularity percentiles).
 

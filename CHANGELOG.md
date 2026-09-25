@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.2] - 2026-09-25
+
+### Fixed
+- **French, Spanish, German, Italian and Portuguese songs no longer pass as English.**
+  - An artist whose titles leaned another language by less than the 0.15 margin was voted English. An artist with too few titles got no vote, so its songs counted as English.
+  - SCH, Damso, Aya Nakamura, RAF Camora, Capo Plaza, KAROL G, Prince Royce and Bad Bunny were among them.
+  - The vote now also reads album names.
+  - A narrow lead counts when most of the artist's country-coded ISRCs come from a country of that language, or when a Latin or Brazilian genre backs it.
+  - A clearly foreign 2–3-word title overrules an English vote when its ISRC comes from that language's country ("Dans mon café", FR).
+  - On a copy of the 2026-09-25 catalog, 8,926 tracks change language: 4,349 to French, 1,469 to German, 1,452 to Spanish, 584 to Portuguese and 576 to Italian. English-singing acts from other countries (Daft Punk, Scorpions, ABBA, Roxette, Måneskin) stay English.
+- The crawler's vote on a new artist's top tracks reads their album titles too.
+
+### Added
+- **`npm run catalog:recompute` prints what the language votes changed:** the transitions (`en→fr 4,349`) and the 30 most-followed artists whose vote changed.
+  - `-- --dry-run` recomputes only the languages and rolls them back, so the changes can be reviewed before they apply.
+
+---
+
 ## [1.30.1] - 2026-09-25
 
 ### Fixed
@@ -93,13 +111,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.11] - 2026-09-24
-
-### Fixed
-- **The `cjk` crawl no longer skips Japanese and Korean artists as English.** It checked each artist on its Deezer top tracks, which carry no ISRCs and come with romanized titles ("Usseewa", "Gimme Chocolate!!"). Most seeds (Ado, Joe Hisaishi, WINNER, STAYC) were skipped as `catalog language "en"` and still used up the `--cjk` limit.
-  - An artist already in the catalog keeps its stored `primary_language`.
-  - Any other artist whose top-track titles vote outside the allowed languages is voted again with the ISRCs of its first 3 top tracks before it is skipped.
-
----
-
-Older releases (1.28.10 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.11 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
