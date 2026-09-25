@@ -44,6 +44,11 @@ const CORPUS: [string, string, string, Record<string, string>?, string?][] = [
   ['Mi Gente', 'J Balvin', 'es', {}, 'a clear Spanish title without an artist vote'],
   ['Te Quería Ver', 'Alemán', 'es'],
   ["Pour que tu m'aimes encore", 'Céline Dion', 'fr', { artistLanguage: 'en' }, 'a long, clearly French title overrules an English artist vote'],
+  ['Dans mon café', 'Vanessa Paradis', 'fr', { artistLanguage: 'en', isrc: 'FRZ039800212' }, 'a French ISRC lets a short French title overrule an English vote'],
+  ['Toi, blessé', 'Tina Arena', 'fr', { artistLanguage: 'en', isrc: 'FRUM71400001' }],
+  ['Donde Estas Corazon', 'Shakira', 'es', { artistLanguage: 'en', isrc: 'COS019500021' }],
+  ['La Isla Bonita', 'Madonna', 'en', { artistLanguage: 'en', isrc: 'USWB10000001' }, 'a US ISRC keeps a short Spanish title English'],
+  ['Mamma Mia', 'ABBA', 'en', { artistLanguage: 'en', isrc: 'SEAYD7502030' }, 'a Swedish ISRC is no evidence for an Italian title'],
   ['Je ne regrette rien', 'Edith Piaf', 'fr'],
   ['Atemlos durch die Nacht', 'Helene Fischer', 'de'],
   ['Voglio Vederti Danzare', 'Franco Battiato', 'it'],
@@ -91,6 +96,38 @@ const SCENE_VOTES: [artist: string, genres: string[], isrcs: string[], expected:
 for (const [artist, genres, isrcs, expected, why] of SCENE_VOTES) {
   test(`${artist} (${genres.join(', ')}) votes ${expected}: ${why}`, () => {
     assert.equal(classifyArtistLanguage({ titles: ENGLISH_TITLES, isrcs, name: artist, genres }).language, expected);
+  });
+}
+
+// A narrow lead of another language needs ISRC countries or a genre to agree; album names add text.
+const FRENCH_LEANING = ['Allo maman', 'Ça ira', 'Cœur de môme', 'Essuie tes larmes', 'All Eyes On Me', 'Every Day', 'Baden Baden', 'Cervelle', 'Ciment', 'Deux mille'];
+const SPANISH_LEANING = ['Stand by Me', 'Darte un Beso', 'Rechazame', 'Corazón Sin Cara', 'Already Missing You', "Can't Help Falling in Love", 'Te Me Vas', 'El Amor Que Perdimos', 'Culpa al Corazón', 'Incondicional'];
+const isrcsFrom = (country: string, titles: string[]) => titles.map((_, i) => `${country}AB1${String(i).padStart(7, '0')}`);
+const EVIDENCE_VOTES: [label: string, input: Parameters<typeof classifyArtistLanguage>[0], expected: string | null][] = [
+  ['French-leaning titles with French ISRCs', { titles: FRENCH_LEANING, isrcs: isrcsFrom('FR', FRENCH_LEANING) }, 'fr'],
+  ['the same titles with US ISRCs', { titles: FRENCH_LEANING, isrcs: isrcsFrom('US', FRENCH_LEANING) }, 'en'],
+  ['Spanish-leaning titles, US ISRCs and a Latin genre', { titles: SPANISH_LEANING, isrcs: isrcsFrom('US', SPANISH_LEANING), genres: ['Bachata', 'Latin Music'] }, 'es'],
+  ['the same titles without the genre', { titles: SPANISH_LEANING, isrcs: isrcsFrom('US', SPANISH_LEANING) }, 'en'],
+  ['two German titles, German ISRCs and album names', {
+    titles: ['Sonne', 'Edelweiß (Soll ich denn mein junges Leben)'], albums: ['Die Himmel rühmen des Ewigen Ehre', 'Blau blüht der Enzian'], isrcs: isrcsFrom('DE', ['a', 'b']),
+  }, 'de'],
+  ['the same two titles without evidence', { titles: ['Sonne', 'Edelweiß (Soll ich denn mein junges Leben)'] }, null],
+  ['an English-singing French act', {
+    titles: ['One More Time', 'Get Lucky', 'Around the World', 'Digital Love', 'Harder, Better, Faster, Stronger', 'Instant Crush'],
+    albums: ['Discovery', 'Random Access Memories', 'Homework'], isrcs: isrcsFrom('FR', ['a', 'b', 'c', 'd']),
+  }, 'en'],
+  ['an English-singing German act', {
+    titles: ['Wind of Change', 'Still Loving You', 'Rock You Like a Hurricane', 'Send Me an Angel', 'No One Like You'],
+    albums: ['Crazy World', 'Love at First Sting', 'Blackout'], isrcs: isrcsFrom('DE', ['a', 'b', 'c']),
+  }, 'en'],
+  ['an English-singing Swedish act with Italian and Spanish titles', {
+    titles: ['Mamma Mia', 'Dancing Queen', 'Fernando', 'Chiquitita', 'Waterloo', 'Take a Chance on Me', 'Super Trouper'],
+    albums: ['Arrival', 'Voulez-Vous', 'ABBA'], isrcs: isrcsFrom('SE', ['a', 'b', 'c']),
+  }, 'en'],
+];
+for (const [label, input, expected] of EVIDENCE_VOTES) {
+  test(`${label} votes ${expected}`, () => {
+    assert.equal(classifyArtistLanguage(input).language, expected);
   });
 }
 

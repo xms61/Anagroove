@@ -1,6 +1,15 @@
 # Changelog archive
 
-Releases before 1.28.11. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.28.12. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.11] - 2026-09-24
+
+### Fixed
+- **The `cjk` crawl no longer skips Japanese and Korean artists as English.** It checked each artist on its Deezer top tracks, which carry no ISRCs and come with romanized titles ("Usseewa", "Gimme Chocolate!!"). Most seeds (Ado, Joe Hisaishi, WINNER, STAYC) were skipped as `catalog language "en"` and still used up the `--cjk` limit.
+  - An artist already in the catalog keeps its stored `primary_language`.
+  - Any other artist whose top-track titles vote outside the allowed languages is voted again with the ISRCs of its first 3 top tracks before it is skipped.
+
+---
 
 ## [1.28.10] - 2026-09-24
 

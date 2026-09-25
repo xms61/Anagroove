@@ -6,7 +6,7 @@ import { isAuthenticTrack } from '../../server/policy/selectionPolicy.ts';
 import { SqliteCatalog } from '../../server/db/sqliteCatalog.ts';
 import { baseTitleKey, PROVISIONAL_POPULARITY } from '../../server/db/trackNormalization.ts';
 import { runCatalogMigrations } from '../../server/db/catalogMigrations.ts';
-import { recomputeCatalogLanguages } from '../../server/db/catalogLanguages.ts';
+import { languageChanges, languageSnapshot, recomputeCatalogLanguages } from '../../server/db/catalogLanguages.ts';
 import { checkAuthenticity } from '../../server/policy/authenticityRules.ts';
 import { CatalogEnricher } from '../../server/crawler/enricher.ts';
 import { isAuthenticCandidate } from '../../server/crawler/authenticityFilter.ts';
@@ -86,6 +86,27 @@ test('recompute votes a tagged K-pop act Korean and drops the scene genres the v
   assert.equal(result.sceneGenresRemoved, 2);
   assert.equal(catalog.db.prepare("SELECT COUNT(*) AS c FROM tracks WHERE language = 'ko'").get().c, 4, 'TWICE\'s English titles are Korean now');
   assert.equal(recomputeCatalogLanguages(catalog.db).sceneGenresRemoved, 0, 'a second run changes nothing');
+  catalog.close();
+});
+
+test('recompute reports the vote and track-language changes it made', () => {
+  const catalog = new SqliteCatalog(':memory:');
+  let id = 920000;
+  // One-word titles pass admission one by one; with French album names and ISRCs the artist votes French
+  const albums = ['Pas de manières', 'Train de vie', 'Rêves de gosse'];
+  ['Cervelle', 'Ciment', 'Liquide', 'Lumière', 'Anarchie', 'Tempête'].forEach((title, i) => catalog.upsertTrack({
+    title, artist: 'Rappeur Test', album: albums[i % albums.length], isrc: `FRAB1000000${i}`,
+    durationMs: 200000, provider: 'deezer', providerTrackId: String(id++), deezerRank: 700000,
+  }));
+  const before = languageSnapshot(catalog.db);
+
+  recomputeCatalogLanguages(catalog.db);
+  const changes = languageChanges(catalog.db, before);
+
+  assert.equal(changes.artists['none→fr'], 1);
+  assert.equal(changes.tracks['en→fr'], 6);
+  assert.deepEqual(changes.topArtists.map(a => [a.name, a.from, a.to]), [['Rappeur Test', null, 'fr']]);
+  assert.deepEqual(languageChanges(catalog.db, languageSnapshot(catalog.db)).tracks, {}, 'nothing changed since the snapshot');
   catalog.close();
 });
 

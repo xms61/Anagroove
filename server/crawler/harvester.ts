@@ -429,10 +429,11 @@ export class MusicHarvester {
     if (stored?.primary_language) return stored.primary_language;
 
     const titles = topTracks.map(t => t.title ?? '');
-    const titleVote = classifyArtistLanguage({ titles, name }).language;
+    const albums = topTracks.map(t => t.album?.title ?? null);
+    const titleVote = classifyArtistLanguage({ titles, albums, name }).language;
     if (!titleVote || languages.includes(titleVote)) return titleVote;
     const isrcs = await this._trackIsrcs(topTracks.slice(0, ISRC_SAMPLE_TRACKS));
-    return classifyArtistLanguage({ titles, isrcs, name }).language;
+    return classifyArtistLanguage({ titles, albums, isrcs, name }).language;
   }
 
   /** ISRCs from `/track/{id}`, the only Deezer payload that always has them. */
