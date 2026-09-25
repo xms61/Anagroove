@@ -6,8 +6,11 @@
  *   2. Artist language: an artist whose catalog is Japanese/Korean (by script or ISRC registrant,
  *      or a K-pop/J-pop scene genre backed by evidence) keeps romanized/English-titled songs in
  *      ja/ko. Otherwise voted over all of the artist's titles and album names; a narrow lead of
- *      another language counts when the artist's ISRC countries or a genre back it.
- *   3. Title language from the ELD n-gram detector (short-text friendly), used when the artist is
+ *      another language counts when the artist's ISRC countries or a genre back it. The artist's
+ *      Deezer release titles (catalog:enrich --discography) count as titles too.
+ *   3. Lyrics: the language a song is sung in, once catalog:enrich --lyrics checked it, decides
+ *      for every artist outside the ja/ko scenes (a Spanish-voted act's English songs stay en).
+ *   4. Title language from the ELD n-gram detector (short-text friendly), used when the artist is
  *      unknown, the title is long enough to outweigh the artist vote, or its ISRC comes from a
  *      country of the title's language.
  * Artist *names* are never run through the text detector ("King Von" is not German).
@@ -27,6 +30,8 @@ export interface TrackLanguageInput {
   artist?: string;
   isrc?: string | null;
   artistLanguage?: string | null;
+  /** The language the lyrics are sung in (catalog:enrich --lyrics), or 'instrumental'. */
+  lyricsLanguage?: string | null;
 }
 
 const HANGUL = /[가-힯ᄀ-ᇿ㄰-㆏]/;
@@ -157,6 +162,15 @@ export function detectTitleLanguage(title = ''): TitleDetection {
   return { language, reliable: Boolean(language) && result.isReliable(), words, margin };
 }
 
+// A few verses are plenty for a reliable verdict
+const LYRICS_SAMPLE_CHARS = 2000;
+
+/** The language song lyrics are sung in, or null when the detector isn't sure. */
+export function detectLyricsLanguage(lyrics: string): string | null {
+  const result = eld.detect(lyrics.slice(0, LYRICS_SAMPLE_CHARS));
+  return result.language && result.isReliable() ? result.language : null;
+}
+
 /** Whether a title detection is strong enough to call the title non-English. */
 export function isClearlyForeign(detected: TitleDetection | null | undefined): boolean {
   if (!detected?.reliable || !detected.language || detected.language === 'en') return false;
@@ -253,7 +267,7 @@ export function classifyArtistLanguage(
 
 /** Final language of one track, as an ISO 639-1 code. */
 export function resolveTrackLanguage(
-  { title = '', artist = '', isrc = null, artistLanguage = null }: TrackLanguageInput = {},
+  { title = '', artist = '', isrc = null, artistLanguage = null, lyricsLanguage = null }: TrackLanguageInput = {},
 ): string {
   const registrant = isrcRegistrant(isrc);
   const titleScript = scriptLanguage(title);
@@ -271,10 +285,13 @@ export function resolveTrackLanguage(
 
   // 2. Japanese/Korean artists keep romanized and English-titled songs
   if (artistLanguage === 'ja' || artistLanguage === 'ko') return artistLanguage;
+
+  // 3. Any other artist's song is in the language its lyrics are sung in, once they were checked
+  if (lyricsLanguage && lyricsLanguage !== 'instrumental') return lyricsLanguage;
   if (!artistLanguage && registrant === 'JP') return 'ja';
   if (!artistLanguage && registrant === 'KR') return 'ko';
 
-  // 3. Title text vs. artist vote
+  // 4. Title text vs. artist vote
   // Single words are too short for n-gram detection ("PENTHOUSE" reads as Romanian), so a
   // non-English verdict needs 2+ words without an artist vote, and 4+ words to overrule one.
   // Either way it must clearly beat English (isClearlyForeign).

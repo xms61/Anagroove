@@ -12,12 +12,15 @@ Fills catalog metadata from provider APIs. Resumable: rerun to continue.
   npm run catalog:enrich -- --deezer=5000             Deezer track lookups: ISRC, release date, rank; Spotify-only tracks get their Deezer link by ISRC
   npm run catalog:enrich -- --artists=1000            artist fans and genres
   npm run catalog:enrich -- --itunes=200              strict iTunes cross-reference (~15 req/min: keep it small)
+  npm run catalog:enrich -- --discography=20000       Deezer release titles for artists the language vote knows too little about
+  npm run catalog:enrich -- --lyrics=5000             sung language (LRCLIB lyrics, 1 req/s) of English-titled songs by foreign-voted artists
   npm run catalog:enrich -- --all                     every step with default limits
   npm run catalog:enrich -- --all --artists=80000     every step, one limit overridden
 
-Steps can be combined. Flags must follow "--". Afterwards run \`npm run catalog:recompute\`.`;
+Steps can be combined. Flags must follow "--". Afterwards run \`npm run catalog:recompute\`.
+The lyrics step picks its songs by the current language votes: run it after a recompute.`;
 
-export const DEFAULT_LIMITS = Object.freeze({ albums: 2000, deezer: 2000, artists: 500, itunes: 100 });
+export const DEFAULT_LIMITS = Object.freeze({ albums: 2000, deezer: 2000, artists: 500, itunes: 100, discography: 2000, lyrics: 500 });
 type Step = keyof typeof DEFAULT_LIMITS;
 const LIMIT_STEPS = Object.keys(DEFAULT_LIMITS) as Step[];
 
@@ -71,6 +74,14 @@ async function main(plan: EnrichPlan) {
   if (plan.itunes) {
     console.log(`\n- iTunes cross-reference (up to ${plan.itunes})`);
     console.log(`\n  ${JSON.stringify(await catalogEnricher.crossReferenceItunes({ limit: plan.itunes, onProgress: progress }))}`);
+  }
+  if (plan.discography) {
+    console.log(`\n- Deezer release titles for the language vote (up to ${plan.discography} artists)`);
+    console.log(`\n  ${JSON.stringify(await catalogEnricher.enrichArtistDiscographies({ limit: plan.discography, onProgress: progress }))}`);
+  }
+  if (plan.lyrics) {
+    console.log(`\n- Sung language from LRCLIB lyrics (up to ${plan.lyrics} songs)`);
+    console.log(`\n  ${JSON.stringify(await catalogEnricher.enrichLyricsLanguages({ limit: plan.lyrics, onProgress: progress }))}`);
   }
 
   sqliteCatalog.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');

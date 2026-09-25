@@ -4,12 +4,13 @@ import { UsageError, intFlag, listFlag, parseFlags } from '../lib/cli.ts';
 import { buildEnrichPlan, DEFAULT_LIMITS } from '../enrich_catalog.ts';
 import { buildCrawlPlan, DEFAULT_VECTOR_LIMITS } from '../crawl_catalog.ts';
 
-const OFF = { albums: null, deezer: null, artists: null, itunes: null };
+const OFF = { albums: null, deezer: null, artists: null, itunes: null, discography: null, lyrics: null };
 
 const ENRICH_CASES: [string, Record<string, number | null>][] = [
   ['--albums=5', { ...OFF, albums: 5 }],
   ['--albums 30000', { ...OFF, albums: 30000 }],
   ['--artists=80000 --deezer=10', { ...OFF, artists: 80000, deezer: 10 }],
+  ['--discography=20000 --lyrics=500', { ...OFF, discography: 20000, lyrics: 500 }],
   ['--all', { ...DEFAULT_LIMITS }],
   ['--all --artists=80000', { ...DEFAULT_LIMITS, artists: 80000 }],
 ];

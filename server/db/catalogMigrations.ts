@@ -16,6 +16,7 @@ import {
 } from './trackNormalization.ts';
 import { recomputeCatalogLanguages } from './catalogLanguages.ts';
 import { recomputeCatalogPopularity } from './catalogPopularity.ts';
+import { columnNames } from './tableColumns.ts';
 import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
 
 export interface CatalogMigration {
@@ -29,10 +30,6 @@ export interface MigrationResult {
   to: number;
   applied: string[];
   backupPath: string | null;
-}
-
-function columnNames(db: DatabaseSync, table: string): Set<string> {
-  return new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(column => column.name));
 }
 
 function baselineSchema(db: DatabaseSync) {
@@ -331,6 +328,20 @@ function schemaV8(db: DatabaseSync) {
   `);
 }
 
+/**
+ * More language evidence: release and top-track titles from the artist's Deezer page (the catalog
+ * often holds one or two of an artist's songs), and the language a track's lyrics are sung in.
+ */
+function schemaV9(db: DatabaseSync) {
+  const artistColumns = columnNames(db, 'artists');
+  if (!artistColumns.has('discography_titles_json')) db.exec('ALTER TABLE artists ADD COLUMN discography_titles_json TEXT;');
+  if (!artistColumns.has('discography_checked_at')) db.exec('ALTER TABLE artists ADD COLUMN discography_checked_at TEXT;');
+
+  const trackColumns = columnNames(db, 'tracks');
+  if (!trackColumns.has('lyrics_language')) db.exec('ALTER TABLE tracks ADD COLUMN lyrics_language TEXT;');
+  if (!trackColumns.has('lyrics_checked_at')) db.exec('ALTER TABLE tracks ADD COLUMN lyrics_checked_at TEXT;');
+}
+
 export const CATALOG_MIGRATIONS: readonly CatalogMigration[] = Object.freeze([
   { version: 1, name: 'baseline schema', up: baselineSchema },
   { version: 2, name: 'schema v2: base titles, version types, 0-100 popularity, trigram FTS', up: schemaV2 },
@@ -340,6 +351,7 @@ export const CATALOG_MIGRATIONS: readonly CatalogMigration[] = Object.freeze([
   { version: 6, name: 'schema v6: Deezer placeholder rank dropped, popularity as a per-language percentile', up: schemaV6 },
   { version: 7, name: 'schema v7: localized Deezer genre names in English', up: schemaV7 },
   { version: 8, name: 'schema v8: indexed artist genres and case-insensitive artist names', up: schemaV8 },
+  { version: 9, name: 'schema v9: artist discography titles and track lyrics languages', up: schemaV9 },
 ]);
 
 export const LATEST_CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1].version;

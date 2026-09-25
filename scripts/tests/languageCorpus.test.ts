@@ -49,6 +49,11 @@ const CORPUS: [string, string, string, Record<string, string>?, string?][] = [
   ['Donde Estas Corazon', 'Shakira', 'es', { artistLanguage: 'en', isrc: 'COS019500021' }],
   ['La Isla Bonita', 'Madonna', 'en', { artistLanguage: 'en', isrc: 'USWB10000001' }, 'a US ISRC keeps a short Spanish title English'],
   ['Mamma Mia', 'ABBA', 'en', { artistLanguage: 'en', isrc: 'SEAYD7502030' }, 'a Swedish ISRC is no evidence for an Italian title'],
+  // The sung language, once catalog:enrich --lyrics checked it
+  ['Shower', 'Becky G', 'en', { artistLanguage: 'es', lyricsLanguage: 'en' }, 'a bilingual act keeps its English songs'],
+  ['Baby', 'Aya Nakamura', 'fr', { artistLanguage: 'fr', lyricsLanguage: 'fr' }, 'an English title sung in French'],
+  ['Dynamite', 'BTS', 'ko', { artistLanguage: 'ko', lyricsLanguage: 'en' }, 'K-pop and J-pop acts keep their songs whatever the lyrics'],
+  ['Gymnopédie', 'Pianiste', 'fr', { artistLanguage: 'fr', lyricsLanguage: 'instrumental' }, 'an instrumental follows its artist'],
   ['Je ne regrette rien', 'Edith Piaf', 'fr'],
   ['Atemlos durch die Nacht', 'Helene Fischer', 'de'],
   ['Voglio Vederti Danzare', 'Franco Battiato', 'it'],

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.31.0] - 2026-09-25
+
+### Added
+- **Two enrichment steps give the language vote more evidence.** `catalog:recompute` reads both, and migration v9 adds their columns.
+  - `catalog:enrich -- --discography=N` reads each artist's Deezer release titles, plus top tracks when there are few releases.
+    - It covers artists without a vote first, then English-voted artists with fewer than 10 catalog titles.
+    - One catalog song is too little to vote on; the releases usually are enough. "QURL" has one song in the catalog and 15 French singles on Deezer.
+  - `catalog:enrich -- --lyrics=N` looks up the lyrics of songs by artists voted a language the catalog doesn't keep (LRCLIB, 1 request/s) and stores the language they are sung in.
+    - A Spanish-voted act keeps its English songs (Becky G "Shower"); an English title sung in French stays French (Aya Nakamura "Baby").
+    - Only the language is stored, never the lyrics. Run it after a recompute: it picks songs by the current votes.
+  - A sample run of 40 artists and 40 songs on a copy of the catalog:
+    - the release titles voted 14 artists French (Bigflo & Oli, Christophe Maé, Barbara Pravi), 2 Spanish (Aventura) and 23 English
+    - the lyrics kept Miriam Bryant's "Black Car" English and showed 32 English-titled songs are sung in another language
+
+### Changed
+- The table-column helper of the migrations is shared (`tableColumns.ts`), so the language recompute that migration v3 replays can check for the v9 columns.
+
+---
+
 ## [1.30.2] - 2026-09-25
 
 ### Fixed
@@ -97,18 +116,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.28.12] - 2026-09-24
-
-### Fixed
-- **Tracks from the Spotify dumps get their Deezer link.** 1,739 catalog tracks came only from the Spotify dumps, which have no previews. `npm run catalog:enrich -- --deezer=N` skipped them, because it only looked up tracks that already had a Deezer id.
-  - It now looks them up with Deezer's `/track/isrc:{ISRC}` (1,723 have an ISRC).
-  - A match stores the Deezer link, the album id and the artist's Deezer id, then fills the year and rank as usual.
-  - Their previews then resolve without a live search, and `catalog:coverage` (offline) no longer drops them.
-  - A Deezer track already linked to another row is left for `db:sanitize` to merge (`linkConflicts`).
-
-### Changed
-- **One warning line per song pool** lists the tracks dropped for having no audio preview. It used to be one warning per track.
-
----
-
-Older releases (1.28.11 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+Older releases (1.28.12 and earlier): [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md).

@@ -18,19 +18,25 @@
   - Tracks known only from the Spotify dumps (no Deezer link, but an ISRC) are looked up with `/track/isrc:{ISRC}` in the same step. The match adds the Deezer link, its album id, and the artist's Deezer id, so previews resolve without a search and the artist step can reach the artist. A Deezer id already linked to another row is a duplicate, left for merging (`linkConflicts`).
   - `enrichArtists`: `/artist/{id}` for fans and one `/album/{id}` for genres. Genres are stored by Deezer genre id as English names (`DEEZER_GENRE_NAMES`): the API localizes names by the caller's location.
   - `crossReferenceItunes`: strict. Artist key, base title, and duration within 3 s must all match; the match is attached to the existing row and never creates a track.
+  - `enrichArtistDiscographies`: `/artist/{id}/albums` → release titles (singles carry their song's title), plus `/artist/{id}/top` titles when that gives fewer than 3. For artists without a language vote first, then English-voted ones with fewer than 10 catalog titles. Stored in `artists.discography_titles_json` for the vote.
+  - `enrichLyricsLanguages`: LRCLIB lyrics → the language a song is sung in (`tracks.lyrics_language`, or `instrumental`).
+    - Songs of artists voted a language the catalog doesn't keep, except titles that reliably read the artist's language, most popular first. One-word English titles often read as another language ("Baby" → tl), so they are looked up.
+    - A match needs the artist and a duration within 3 s. Only the language is stored; the lyrics are never kept, logged or shown.
+    - It picks its songs by the current votes, so run it after a recompute.
   - Languages and popularity are recomputed locally by `npm run catalog:recompute` (`recomputeCatalogLanguages`, `recomputeCatalogPopularity`).
 - `authenticityFilter.ts` (`isAuthenticCandidate(raw, { requireSample })`) checks the preview and duration (45 s–1200 s), then applies the shared rules in `server/policy/authenticityRules.ts`.
-- `rateLimiter.ts`: token buckets plus `politeFetch` (User-Agent, a 20 s timeout per attempt, retry on 429/5xx with `Retry-After` capped at 30 s). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3. The buckets are shared with the web server's preview lookups, which pass `maxWaitMs` and get `ProviderBudgetError` instead of queueing.
+- `rateLimiter.ts`: token buckets plus `politeFetch` (User-Agent, a 20 s timeout per attempt, retry on 429/5xx with `Retry-After` capped at 30 s). Deezer: 5 req/s, burst 8. iTunes/Apple: 0.25 req/s, burst 3. LRCLIB: 1 req/s, burst 2. The buckets are shared with the web server's preview lookups, which pass `maxWaitMs` and get `ProviderBudgetError` instead of queueing.
 
 ## Shared rules (`server/policy/authenticityRules.ts`)
 `checkAuthenticity({ title, artist, album })` → `{ authentic, reason }`, where the reason is `spoken_word`, `cover`, `utility`, `artist`, or `album`. It's the single source for the crawler, `upsertTrack` (`inauthentic` rejections), and song selection (`isAuthenticTrack`). It catches covers, karaoke, soundalikes, workout/sleep/utility audio, and audiobooks/radio plays ("Kapitel 12 - …", Gruselkabinett, Hörspiel, ungekürzt). **Add new junk patterns here.**
 
 ## Language (`server/db/languageClassifier.ts`)
 1. Script: hangul → ko, kana → ja. Han-only text is ja/ko with a JP/KR ISRC or artist, otherwise zh.
-2. Artist vote (`artists.primary_language`, from `classifyArtistLanguage`): hangul/kana titles or a majority of JP/KR ISRCs make an artist ja/ko; otherwise ELD runs on their joined titles and album names. Japanese and Korean artists keep romanized or English-titled songs.
+2. Artist vote (`artists.primary_language`, from `classifyArtistLanguage`): hangul/kana titles or a majority of JP/KR ISRCs make an artist ja/ko; otherwise ELD runs on their joined titles, album names and Deezer release titles (`--discography`). Japanese and Korean artists keep romanized or English-titled songs.
    - A scene genre from a theme playlist (K-Pop, or Japanese/J-Pop/City Pop/Anime) weighs like an ISRC majority when evidence backs it. Evidence is Deezer's Asian Music genre, or at least one KR ISRC, or a fifth of the ISRCs from JP (Japan editions of Western records carry JP codes). K-Pop is checked first.
    - This catches K-pop acts with romanized titles and US ISRCs (TWICE, Stray Kids) and K-pop groups whose catalog is mostly Japanese live recordings (2NE1). Western acts on those playlists (Queen, Drake) are unaffected.
-3. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4, or 2–3 when the artist votes English and the title's ISRC comes from a country of the title's language. Either way it must beat the English score by `requiredMargin(words)` (0.3 for 2 words, 0.2 for 3, 0.15 for 4+), and 2-word titles can only be ruled es/pt/fr/de/it. Words have 2+ letters, so dotted acronyms don't count. Artist **names** are never run through the text detector.
+3. Lyrics: a song's `lyrics_language`, once `--lyrics` checked it, decides for every artist outside the ja/ko scenes. An instrumental follows its artist.
+4. Title text via ELD (`eld/medium`). Without an artist vote, a non-English verdict needs at least 2 words; overruling a known artist language needs at least 4, or 2–3 when the artist votes English and the title's ISRC comes from a country of the title's language. Either way it must beat the English score by `requiredMargin(words)` (0.3 for 2 words, 0.2 for 3, 0.15 for 4+), and 2-word titles can only be ruled es/pt/fr/de/it. Words have 2+ letters, so dotted acronyms don't count. Artist **names** are never run through the text detector.
 
 Artist votes on text need 6+ words and a 0.15 lead over English (otherwise `en`). A smaller lead, on as few as 3 words, counts when most of the artist's country-coded ISRCs or a Latin/Brazilian genre point to the leading language (`CATALOG_DB.md`, Languages after crawls). Non-CJK scripts count only when they make up at least half the letters ("KoЯn" is not Russian). Deletion is irreversible, so doubtful titles stay English.
 
@@ -40,7 +46,7 @@ After crawls and enrichment, run `npm run catalog:recompute` (languages, then po
 | Script | Source |
 |---|---|
 | `scripts/crawl_catalog.ts` | Live crawl. Only named vectors run: `--charts=N --playlists=N --decades=N --cjk=N --artists=N --lexicon=N`, or `--all` for the defaults (overrides allowed). Also `--target=N --playlists-only --status` |
-| `scripts/enrich_catalog.ts` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N`, or `--all` for every step with default limits (overrides allowed). Then `scripts/recompute_catalog.ts` (`npm run catalog:recompute`) |
+| `scripts/enrich_catalog.ts` | Enrichment. Only named steps run: `--albums=N --deezer=N --artists=N --itunes=N --discography=N --lyrics=N`, or `--all` for every step with default limits (overrides allowed). Then `scripts/recompute_catalog.ts` (`npm run catalog:recompute`) |
 | `scripts/ingest_annas_spotify.ts` | Anna's Archive Spotify top‑10k (`--min-popularity=31`) |
 | `scripts/ingest_musicmovearr.ts` | MusicMoveArr dumps + `changes_*.sql.gz` diffs, streamed (readline + gunzip, 2,000/txn), `requireSample:false` |
 | `scripts/fetch_datasets.ts` | Prepares `data/base_tables`, `data/changes`, `data/downloads` |
@@ -54,6 +60,7 @@ All scripts parse flags strictly (`scripts/lib/cli.ts`, Node's `util.parseArgs`)
 - **Deezer:** search results include `isrc` and `rank`; playlist and album-track payloads may not. `/track/{id}` is authoritative. The advanced `artist:"…" track:"…"` search currently returns unrelated or empty results, so use plain `artist title` queries and match the results on artist key plus base title. Preview URLs expire: store ids, not URLs.
 - **Apple Music charts:** `https://rss.marketingtools.apple.com/api/v2/{storefront}/music/most-played/{10|25|50|100}/songs.json`. There are no previews or durations, so entries are matched to Deezer tracks.
 - **iTunes:** match on artist, base title, and duration, and only attach to existing rows.
+- **LRCLIB** (`lrclib.net/api/search`, free, no key): used only to tell a song's language. It answers 503 to bursts, so 1 req/s with retries.
 - **Spotify:** metadata only, from the dumps (popularity, ISRC). No Web API and no previews.
 
 ## Ingest policy

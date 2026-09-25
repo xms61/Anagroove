@@ -2,11 +2,14 @@
  * Recomputes artist-level languages (voted over each artist's catalog) and re-resolves every
  * track's language with them. Scene genres (K-Pop, Japanese, …) that the vote doesn't confirm are
  * removed from the artist. Pure local work: no network. Used by migration v3 and by
- * `npm run catalog:recompute` after new crawls.
+ * `npm run catalog:recompute` after new crawls. The artist's Deezer release titles and the tracks'
+ * lyrics languages (v9 columns, filled by catalog:enrich) are read when the columns exist: migration
+ * v3 runs this before they do.
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { classifyArtistLanguage, resolveTrackLanguage } from './languageClassifier.ts';
 import { SCENE_GENRES } from '../../shared/themes.ts';
+import { columnNames } from './tableColumns.ts';
 
 export interface LanguageRecompute {
   artists: number;
@@ -37,6 +40,7 @@ interface TrackLanguageRow {
   display_title: string;
   isrc: string | null;
   language: string | null;
+  lyrics_language: string | null;
   display_name: string;
   primary_language: string | null;
 }
@@ -57,8 +61,10 @@ export function recomputeCatalogLanguages(db: DatabaseSync): LanguageRecompute {
 function recompute(db: DatabaseSync): LanguageRecompute {
   const setArtistLanguage = db.prepare('UPDATE artists SET primary_language = ? WHERE id = ?');
   const setArtistGenres = db.prepare('UPDATE artists SET genres_json = ? WHERE id = ?');
-  const artistRows = db.prepare('SELECT id, display_name, genres_json FROM artists').all() as { id: number; display_name: string; genres_json: string | null }[];
-  const artistsById = new Map(artistRows.map(r => [r.id, { name: r.display_name, genres: parseGenres(r.genres_json) }]));
+  const discography = columnNames(db, 'artists').has('discography_titles_json') ? 'discography_titles_json' : 'NULL';
+  const artistRows = db.prepare(`SELECT id, display_name, genres_json, ${discography} AS discography FROM artists`).all() as
+    { id: number; display_name: string; genres_json: string | null; discography: string | null }[];
+  const artistsById = new Map(artistRows.map(r => [r.id, { name: r.display_name, genres: parseGenres(r.genres_json), discography: parseGenres(r.discography) }]));
 
   let artists = 0;
   let sceneGenresRemoved = 0;
@@ -68,8 +74,8 @@ function recompute(db: DatabaseSync): LanguageRecompute {
   let isrcs: (string | null)[] = [];
   const flush = () => {
     if (currentArtist === null) return;
-    const { name = '', genres = [] } = artistsById.get(currentArtist) || {};
-    const { language } = classifyArtistLanguage({ titles, albums, isrcs, name, genres });
+    const { name = '', genres = [], discography = [] } = artistsById.get(currentArtist) || {};
+    const { language } = classifyArtistLanguage({ titles: [...new Set([...titles, ...discography])], albums, isrcs, name, genres });
     setArtistLanguage.run(language, currentArtist);
     const kept = withoutForeignSceneGenres(genres, language);
     if (kept.length < genres.length) {
@@ -96,8 +102,9 @@ function recompute(db: DatabaseSync): LanguageRecompute {
   flush();
 
   const setTrackLanguage = db.prepare('UPDATE tracks SET language = ? WHERE id = ?');
+  const lyrics = columnNames(db, 'tracks').has('lyrics_language') ? 't.lyrics_language' : 'NULL';
   const rows = db.prepare(`
-    SELECT t.id, t.display_title, t.isrc, t.language, a.display_name, a.primary_language
+    SELECT t.id, t.display_title, t.isrc, t.language, ${lyrics} AS lyrics_language, a.display_name, a.primary_language
     FROM tracks t JOIN artists a ON a.id = t.artist_id
   `).all() as unknown as TrackLanguageRow[];
 
@@ -108,6 +115,7 @@ function recompute(db: DatabaseSync): LanguageRecompute {
       artist: row.display_name,
       isrc: row.isrc,
       artistLanguage: row.primary_language,
+      lyricsLanguage: row.lyrics_language,
     });
     if (language !== row.language) {
       setTrackLanguage.run(language, row.id);

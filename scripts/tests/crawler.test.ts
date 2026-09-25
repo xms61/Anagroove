@@ -110,6 +110,58 @@ test('recompute reports the vote and track-language changes it made', () => {
   catalog.close();
 });
 
+test('discography enrichment stores release titles, adds top tracks when releases are few, and the vote reads them', async () => {
+  const catalog = new SqliteCatalog(':memory:');
+  catalog.upsertTrack({ title: 'Corazon', artist: 'Qurl Test', durationMs: 168000, provider: 'deezer', providerTrackId: '41', deezerRank: 180000, artistMetadata: { deezerId: 8041 } });
+  catalog.upsertTrack({ title: 'Solo', artist: 'Few Releases', durationMs: 168000, provider: 'deezer', providerTrackId: '42', deezerRank: 180000, artistMetadata: { deezerId: 8042 } });
+  const releases = ['PRÉNOM', 'CICATRICES', 'BELDIA', 'HOLIDAYS', 'OXYGÈNE', "Qui m'atteint ?", 'Départ', 'MONÉGASQUE', 'Corazon'];
+  const enricher = new CatalogEnricher(catalog, {
+    fetchImpl: routedFetch([
+      [/artist\/8041\/albums/, { data: releases.map(title => ({ title })) }],
+      [/artist\/8042\/albums/, { data: [{ title: 'Solo' }] }],
+      [/artist\/8042\/top/, { data: [{ title: 'Sunrise Drive', album: { title: 'Open Road' } }, { title: 'Late Night Call', album: { title: 'Open Road' } }] }],
+    ]),
+  });
+
+  assert.deepEqual(await enricher.enrichArtistDiscographies({ limit: 10 }), { checked: 2, withTitles: 2, fromTopTracks: 1, missing: 0, errors: 0 });
+  const stored = (name) => JSON.parse(String(catalog.db.prepare('SELECT discography_titles_json AS titles FROM artists WHERE display_name = ?').get(name).titles));
+  assert.deepEqual(stored('Few Releases'), ['Solo', 'Sunrise Drive', 'Open Road', 'Late Night Call']);
+
+  recomputeCatalogLanguages(catalog.db);
+  assert.equal(catalog.db.prepare("SELECT primary_language FROM artists WHERE display_name = 'Qurl Test'").get().primary_language, 'fr', 'one catalog title, but French releases');
+  assert.equal(catalog.db.prepare("SELECT language FROM tracks WHERE display_title = 'Corazon'").get().language, 'fr');
+  assert.equal((await enricher.enrichArtistDiscographies({ limit: 10 })).checked, 0, 'checked artists are not asked again');
+  catalog.close();
+});
+
+test('lyrics languages keep a Spanish-voted act\'s English songs, and only the language is stored', async () => {
+  const catalog = new SqliteCatalog(':memory:');
+  let id = 930000;
+  [['Mayores', 'Mala Santa'], ['Muchacha', 'Esquemas de Amor'], ['Dollar', 'Fuego en la Noche'], ['Shower', 'Shower'], ['Baby', 'Corazón de Barrio']].forEach(([title, album]) => catalog.upsertTrack({
+    title, artist: 'Becky Test', album, isrc: `USAB1${id}0`, durationMs: 200000, provider: 'deezer', providerTrackId: String(id++), deezerRank: 700000, artistMetadata: { genres: ['Latin Music'] },
+  }));
+  recomputeCatalogLanguages(catalog.db);
+  assert.equal(catalog.db.prepare("SELECT primary_language FROM artists WHERE display_name = 'Becky Test'").get().primary_language, 'es');
+
+  const english = 'We were driving home under the silver rain, singing every word until the morning came. Hold my hand and never let it go, tonight the city lights are all we know. '.repeat(3);
+  const spanish = 'Caminamos juntos bajo la lluvia de la ciudad, cantando cada palabra hasta que llega la mañana. Dame tu mano y no la sueltes nunca más, esta noche las luces son todo lo que tenemos. '.repeat(3);
+  const fetchImpl = routedFetch([
+    [/track_name=Shower/, [{ artistName: 'Becky Test', duration: 201, plainLyrics: english }]],
+    [/track_name=Baby/, [{ artistName: 'Someone Else', duration: 200, plainLyrics: english }, { artistName: 'Becky Test', duration: 199, plainLyrics: spanish }]],
+    [/track_name=Dollar/, [{ artistName: 'Becky Test', duration: 260, plainLyrics: english }]],
+    [/track_name=Mayores/, [{ artistName: 'Becky Test', duration: 200, instrumental: true, plainLyrics: null }]],
+  ]);
+
+  const stats = await new CatalogEnricher(catalog, { fetchImpl }).enrichLyricsLanguages({ limit: 10 });
+  assert.deepEqual(stats, { checked: 4, english: 1, otherLanguage: 1, instrumental: 1, notFound: 1, errors: 0 }, '"Muchacha" reads Spanish and is not looked up');
+  const column = (name) => Object.fromEntries(catalog.db.prepare(`SELECT display_title, ${name} AS value FROM tracks`).all().map(r => [r.display_title, r.value]));
+  assert.deepEqual(column('lyrics_language'), { Mayores: 'instrumental', Muchacha: null, Dollar: null, Shower: 'en', Baby: 'es' }, 'another artist, or another duration, is no match');
+
+  recomputeCatalogLanguages(catalog.db);
+  assert.deepEqual(column('language'), { Mayores: 'es', Muchacha: 'es', Dollar: 'es', Shower: 'en', Baby: 'es' });
+  catalog.close();
+});
+
 const deezerTrack = (id, title, artist, extra = {}) => ({
   id, title, artist: { id: 5000 + id, name: artist }, album: { id: 7000 + id, title: `${title} - Single` },
   duration: 200, rank: 650000, preview: `https://cdnt-preview.dzcdn.net/${id}.mp3`, link: `https://www.deezer.com/track/${id}`, ...extra,
