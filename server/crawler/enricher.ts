@@ -9,6 +9,8 @@
  *   artists   /artist/{id}  -> fan count; /album/{id} -> genres
  *   itunes    iTunes search -> strict artist + base title + duration match, attached to the
  *                              existing row (never creates tracks)
+ *   discography /artist/{id}/albums (and /top) -> release titles for the language vote
+ *   lyrics    LRCLIB search -> the language a song is sung in (only the language is stored)
  *   languages local         -> recompute artist/track languages (no network)
  */
 import type { DatabaseSync } from 'node:sqlite';
@@ -23,7 +25,9 @@ import {
   normalizeReleaseYear,
 } from '../db/trackNormalization.ts';
 import { canonicalArtistKey } from '../../shared/musicIdentity.ts';
-import { politeFetch, deezerRateLimiter, itunesRateLimiter, type TokenBucketRateLimiter } from './rateLimiter.ts';
+import { splitArtistNames } from '../../shared/musicKeywords.ts';
+import { detectLyricsLanguage, detectTitleLanguage, languageText } from '../db/languageClassifier.ts';
+import { politeFetch, deezerRateLimiter, itunesRateLimiter, lrclibRateLimiter, type TokenBucketRateLimiter } from './rateLimiter.ts';
 import { logger } from '../logger.ts';
 import { errorMessage } from '../errors.ts';
 
@@ -72,6 +76,25 @@ interface ItunesSearchJson {
 
 const IN_SCOPE = `t.language IN (${ALLOWED_LANGUAGES.map(l => `'${l}'`).join(', ')}) AND t.version_type IN ('original', 'remaster')`;
 const ITUNES_DURATION_TOLERANCE_MS = 3000;
+const LYRICS_DURATION_TOLERANCE_MS = 3000;
+// English-voted artists with fewer catalog titles than this get their release titles too
+const FEW_CATALOG_TITLES = 10;
+const MAX_DISCOGRAPHY_TITLES = 60;
+
+interface DeezerReleasesJson {
+  data?: { title?: string }[];
+}
+
+interface DeezerTopTracksJson {
+  data?: { title?: string; album?: { title?: string } }[];
+}
+
+interface LrclibRecord {
+  artistName?: string;
+  duration?: number;
+  instrumental?: boolean;
+  plainLyrics?: string | null;
+}
 
 /**
  * Deezer genre ids -> English names. The API localizes genre names by the caller's location
@@ -406,6 +429,108 @@ export class CatalogEnricher {
       }
       markChecked.run(row.id);
       if (stats.checked % 25 === 0) onProgress({ step: 'itunes', ...stats, total: work.length });
+    }
+    return stats;
+  }
+
+  /**
+   * Release titles for the artists the language vote knows too little about: those without a
+   * vote, then English-voted ones with few catalog titles. /artist/{id}/albums lists the releases
+   * (singles carry their song's title); /artist/{id}/top fills in when it gives fewer than 3.
+   * catalog:recompute votes on them next to the catalog's own titles.
+   */
+  async enrichArtistDiscographies({ limit = 2000, onProgress = () => {} }: StepOptions = {}) {
+    const work = this.db.prepare(`
+      SELECT a.id, a.deezer_id FROM artists a
+      WHERE a.deezer_id IS NOT NULL AND a.discography_checked_at IS NULL
+        AND (a.primary_language IS NULL
+          OR (a.primary_language = 'en' AND (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = a.id) < ${FEW_CATALOG_TITLES}))
+        AND EXISTS (SELECT 1 FROM tracks t WHERE t.artist_id = a.id AND ${IN_SCOPE})
+      ORDER BY a.primary_language IS NOT NULL,
+        (SELECT MAX(t.popularity) FROM tracks t WHERE t.artist_id = a.id AND ${IN_SCOPE}) DESC,
+        a.fans_count DESC
+      LIMIT ?
+    `).all(limit) as { id: number; deezer_id: string }[];
+    const update = this.db.prepare("UPDATE artists SET discography_titles_json = ?, discography_checked_at = datetime('now') WHERE id = ?");
+
+    const stats = { checked: 0, withTitles: 0, fromTopTracks: 0, missing: 0, errors: 0 };
+    for (const row of work) {
+      if (this.abortRequested) break;
+      stats.checked++;
+      const releases = await this.getJson<DeezerReleasesJson>(`https://api.deezer.com/artist/${row.deezer_id}/albums?limit=100`, deezerRateLimiter);
+      if (releases.status === 'error') {
+        stats.errors++;
+        continue;
+      }
+      const titles = new Set((releases.data?.data || []).map(release => release.title).filter((title): title is string => Boolean(title)));
+      if (releases.status === 'missing') {
+        stats.missing++;
+      } else if (titles.size < 3) {
+        const top = await this.getJson<DeezerTopTracksJson>(`https://api.deezer.com/artist/${row.deezer_id}/top?limit=25`, deezerRateLimiter);
+        if (top.status === 'error') {
+          stats.errors++;
+          continue;
+        }
+        for (const track of top.data?.data || []) {
+          if (track.title) titles.add(track.title);
+          if (track.album?.title) titles.add(track.album.title);
+        }
+        if (top.data?.data?.length) stats.fromTopTracks++;
+      }
+      const kept = [...titles].slice(0, MAX_DISCOGRAPHY_TITLES);
+      if (kept.length > 0) stats.withTitles++;
+      update.run(kept.length > 0 ? JSON.stringify(kept) : null, row.id);
+      if (stats.checked % 50 === 0) onProgress({ step: 'discography', ...stats, total: work.length });
+    }
+    return stats;
+  }
+
+  /**
+   * The language a song is sung in, from its lyrics on LRCLIB, for the songs of artists voted a
+   * language the catalog doesn't keep, so bilingual acts keep their English songs
+   * (catalog:recompute applies it). Titles that reliably read the artist's language need no lookup;
+   * one-word English titles often read as another language ("Baby" -> tl), so they are looked up.
+   * A match needs the artist and a duration within 3 s. Only the detected language is stored: the
+   * lyrics are never kept, logged or shown.
+   */
+  async enrichLyricsLanguages({ limit = 500, onProgress = () => {} }: StepOptions = {}) {
+    const candidates = this.db.prepare(`
+      SELECT t.id, t.display_title, t.duration_ms, a.display_name, a.primary_language
+      FROM tracks t JOIN artists a ON a.id = t.artist_id
+      WHERE t.lyrics_checked_at IS NULL AND t.version_type IN ('original', 'remaster')
+        AND a.primary_language IS NOT NULL AND a.primary_language NOT IN (${ALLOWED_LANGUAGES.map(l => `'${l}'`).join(', ')})
+      ORDER BY t.popularity DESC
+    `).all() as { id: number; display_title: string; duration_ms: number; display_name: string; primary_language: string }[];
+    const readsArtistLanguage = (row: { display_title: string; primary_language: string }) => {
+      const detected = detectTitleLanguage(row.display_title);
+      return detected.reliable && detected.language === row.primary_language;
+    };
+    const work = candidates.filter(row => !readsArtistLanguage(row)).slice(0, limit);
+    const update = this.db.prepare("UPDATE tracks SET lyrics_language = ?, lyrics_checked_at = datetime('now') WHERE id = ?");
+
+    const stats = { checked: 0, english: 0, otherLanguage: 0, instrumental: 0, notFound: 0, errors: 0 };
+    for (const row of work) {
+      if (this.abortRequested) break;
+      stats.checked++;
+      const artist = splitArtistNames(row.display_name)[0] || row.display_name;
+      const query = `artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(languageText(row.display_title))}`;
+      const result = await this.getJson<LrclibRecord[]>(`https://lrclib.net/api/search?${query}`, lrclibRateLimiter);
+      if (result.status === 'error') {
+        stats.errors++;
+        continue;
+      }
+      const artistKey = canonicalArtistKey(artist);
+      const match = (Array.isArray(result.data) ? result.data : []).find(record =>
+        canonicalArtistKey(record.artistName || '').includes(artistKey) &&
+        Math.abs((Number(record.duration) || 0) * 1000 - row.duration_ms) <= LYRICS_DURATION_TOLERANCE_MS &&
+        (record.instrumental || record.plainLyrics));
+      const language = !match ? null : match.instrumental ? 'instrumental' : detectLyricsLanguage(match.plainLyrics || '');
+      if (!match) stats.notFound++;
+      else if (language === 'instrumental') stats.instrumental++;
+      else if (language === 'en') stats.english++;
+      else stats.otherLanguage++;
+      update.run(language, row.id);
+      if (stats.checked % 50 === 0) onProgress({ step: 'lyrics', ...stats, total: work.length });
     }
     return stats;
   }

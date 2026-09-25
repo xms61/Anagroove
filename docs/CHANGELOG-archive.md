@@ -1,6 +1,20 @@
 # Changelog archive
 
-Releases before 1.28.12. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+Releases before 1.29.0. Current entries are in [CHANGELOG.md](../CHANGELOG.md).
+
+## [1.28.12] - 2026-09-24
+
+### Fixed
+- **Tracks from the Spotify dumps get their Deezer link.** 1,739 catalog tracks came only from the Spotify dumps, which have no previews. `npm run catalog:enrich -- --deezer=N` skipped them, because it only looked up tracks that already had a Deezer id.
+  - It now looks them up with Deezer's `/track/isrc:{ISRC}` (1,723 have an ISRC).
+  - A match stores the Deezer link, the album id and the artist's Deezer id, then fills the year and rank as usual.
+  - Their previews then resolve without a live search, and `catalog:coverage` (offline) no longer drops them.
+  - A Deezer track already linked to another row is left for `db:sanitize` to merge (`linkConflicts`).
+
+### Changed
+- **One warning line per song pool** lists the tracks dropped for having no audio preview. It used to be one warning per track.
+
+---
 
 ## [1.28.11] - 2026-09-24
 

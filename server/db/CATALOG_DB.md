@@ -11,19 +11,20 @@ Uses Node 24 native `node:sqlite` (`DatabaseSync`). Files live under `DATA_DIR` 
 WAL, `synchronous=NORMAL`, `busy_timeout=10000`, `foreign_keys=ON`. The web server lowers the busy timeout to 250 ms before first use (`setCatalogBusyTimeout`, `busyTimeout.ts`, also used by the anime catalog): its catalog writes are best-effort caching, and `node:sqlite` blocks the event loop while it waits for a script's write lock. After long ingests or sanitizing, run `PRAGMA wal_checkpoint(TRUNCATE);`.
 
 ## Migrations (`catalogMigrations.ts`)
-- Versions are tracked in `PRAGMA user_version` (currently **v8**). Each migration runs in its own transaction.
+- Versions are tracked in `PRAGMA user_version` (currently **v9**). Each migration runs in its own transaction.
 - They're applied automatically on first catalog use, or explicitly with `npm run db:migrate`.
 - Before migrating a populated file DB, a `VACUUM INTO` copy is written next to it: `catalog.backup-v<from>-<timestamp>.sqlite`, gitignored. Set `SPOTYSPICE_SKIP_DB_BACKUP=1` or pass `--no-backup` to skip it.
 - New schema changes go in a **new** migration entry. Never edit an applied one.
 
 ## Tables
-- `artists`: `genres_json` holds English genre names: Deezer album genres by genre id (v7 translated the German names stored before), curated clusters, and the theme of any seed playlist the artist appeared on. Scene genres (`SCENE_GENRES`: K-Pop; Japanese, J-Pop, City Pop, Anime) land on every artist of a K-pop or J-pop playlist, Western acts included, so the language vote only trusts them with evidence and `recomputeCatalogLanguages` removes them from artists voted another language. `canonical_name` UNIQUE (`canonicalArtistKey`: Latin accents folded; kana dakuten and hangul kept), `display_name` (NOCASE index for artist prompts, v8), and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json`, `fans_count`, `primary_language` (voted over the artist's catalog), and `enriched_at`.
+- `artists`: `genres_json` holds English genre names: Deezer album genres by genre id (v7 translated the German names stored before), curated clusters, and the theme of any seed playlist the artist appeared on. Scene genres (`SCENE_GENRES`: K-Pop; Japanese, J-Pop, City Pop, Anime) land on every artist of a K-pop or J-pop playlist, Western acts included, so the language vote only trusts them with evidence and `recomputeCatalogLanguages` removes them from artists voted another language. `canonical_name` UNIQUE (`canonicalArtistKey`: Latin accents folded; kana dakuten and hangul kept), `display_name` (NOCASE index for artist prompts, v8), and provider ids (`spotify_id`, `deezer_id`, `itunes_artist_id`) each UNIQUE, plus `genres_json`, `fans_count`, `primary_language` (voted over the artist's catalog), and `enriched_at`. `discography_titles_json` holds the artist's Deezer release titles (`catalog:enrich --discography`, v9), which the language vote reads next to the catalog titles; `discography_checked_at` marks the lookup.
 - `tracks`:
   - `isrc` UNIQUE (validated format), `display_title`, `artist_id`, `album_name`, `duration_ms`, `release_year`/`release_date`, `is_explicit`.
   - `canonical_title`: the Unicode **base title** key from `baseTitleKey`. Credits and version tags are removed; kana (including dakuten), hangul and kanji are kept.
   - `version_type`: `original` or `remaster` (the cleanup deletes every other class).
   - `language`: from `languageClassifier.ts` (script, artist vote, ELD title detection); `country_code` is the ISRC **registrant** prefix, not a language.
   - `enriched_at` / `itunes_checked_at` / `album_checked_at`: set once `catalog:enrich` has attempted the Deezer track, iTunes, or Deezer album lookup.
+  - `lyrics_language`: the language the lyrics are sung in (`catalog:enrich --lyrics`, v9), or `instrumental`; `lyrics_checked_at` marks the lookup. The lyrics themselves are never stored.
   - `popularity`: the **percentile within the track's language**, 0–100 (see Popularity). Raw inputs are kept in `deezer_rank` and `spotify_popularity`.
   - `rand_key`: a random number in [0, 1) for song selection windows (`sampleCatalogTracks`, index `idx_tracks_rand`).
 - `track_samples`: one row per (track, provider) with the preview URL. **Deezer preview URLs are signed and expire** (`hdnea=exp=`, minutes), so treat them as a cache. `previewResolver.isPreviewUrlFresh` decides whether a stored URL is still usable.
@@ -56,6 +57,8 @@ A match merges provider links, samples, raw popularity, and missing metadata int
   - Bilingual countries (CA, CH, BE) and distributor codes (QM, QZ, TC, …) count for nothing.
   - French, German and Italian rap and Latin pop voted English before, because their titles mix in English words and brand names.
 - A 2–3-word title that is clearly foreign overrules an English artist vote when its ISRC comes from a country of that language ("Dans mon café", FR).
+- The Deezer release titles of an artist (`--discography`) count as titles: one catalog title is not enough to vote, the releases usually are ("QURL", one song in the catalog, 15 French singles on Deezer).
+- A song's lyrics language (`--lyrics`) decides for every artist outside the ja/ko scenes, so a Spanish-voted act keeps its English songs (Becky G "Shower") and an English title sung in French stays French. An instrumental follows its artist.
 - `npm run catalog:recompute -- --dry-run` recomputes the languages in a transaction it rolls back. Both modes print the transitions (`en→fr 4,349`) and the most-followed artists whose vote changed, so the review happens before `db:sanitize` deletes anything.
 
 Known limit: the recompute votes on catalog rows only, so it resets artists the crawler voted on their Deezer top tracks when the catalog has too few of their titles (30 ja and 17 ko artists on 2026-09-25).

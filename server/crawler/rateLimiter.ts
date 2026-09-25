@@ -62,6 +62,12 @@ export const itunesRateLimiter = new TokenBucketRateLimiter({
   maxTokens: 3,
 });
 
+// LRCLIB: a free community lyrics service without published limits, asked 1 request/sec
+export const lrclibRateLimiter = new TokenBucketRateLimiter({
+  refillRatePerSec: 1,
+  maxTokens: 2,
+});
+
 const DEFAULT_USER_AGENT = 'Anagroove-MusicIndexer/1.0 (+https://github.com/xms61/Anagroove)';
 
 /** Longest Retry-After a 429 may impose before the next attempt. */
